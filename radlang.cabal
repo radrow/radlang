@@ -1,0 +1,75 @@
+cabal-version: >= 1.10
+
+-- This file has been generated from package.yaml by hpack version 0.29.7.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: fa2e4cdbd811aa78677354e9edf41390d455242bf152cb70f06b87b5e9e0c0c5
+
+name:           radlang
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/radrow/radlang#readme>
+homepage:       https://github.com/radrow/radlang#readme
+bug-reports:    https://github.com/radrow/radlang/issues
+author:         Radosław Rowicki
+maintainer:     rr386088@students.mimuw.edu.pl
+copyright:      2018 Radosław Rowicki
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    ChangeLog.md
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/radrow/radlang
+
+library
+  exposed-modules:
+      Radlang
+      Radlang.Evaluator
+      Radlang.Parser
+      Radlang.Typechecker
+      Radlang.Types
+  other-modules:
+      Paths_radlang
+  hs-source-dirs:
+      src
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec >=6.5
+    , mtl
+  default-language: Haskell2010
+
+executable radlang-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_radlang
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec >=6.5
+    , mtl
+    , radlang
+  default-language: Haskell2010
+
+test-suite radlang-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_radlang
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec >=6.5
+    , mtl
+    , radlang
+  default-language: Haskell2010

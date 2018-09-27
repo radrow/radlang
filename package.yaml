@@ -1,0 +1,51 @@
+name:                radlang
+version:             0.1.0.0
+github:              "radrow/radlang"
+license:             BSD3
+author:              "Radosław Rowicki"
+maintainer:          "rr386088@students.mimuw.edu.pl"
+copyright:           "2018 Radosław Rowicki"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/radrow/radlang#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- megaparsec >= 6.5
+- containers
+- mtl
+
+library:
+  source-dirs: src
+
+executables:
+  radlang-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - radlang
+
+tests:
+  radlang-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - radlang
