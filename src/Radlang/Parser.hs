@@ -1,29 +1,38 @@
 module Radlang.Parser where
 
-import Control.Monad
-import Control.Monad.Identity
-import Data.Void
-import Text.Megaparsec
-import Text.Megaparsec.Char
-import Text.Megaparsec.Error
+import           Control.Monad
+import           Control.Monad.Identity
+import           Data.Void
+import           Text.Megaparsec
+import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import Prelude hiding (lex)
+import           Prelude                    hiding (lex)
 
-import Radlang.Types
-import Data.Either
+import           Data.Either
+import           Radlang.Types
+
+--shit
+import           Data.Bifunctor
+import qualified Data.Map.Strict            as M
+import           Radlang.Evaluator
 
 type Parser = ParsecT Void String Identity
 
-parseProgram :: FilePath -> String -> Either ErrMsg Program
-parseProgram = undefined
 
--- print = putStrLn . either parseErrorPretty show
+printe :: String -> String
+printe = either parseErrorPretty show . parseExpr
+parseExpr :: String -> Either (ParseError Char Void) Expr
 parseExpr = parse expr "test"
+pex :: String -> Expr
 pex = fromRight (Val "None") . parseExpr
+evalWith :: Namespace -> String -> IO ()
+evalWith ns = putStrLn . either id show . (bimap parseErrorPretty (evalProgram ns) <$> parseExpr)
+eval :: String -> IO ()
+eval = evalWith M.empty
 
 forbiddenIds :: [Name]
-forbiddenIds = ["let", "in"]
+forbiddenIds = ["let", "in", "case", "of"]
 
 skipComments :: Parser ()
 skipComments = L.space
@@ -69,17 +78,24 @@ uId = lex $ do
   return $ i
 
 
+funArg :: Parser Name
 funArg = lId
+valName :: Parser Name
 valName = lId
-
+constructorName :: Parser Name
+constructorName = uId
+typeName :: Parser Name
+typeName = uId
 
 expr :: Parser Expr
 expr = msum $ map try
   [ mzero
   , applicationE
+  , constructorE
   , constantE
   , lambdaE
   , letE
+  , caseE
   , valE
   , paren expr
   ]
@@ -88,17 +104,7 @@ valE :: Parser Expr
 valE = Val <$> valName
 
 constantE :: Parser Expr
-constantE = Data <$> msum
-  [ constInt
-  , constBool
-  ]
-
-constInt :: Parser Data
-constInt = DataInt <$> signed
-
-constBool :: Parser Data
-constBool = fmap DataBool $
-  (word "True" >> return True) <|> (word "False" >> return False)
+constantE = Data <$> constant
 
 lambdaE :: Parser Expr
 lambdaE = do
@@ -111,6 +117,11 @@ lambdaE = do
 applicationE :: Parser Expr
 applicationE = do
   chain <- some (valE <|> constantE <|> paren expr)
+  return $ foldl1 Application chain
+
+constructorE :: Parser Expr
+constructorE = do
+  chain <- some (Val <$> constructorName <|> constantE <|> paren expr)
   return $ foldl1 Application chain
 
 letE :: Parser Expr
@@ -127,3 +138,28 @@ assignment = do
   operator ":="
   value <- expr
   return (name, Nothing, value)
+
+caseE :: Parser Expr
+caseE = do
+  word "case"
+  e <- expr
+  word "of"
+  void $ optional $ try $ operator "|"
+  cases <- sepBy1 caseMatch (operator "|")
+  return $ Case e cases
+
+caseMatch :: Parser (Expr, Expr)
+caseMatch = do
+  s <- expr
+  operator "->"
+  e <- expr
+  return (s, e)
+
+constant :: Parser Data
+constant = msum $ map try
+  [ mzero
+  , dataInt
+  ]
+
+dataInt :: Parser Data
+dataInt = DataInt <$> signed

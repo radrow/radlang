@@ -25,6 +25,10 @@ dependencies:
 - containers
 - mtl
 
+ghc-options:
+  - -Wall
+  - -Wextra
+
 library:
   source-dirs: src
 

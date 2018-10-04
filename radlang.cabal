@@ -4,7 +4,7 @@ cabal-version: >= 1.10
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fa2e4cdbd811aa78677354e9edf41390d455242bf152cb70f06b87b5e9e0c0c5
+-- hash: c3e8b9f00bc8bcc5166e26ba1901fa0e55f6b6b15e9b1c12ccf58618cc20055a
 
 name:           radlang
 version:        0.1.0.0
@@ -29,6 +29,8 @@ library
   exposed-modules:
       Radlang
       Radlang.Evaluator
+      Radlang.Helpers
+      Radlang.Namespace
       Radlang.Parser
       Radlang.Typechecker
       Radlang.Types
@@ -36,6 +38,7 @@ library
       Paths_radlang
   hs-source-dirs:
       src
+  ghc-options: -Wall -Wextra
   build-depends:
       base >=4.7 && <5
     , containers
@@ -49,7 +52,7 @@ executable radlang-exe
       Paths_radlang
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , containers
@@ -62,10 +65,11 @@ test-suite radlang-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Test
       Paths_radlang
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , containers

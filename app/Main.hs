@@ -3,12 +3,9 @@ module Main where
 import System.Environment
 import System.IO
 
-import Radlang(parseProgram)
-
-f = parseProgram
 
 main :: IO ()
-main = putStrLn f
+main = return ()
   -- args <- getArgs
   -- (fileName, sourceCode) <-
   --       if null args
