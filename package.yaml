@@ -31,6 +31,8 @@ ghc-options:
 
 library:
   source-dirs: src
+  default-extensions:
+    - LambdaCase
 
 executables:
   radlang-exe:

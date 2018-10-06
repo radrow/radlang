@@ -1,10 +1,10 @@
-cabal-version: >= 1.10
+cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.29.7.
+-- This file has been generated from package.yaml by hpack version 0.31.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c3e8b9f00bc8bcc5166e26ba1901fa0e55f6b6b15e9b1c12ccf58618cc20055a
+-- hash: ab91a52476ccba6855642ada5b3cee9e08549258ae4105b91938e73ea6170a24
 
 name:           radlang
 version:        0.1.0.0
@@ -18,8 +18,8 @@ license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    ChangeLog.md
     README.md
+    ChangeLog.md
 
 source-repository head
   type: git
@@ -30,14 +30,15 @@ library
       Radlang
       Radlang.Evaluator
       Radlang.Helpers
-      Radlang.Namespace
       Radlang.Parser
+      Radlang.Space
       Radlang.Typechecker
       Radlang.Types
   other-modules:
       Paths_radlang
   hs-source-dirs:
       src
+  default-extensions: LambdaCase
   ghc-options: -Wall -Wextra
   build-depends:
       base >=4.7 && <5

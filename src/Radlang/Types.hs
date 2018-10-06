@@ -1,10 +1,20 @@
 module Radlang.Types where
 
-import           Data.Map.Strict as M
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State.Strict
+import           Data.Map.Strict            as M
 
 type ErrMsg = String
 type Name = String
-type Namespace = M.Map Name Data
+
+type DataId = Int
+
+type Namespace = M.Map Name DataId
+type Dataspace = (M.Map DataId DataEntry, Int)
+data DataEntry = Strict Data | Lazy Namespace Expr
+
+type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
 data Expr
   = Val Name
