@@ -30,8 +30,15 @@ evalProgramWithC ns ex = evalState
     ) ns
   ) (M.empty, 0)
 
+
 parse :: String -> Either ErrMsg Expr
 parse inp = first MP.parseErrorPretty $ MP.parse expr "test" inp
+
+parsePrint inp = case parse inp of
+  Right d -> setSGR [SetColor Foreground Vivid Green] >> print d >> setSGR [SetColor Foreground Vivid White]
+  Left d -> setSGR [SetColor Foreground Vivid Red] >> putStrLn d >> setSGR [SetColor Foreground Vivid White]
+
+
 
 evalE :: String -> Either ErrMsg Data
 evalE inp = parse inp >>= evalProgramWithC M.empty
@@ -128,6 +135,8 @@ testCases =
   , ("letParse2", DataInt 42 <==> "let x := 0; y := 42 in y")
   , ("letParse3", DataInt 42 <==> "let x := 42; y := 0 in x")
   , ("letParse4", DataInt 42 <==> "let x := 42; y := x in y")
+  , ("shadowParse1", DataInt 42 <==> "let x := 0 in let x := 42 in x")
+  , ("shadowParse2", DataInt 42 <==> "let x := 2; y := x in let x := 40 in plus x y")
 
   , ("caseParse1", DataInt 42 <==> "case 5 of 5 -> 42")
   , ("caseParse2", DataInt 42 <==> "case 5 of 3 -> 0 | 5 -> 42")
@@ -143,8 +152,10 @@ testCases =
   , ("ADTCaseParse2", DataInt 42
                      <==> "case D 1 42 3 of D 1 1 1 -> 0 | D 1 n 3 -> n | D 1 1 1 -> 1")
 
-  , ("primitiveTest", DataInt 42 <==> "plus 40 2")
+  , ("primitiveParse", DataInt 42 <==> "plus 40 2")
 
-  , ("lambdaTest", DataInt 42 <==> "let f := \\x -> x + 2 in f 40")
+  , ("lambdaParse", DataInt 42 <==> "(\\x -> x) 42")
+  , ("lambdaLetParse", DataInt 42 <==> "let f := \\x -> plus x 2 in f 40")
+  , ("primitiveAssignParse", DataInt 42 <==> "let f := plus in f 40 2")
   ]
 
