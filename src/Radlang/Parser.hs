@@ -116,13 +116,13 @@ lambdaE = do
 
 applicationE :: Parser Expr
 applicationE = do
-  chain <- some (valE <|> constantE <|> paren expr)
+  chain <- some $ try (valE <|> constantE <|> paren expr)
   return $ foldl1 Application chain
 
 constructorE :: Parser Expr
 constructorE = do
   name <- Val <$> constructorName
-  chain <- many (valE <|> constantE <|> paren expr)
+  chain <- many $ try (valE <|> constantE <|> paren expr)
   return $ foldl1 Application (name:chain)
 
 letE :: Parser Expr
