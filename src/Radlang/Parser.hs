@@ -27,9 +27,9 @@ parseExpr = parse expr "test"
 pex :: String -> Expr
 pex = fromRight (Val "None") . parseExpr
 evalWith :: Namespace -> String -> IO ()
-evalWith ns = putStrLn . either id show . (bimap parseErrorPretty (evalProgram ns) <$> parseExpr)
-eval :: String -> IO ()
-eval = evalWith M.empty
+evalWith ns = putStrLn . either id show . (bimap parseErrorPretty (evalProgramWithC ns) <$> parseExpr)
+evalE :: String -> IO ()
+evalE = evalWith M.empty
 
 forbiddenIds :: [Name]
 forbiddenIds = ["let", "in", "case", "of"]
@@ -121,8 +121,9 @@ applicationE = do
 
 constructorE :: Parser Expr
 constructorE = do
-  chain <- some (Val <$> constructorName <|> constantE <|> paren expr)
-  return $ foldl1 Application chain
+  name <- Val <$> constructorName
+  chain <- many (valE <|> constantE <|> paren expr)
+  return $ foldl1 Application (name:chain)
 
 letE :: Parser Expr
 letE = do
@@ -150,7 +151,7 @@ caseE = do
 
 caseMatch :: Parser (Expr, Expr)
 caseMatch = do
-  s <- (constructorE <|> constantE)
+  s <- (constructorE <|> constantE <|> valE)
   operator "->"
   e <- expr
   return (s, e)

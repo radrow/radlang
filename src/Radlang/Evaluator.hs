@@ -28,14 +28,6 @@ inserts as ns = foldl (flip $ uncurry M.insert) ns as
 update :: Namespace -> Namespace -> Namespace
 update = M.union
 
--- registerConstructor :: String -> Int -> Namespace -> Namespace
--- registerConstructor name arity ns =
---   M.insert name (cons arity) ns where
---   cons 0 = DataADT name []
---   cons n = let (DataADT _ l) = cons (n-1)
---                argname = uniqueName $ name <> show n
---            in DataLambda ns argname (Data $ DataADT name (Val argname : l))
-
 -- |Try to get data by name
 lookupName :: Name -> Evaluator (Maybe DataEntry)
 lookupName n = do
@@ -88,6 +80,16 @@ withNs n = local (update n)
 withNsExpr :: Namespace -> Expr -> Evaluator Data
 withNsExpr n e = local (update n) (eval e)
 
+-- |Adds constructor with given arity into data&name space
+registerConstructor :: Name -> Int -> Evaluator Namespace
+registerConstructor name arity = do
+  let constr :: Int -> [DataEntry] -> Data
+      constr 0 l = DataADT name l
+      constr n l =  DataInternalFunc (\d -> constr (n-1) (Strict d : l))
+  i <- registerData $ Strict (constr arity [])
+  ns <- getNamespace
+  pure $ M.insert name i ns
+
 eval :: Expr -> Evaluator Data
 eval expr =
   case expr of
@@ -99,6 +101,7 @@ eval expr =
       eval f >>= \case
         DataLambda ns argname e -> do
           withData (argname <~ Lazy ns arg) $ withNsExpr ns e
+        DataInternalFunc fun -> fun <$> eval arg
         _ -> throwError "Function application not into lambda"
     Let assgs e -> do
       ns <- getNamespace
@@ -165,3 +168,11 @@ eval expr =
 
 evalProgram :: Namespace -> Expr -> Either String Data
 evalProgram ns ex = evalState (runReaderT (runExceptT $ eval ex) ns) (M.empty, 0)
+
+
+-- | For debug
+evalProgramWithC :: Namespace -> Expr -> Either String Data
+evalProgramWithC ns ex = evalState
+  (runReaderT
+    (runExceptT
+      $ registerConstructor "D" 3 >>= \n -> withNsExpr n ex) ns) (M.empty, 0)

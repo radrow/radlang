@@ -39,8 +39,6 @@ instance Testable (Test () Expr) where
     Left _ -> Right ()
   test (() :== e) = void $ evalProgram M.empty e
   test (() :/= e) = void $ evalProgram M.empty e
-instance Testable (Test Data String) where
-  
 
 trivialTest :: Test Data Expr
 trivialTest = DataInt 3 :== Data (DataInt 3)
