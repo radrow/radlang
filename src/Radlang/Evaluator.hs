@@ -12,32 +12,20 @@ import qualified Data.Map.Strict as M
 
 import Radlang.Helpers
 import Radlang.Types
+import Radlang.Space
+import Radlang.Stdlib
 
-getNamespace :: Evaluator Namespace
-getNamespace = lift ask
+-- |Same as `withAssg`, but evaluation performed
+withAssgExpr :: (Name, Int) -> Expr -> Evaluator Data
+withAssgExpr a e = withAssg a (eval e)
 
-getDataspace :: Evaluator Dataspace
-getDataspace = lift $ lift get
+-- |Same as `withData`, but evaluation performed
+withDataExpr :: (Name, DataEntry) -> Expr -> Evaluator Data
+withDataExpr a e = withData a (eval e)
 
-setDataspace :: Dataspace -> Evaluator ()
-setDataspace d = lift $ lift $ put d
-
-inserts :: [(Name, Int)] -> Namespace -> Namespace
-inserts as ns = foldl (flip $ uncurry M.insert) ns as
-
-update :: Namespace -> Namespace -> Namespace
-update = M.union
-
--- |Try to get data by name
-lookupName :: Name -> Evaluator (Maybe DataEntry)
-lookupName n = do
-  ns <- getNamespace
-  ds <- fst <$> getDataspace
-  case M.lookup n ns of
-    Just i -> case M.lookup i ds of
-      Just d -> pure $ Just d
-      Nothing -> throwError $ "Unbound id: " <> show i
-    Nothing -> pure Nothing
+-- |Same as `withNs`, but evaluation performed
+withNsExpr :: Namespace -> Expr -> Evaluator Data
+withNsExpr n e = local (update n) (eval e)
 
 force :: DataEntry -> Evaluator Data
 force (Strict d) = pure d
@@ -45,50 +33,6 @@ force (Lazy ns e) = withNsExpr ns e
 
 lookupNameForce :: Name -> ExceptT String (ReaderT Namespace (State Dataspace)) (Maybe Data)
 lookupNameForce n = lookupName n >>= (traverse force)
-
--- |Allocates new data and returns id
-registerData :: DataEntry -> Evaluator DataId
-registerData d = do
-  (ds, count) <- getDataspace
-  put $ (M.insert (count + 1) d ds, count + 1)
-  pure $ count + 1
-
-(<~) :: a -> b -> (a, b)
-(<~) = (,)
-
--- |Evals with overbound variable id
-withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
-withAssg (n, d) = local (M.insert n d)
-
--- |Same as `withAssg`, but evaluation performed
-withAssgExpr :: (Name, Int) -> Expr -> Evaluator Data
-withAssgExpr a e = withAssg a (eval e)
-
--- |Evals with data bound to name
-withData :: (Name, DataEntry) -> Evaluator a -> Evaluator a
-withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
-
--- |Same as `withData`, but evaluation performed
-withDataExpr :: (Name, DataEntry) -> Expr -> Evaluator Data
-withDataExpr a e = withData a (eval e)
-
--- |Evals with updated namespace
-withNs :: Namespace -> Evaluator a -> Evaluator a
-withNs n = local (update n)
-
--- |Same as `withNs`, but evaluation performed
-withNsExpr :: Namespace -> Expr -> Evaluator Data
-withNsExpr n e = local (update n) (eval e)
-
--- |Adds constructor with given arity into data&name space
-registerConstructor :: Name -> Int -> Evaluator Namespace
-registerConstructor name arity = do
-  let constr :: Int -> [DataEntry] -> Data
-      constr 0 l = DataADT name l
-      constr n l =  DataInternalFunc (\d -> constr (n-1) (Strict d : l))
-  i <- registerData $ Strict (constr arity [])
-  ns <- getNamespace
-  pure $ M.insert name i ns
 
 eval :: Expr -> Evaluator Data
 eval expr =
@@ -167,12 +111,4 @@ eval expr =
         Just dd -> pure dd
 
 evalProgram :: Namespace -> Expr -> Either String Data
-evalProgram ns ex = evalState (runReaderT (runExceptT $ eval ex) ns) (M.empty, 0)
-
-
--- | For debug
-evalProgramWithC :: Namespace -> Expr -> Either String Data
-evalProgramWithC ns ex = evalState
-  (runReaderT
-    (runExceptT
-      $ registerConstructor "D" 3 >>= \n -> withNsExpr n ex) ns) (M.empty, 0)
+evalProgram ns ex = evalState (runReaderT (runExceptT $ withStdlib (eval ex)) ns) (M.empty, 0)

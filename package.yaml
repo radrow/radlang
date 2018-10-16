@@ -25,6 +25,7 @@ dependencies:
 - containers
 - mtl
 - transformers
+- ansi-terminal
 
 ghc-options:
   - -Wall

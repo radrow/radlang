@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e608b3e134648e9557899021d53752b0ab55319737ea8f9f758efa10b859ef20
+-- hash: 32bb77b245ea11b78db7dd27a5b4d53f582bfb02ebd882f044a006677e04b827
 
 name:           radlang
 version:        0.1.0.0
@@ -31,6 +31,8 @@ library
       Radlang.Evaluator
       Radlang.Helpers
       Radlang.Parser
+      Radlang.Space
+      Radlang.Stdlib
       Radlang.Typechecker
       Radlang.Types
   other-modules:
@@ -40,7 +42,8 @@ library
   default-extensions: LambdaCase
   ghc-options: -Wall -Wextra
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
     , mtl
@@ -55,7 +58,8 @@ executable radlang-exe
       app
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
     , mtl
@@ -73,7 +77,8 @@ test-suite radlang-test
       test
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      ansi-terminal
+    , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
     , mtl

@@ -9,27 +9,11 @@ import qualified Text.Megaparsec.Char.Lexer as L
 
 import           Prelude                    hiding (lex)
 
-import           Data.Either
 import           Radlang.Types
 
 --shit
-import           Data.Bifunctor
-import qualified Data.Map.Strict            as M
-import           Radlang.Evaluator
 
 type Parser = ParsecT Void String Identity
-
-
-printe :: String -> String
-printe = either parseErrorPretty show . parseExpr
-parseExpr :: String -> Either (ParseError Char Void) Expr
-parseExpr = parse expr "test"
-pex :: String -> Expr
-pex = fromRight (Val "None") . parseExpr
-evalWith :: Namespace -> String -> IO ()
-evalWith ns = putStrLn . either id show . (bimap parseErrorPretty (evalProgramWithC ns) <$> parseExpr)
-evalE :: String -> IO ()
-evalE = evalWith M.empty
 
 forbiddenIds :: [Name]
 forbiddenIds = ["let", "in", "case", "of"]
