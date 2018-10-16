@@ -113,7 +113,7 @@ eval expr =
 
     Case ecased cases -> do
       let caseWith :: ((Expr, Expr) -> Evaluator (Maybe Data)) -> Evaluator (Maybe Data)
-          caseWith = msum . flip fmap cases
+          caseWith f = msum <$> traverse f cases
       cased <- eval ecased
       namespace <- ask
       newe <- case cased of

@@ -29,12 +29,22 @@ letTest :: Test Data Expr
 letTest = DataInt 3 :== Let [("XD", Nothing, Data $ DataInt 3)] (Val "XD")
 
 caseTest1 :: Test Data Expr
-caseTest1 = DataInt 42 :== Case (Data $`` DataInt 3) [ (Data $ DataInt 2, Val ":C")
+caseTest1 = DataInt 42 :== Case (Data $ DataInt 3) [ (Data $ DataInt 2, Val ":C")
                                                    , (Data $ DataInt 3, Data $ DataInt 42)
                                                    ]
 caseTest2 :: Test Data Expr
-caseTest2 = DataInt 42 :== Case (Data $ DataInt 3) [ (Data $ DataInt 9, Val ":C")
-                                                   , (Data $ DataInt 3, Data $ DataInt 42)
+caseTest2 = DataInt 42 :== Case (Data $ DataInt 42) [ (Data $ DataInt 9, Val ":C")
+                                                   , (Val "kek", Val "kek")
                                                    ]
 
+caseTest3 :: Test Data Expr
+caseTest3 = DataInt 42 :== Case (Data $ DataADT "D" [Strict $ DataInt 42])
+            [(Application (Val "D") (Data $ DataInt 42), Data $ DataInt 42)]
 
+
+caseTest4 :: Test Data Expr
+caseTest4 = DataInt 42 :== Case (Data $ DataADT "D" [Strict $ DataInt 42])
+            [ (Application (Val "A") (Data $ DataInt 42), Data $ DataInt 0)
+            , (Application (Application (Val "D") (Data $ DataInt 0)) (Data $ DataInt 42), Data $ DataInt 42)
+            , (Application (Val "D") (Data $ DataInt 42), Data $ DataInt 42)
+            ]
