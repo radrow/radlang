@@ -29,24 +29,39 @@ withNsExpr n e = local (update n) (eval e)
 
 force :: DataEntry -> Evaluator Data
 force (Strict d) = pure d
-force (Lazy ns e) = withNsExpr ns e
+force (Lazy ns e) =
+  withNsExpr ns e
 
-lookupNameForce :: Name -> ExceptT String (ReaderT Namespace (State Dataspace)) (Maybe Data)
-lookupNameForce n = lookupName n >>= (traverse force)
+lookupNameForce :: Name -> Evaluator (Maybe Data)
+lookupNameForce n = do
+  ns <- getNamespace
+  (ds, c) <- getDataspace
+  case M.lookup n ns of
+    Nothing -> pure Nothing
+    Just i -> case M.lookup i ds of
+      Nothing -> throwError $ "Unbound id: " <> show i
+      Just (Strict d) -> pure $ Just d
+      Just (Lazy nsl el) -> do
+        d <- withNsExpr nsl el
+        setDataspace (M.insert i (Strict d) ds, c)
+        pure $ Just d
 
 eval :: Expr -> Evaluator Data
 eval expr =
   case expr of
-    Val a -> lookupName a >>= \case
-      Just x -> force x
+    Val a -> lookupNameForce a >>= \case
+      Just x -> pure x
       Nothing -> throwError $ "Unbound value: " <> a
     Data d -> pure d
     Application f arg ->
       eval f >>= \case
         DataLambda ns argname e -> do
           withData (argname <~ Lazy ns arg) $ withNsExpr ns e
-        DataInternalFunc fun -> fun <$> eval arg
-        _ -> throwError "Function application not into lambda"
+        DataInternalFunc func -> func <$> eval arg
+        d -> do
+          ds <- getDataspace
+          ns <- getNamespace
+          throwError $ "Function application not into lambda: " <> show d <> "\n\n ds: " <> show ds <> "\n\n ns: " <> show ns
     Let assgs e -> do
       ns <- getNamespace
       (_, count) <- getDataspace
@@ -83,7 +98,7 @@ eval expr =
                        -- check if matches
                        guard $ cname == name
                        guard $ length cvals == length vals
-                       forcedVals <- lift $ for vals force
+                       forcedVals <- lift $ for vals force -- FIXME: keep force
                        guard $ let zipper (Data cd) d = cd == d
                                    zipper _ _ = True
                                in all id (zipWith zipper cvals forcedVals)
