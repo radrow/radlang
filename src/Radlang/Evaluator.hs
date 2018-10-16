@@ -1,13 +1,16 @@
 module Radlang.Evaluator where
 
-import Data.Traversable
+import Data.Maybe (catMaybes)
+import Data.Traversable (for)
 import Control.Applicative
 import Control.Monad.State.Strict
 import Control.Monad.Reader
 import Control.Monad.Except
+import Control.Monad.Trans.Maybe
 import Prelude hiding (lookup)
 import qualified Data.Map.Strict as M
 
+import Radlang.Helpers
 import Radlang.Types
 
 getNamespace :: Evaluator Namespace
@@ -62,7 +65,7 @@ registerData d = do
 (<~) = (,)
 
 -- |Evals with overbound variable id
-withAssg :: (Name, Int) -> Evaluator Data -> Evaluator Data
+withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
 withAssg (n, d) = local (M.insert n d)
 
 -- |Same as `withAssg`, but evaluation performed
@@ -70,7 +73,7 @@ withAssgExpr :: (Name, Int) -> Expr -> Evaluator Data
 withAssgExpr a e = withAssg a (eval e)
 
 -- |Evals with data bound to name
-withData :: (Name, DataEntry) -> Evaluator Data -> Evaluator Data
+withData :: (Name, DataEntry) -> Evaluator a -> Evaluator a
 withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
 
 -- |Same as `withData`, but evaluation performed
@@ -78,19 +81,18 @@ withDataExpr :: (Name, DataEntry) -> Expr -> Evaluator Data
 withDataExpr a e = withData a (eval e)
 
 -- |Evals with updated namespace
-withNs :: Namespace -> Evaluator Data -> Evaluator Data
+withNs :: Namespace -> Evaluator a -> Evaluator a
 withNs n = local (update n)
 
 -- |Same as `withNs`, but evaluation performed
-withNsExpr :: Namespace -> Expr -> ExceptT String (ReaderT Namespace (State Dataspace)) Data
+withNsExpr :: Namespace -> Expr -> Evaluator Data
 withNsExpr n e = local (update n) (eval e)
-
 
 eval :: Expr -> Evaluator Data
 eval expr =
   case expr of
-    Val a -> lookupNameForce a >>= \case
-      Just x -> pure x
+    Val a -> lookupName a >>= \case
+      Just x -> force x
       Nothing -> throwError $ "Unbound value: " <> a
     Data d -> pure d
     Application f arg ->
@@ -102,48 +104,64 @@ eval expr =
       ns <- getNamespace
       (_, count) <- getDataspace
       let newns = Prelude.foldl (\m ((name, _, _), i) ->
-                            M.insert name i m
-                         ) ns (zip assgs [count + 1..])
+                                   M.insert name i m
+                                ) ns (zip assgs [count + 1..])
       forM_ assgs $ \(_, _, ee) -> registerData (Lazy newns ee)
-      withNsExpr ns e
+      withNsExpr newns e
 
     Lambda name e -> (\ns -> DataLambda ns name e) <$> ask
 
     Case ecased cases -> do
-      let cas = msum . flip fmap cases
+      let caseWith :: ((Expr, Expr) -> Evaluator (Maybe Data)) -> Evaluator (Maybe Data)
+          caseWith = msum . flip fmap cases
       cased <- eval ecased
       namespace <- ask
-      newe <- pure $ case cased of
-        DataInt i -> cas (\(c, e) -> case c of
-                             Val v -> Just $ ((insert v (DataInt i) namespace), e)
-                             Data (DataInt ic) ->
-                               if ic == i
-                               then Just (namespace, e)
-                               else Nothing
-                             _ -> Nothing
-                         )
+      newe <- case cased of
+        DataInt i -> caseWith (\(c, e) -> case c of
+                                  Val v -> Just <$> withDataExpr (v <~ Strict (DataInt i)) e
+                                  Data d -> case d of
+                                    DataInt ic ->
+                                        if ic == i
+                                        then Just <$> eval e
+                                        else pure Nothing
+                                    _ -> pure Nothing
+                                  _ -> pure Nothing
+                              )
         DataADT name vals ->
-          cas (\(c, e) ->
+          caseWith (\(c, e) ->
                  case c of
-                   Val v -> Just $ ((insert v cased namespace), e)
-                   Application _ _ -> do
-                     let ((Val cname):cvals) = rollApplication c
-                     guard $ cname == name
-                     guard $ length cvals == length vals
-                     guard $ let zipper (Data cd) d = cd == d
-                                 zipper _ _ = True
-                             in all id (zipWith zipper cvals vals)
-                     let ins n (Val v, d) = insert v d n
-                         ins n _ = n
-                         ns = foldl ins namespace (zip cvals vals)
-                     pure (ns, e)
-                   _ -> Nothing
-                  )
-        _ -> Nothing
-      case newe of
-        Nothing -> error "Lambda exhaustion"
-        Just ee -> pure ee
+                   Val v -> Just <$> withDataExpr (v <~ Strict cased) e
+                   Application _ _ -> case rollApplication c of
+                     ((Val cname):cvals) -> runMaybeT $ do
+                       -- check if matches
+                       guard $ cname == name
+                       guard $ length cvals == length vals
+                       forcedVals <- lift $ for vals force
+                       guard $ let zipper (Data cd) d = cd == d
+                                   zipper _ _ = True
+                               in all id (zipWith zipper cvals forcedVals)
 
+                       -- matched – now we may eval expr
+                       -- create new namespace for evaluation of `e`
+                       let insd (Val v, d) = do
+                             i <- registerData d
+                             pure $ Just (v <~ i)
+                           insd _ = pure Nothing
+                       nsbuild <- lift $ for (zip cvals vals) $ insd
+                       let insn :: (Namespace -> (Name, DataId) -> Namespace)
+                           insn n (valname, dataid) = M.insert valname dataid n
+                           newns :: Namespace
+                           newns = foldl insn namespace (catMaybes nsbuild)
+
+                       lift $ withNsExpr newns e
+
+                     _ -> throwError "Invalid ADT match"
+                   _ -> pure Nothing
+                   )
+        _ -> pure Nothing
+      case newe of
+        Nothing -> throwError "Case match exhaustion"
+        Just dd -> pure dd
 
 evalProgram :: Namespace -> Expr -> Either String Data
 evalProgram ns ex = evalState (runReaderT (runExceptT $ eval ex) ns) (M.empty, 0)

@@ -13,6 +13,7 @@ type DataId = Int
 type Namespace = M.Map Name DataId
 type Dataspace = (M.Map DataId DataEntry, Int)
 data DataEntry = Strict Data | Lazy Namespace Expr
+  deriving (Eq, Show, Ord)
 
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
@@ -37,5 +38,5 @@ data Data
   = DataInt Int
   | DataBool Bool
   | DataLambda Namespace Name Expr
-  | DataADT Name [Data]
+  | DataADT Name [DataEntry]
   deriving (Eq, Show, Ord)
