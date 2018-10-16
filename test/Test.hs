@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-#LANGUAGE TypeOperators#-}
 {-#LANGUAGE GADTs#-}
+{-#LANGUAGE FlexibleInstances#-}
 
 module Test where
 
@@ -9,18 +11,36 @@ import qualified Data.Map.Strict as M
 import Radlang.Types
 import Radlang.Evaluator
 
+class Testable t where
+  test :: t -> Either ErrMsg ()
+
 data Test a b where
   (:==) :: a -> b -> Test a b
-  deriving (Eq, Show)
+  (:/=) :: a -> b -> Test a b
+  Failing :: Expr -> Test () Expr
 
-test :: Test Data Expr -> Either ErrMsg ()
-test (t :== x) = do
-  (d :: Data) <- evalProgram M.empty x
-  if t == d
-    then return ()
-    else throwError (show $ t :== d)
-
--- p1 = evalProgram M.empty $ (Case (Data (DataADT "XD" [DataInt 3])) [(Application (Val "XD") (Data $ DataInt 7), Val "Bad"), (Application (Val "XD") (Val "Good"), Val "Good")])
+instance Testable (Test Data Expr) where
+  test (t :== x) = do
+    (d :: Data) <- evalProgram M.empty x
+    if t == d
+      then return ()
+      else throwError (show t <> ":/=" <> show d)
+  test (t :/= x) = do
+    (d :: Data) <- evalProgram M.empty x
+    if t /= d
+      then return ()
+      else throwError (show t <> ":==" <> show d)
+instance Eq a => Testable (Test a a) where
+  test (a :== b) = if a == b then Right () else Left "Not equal"
+  test (a :/= b) = if a /= b then Right () else Left "Equal"
+instance Testable (Test () Expr) where
+  test (Failing e) = case evalProgram M.empty e of
+    Right _ -> Left "Succeeded"
+    Left _ -> Right ()
+  test (() :== e) = void $ evalProgram M.empty e
+  test (() :/= e) = void $ evalProgram M.empty e
+instance Testable (Test Data String) where
+  
 
 trivialTest :: Test Data Expr
 trivialTest = DataInt 3 :== Data (DataInt 3)

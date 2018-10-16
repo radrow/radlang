@@ -150,7 +150,7 @@ caseE = do
 
 caseMatch :: Parser (Expr, Expr)
 caseMatch = do
-  s <- expr
+  s <- (constructorE <|> constantE)
   operator "->"
   e <- expr
   return (s, e)
