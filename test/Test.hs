@@ -158,5 +158,9 @@ testCases =
   , ("lambdaParse", DataInt 42 <==> "(\\x -> x) 42")
   , ("lambdaLetParse", DataInt 42 <==> "let f := \\x -> plus x 2 in f 40")
   , ("primitiveAssignParse", DataInt 42 <==> "let f := plus in f 40 2")
+  , ("ifParse1", DataInt 42 <==> "if True then 42 else 0")
+  , ("ifParse2", DataInt 42 <==> "if False then 0 else 42")
+  , ("eq1", DataBool True <==> "eq 2 2")
+  , ("eq2", DataBool False <==> "eq 2 3")
   ]
 
