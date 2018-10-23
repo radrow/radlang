@@ -107,5 +107,5 @@ eval expr =
           if b then eval then_ else eval else_
         _ -> throwError $ "Not a valid condition: " <> show c
 
-evalProgram :: Namespace -> Expr -> Either String Data
-evalProgram ns ex = evalState (runReaderT (runExceptT $ withStdlib (eval ex)) ns) (M.empty, 0)
+evalProgram :: Expr -> Either String Data
+evalProgram ex = evalState (runReaderT (runExceptT $ withStdlib (eval ex)) M.empty) (M.empty, 0)

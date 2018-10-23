@@ -11,7 +11,6 @@ import           Prelude                    hiding (lex)
 
 import           Radlang.Types
 
---shit
 
 type Parser = ParsecT Void String Identity
 
@@ -140,9 +139,15 @@ ifE = do
   c <- expr
   word "then"
   t <- expr
-  word "else"
-  e <- expr
-  pure $ If c t e
+  let
+    finito = do
+      word "else"
+      e <- expr
+      pure $ If c t e
+    more = do
+      mor <- ifE
+      pure $ If c t mor
+  try finito <|> try more
 
 caseMatch :: Parser (Expr, Expr)
 caseMatch = do

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 32bb77b245ea11b78db7dd27a5b4d53f582bfb02ebd882f044a006677e04b827
+-- hash: b94104c65b85f76e70940707194dfbb29db3319371ebdbfe79e1296730aa6a35
 
 name:           radlang
 version:        0.1.0.0
@@ -50,12 +50,29 @@ library
     , transformers
   default-language: Haskell2010
 
-executable radlang-exe
+executable rdl
   main-is: Main.hs
   other-modules:
       Paths_radlang
   hs-source-dirs:
-      app
+      rdl
+  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      ansi-terminal
+    , base >=4.7 && <5
+    , containers
+    , megaparsec >=6.5
+    , mtl
+    , radlang
+    , transformers
+  default-language: Haskell2010
+
+executable rdli
+  main-is: Main.hs
+  other-modules:
+      Paths_radlang
+  hs-source-dirs:
+      rdli
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal

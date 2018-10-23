@@ -37,9 +37,18 @@ library:
     - LambdaCase
 
 executables:
-  radlang-exe:
+  rdl:
     main:                Main.hs
-    source-dirs:         app
+    source-dirs:         rdl
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - radlang
+  rdli:
+    main:                Main.hs
+    source-dirs:         rdli
     ghc-options:
     - -threaded
     - -rtsopts
