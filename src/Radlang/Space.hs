@@ -22,7 +22,7 @@ update :: Namespace -> Namespace -> Namespace
 update = M.union
 
 -- |Try to get data by name
-lookupName :: Name -> Evaluator (Maybe DataEntry)
+lookupName :: Name -> Evaluator (Maybe Data)
 lookupName n = do
   ns <- getNamespace
   ds <- fst <$> getDataspace
@@ -34,7 +34,7 @@ lookupName n = do
 
 
 -- |Allocates new data and returns id
-registerData :: DataEntry -> Evaluator DataId
+registerData :: Data -> Evaluator DataId
 registerData d = do
   (ds, count) <- getDataspace
   put $ (M.insert (count + 1) d ds, count + 1)
@@ -48,7 +48,7 @@ withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
 withAssg (n, d) = local (M.insert n d)
 
 -- |Evals with data bound to name
-withData :: (Name, DataEntry) -> Evaluator a -> Evaluator a
+withData :: (Name, Data) -> Evaluator a -> Evaluator a
 withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
 
 -- |Evals with updated namespace
@@ -58,9 +58,9 @@ withNs n = local (update n)
 -- |Adds constructor with given arity into data&name space
 registerConstructor :: Name -> Int -> Evaluator Namespace
 registerConstructor name arity = do
-  let constr :: Int -> [DataEntry] -> Data
+  let constr :: Int -> [Data] -> Data
       constr 0 l = DataADT name (reverse l)
-      constr n l =  DataInternalFunc (\d -> constr (n-1) (Strict d : l))
-  i <- registerData $ Strict (constr arity [])
+      constr n l =  DataInternalFunc (\d -> constr (n-1) (d : l))
+  i <- registerData $ constr arity []
   ns <- getNamespace
   pure $ M.insert name i ns

@@ -16,7 +16,7 @@ import           Radlang.Types
 type Parser = ParsecT Void String Identity
 
 forbiddenIds :: [Name]
-forbiddenIds = ["let", "in", "case", "of"]
+forbiddenIds = ["let", "in", "case", "of", "if", "else", "then"]
 
 skipComments :: Parser ()
 skipComments = L.space
@@ -81,6 +81,7 @@ expr = msum $ map try
   , letE
   , caseE
   , valE
+  , ifE
   , paren expr
   ]
 
@@ -132,6 +133,16 @@ caseE = do
   void $ optional $ try $ operator "|"
   cases <- sepBy1 caseMatch (operator "|")
   return $ Case e cases
+
+ifE :: Parser Expr
+ifE = do
+  word "if"
+  c <- expr
+  word "then"
+  t <- expr
+  word "else"
+  e <- expr
+  pure $ If c t e
 
 caseMatch :: Parser (Expr, Expr)
 caseMatch = do

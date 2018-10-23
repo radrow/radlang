@@ -34,6 +34,7 @@ evalProgramWithC ns ex = evalState
 parse :: String -> Either ErrMsg Expr
 parse inp = first MP.parseErrorPretty $ MP.parse expr "test" inp
 
+parsePrint :: String -> IO ()
 parsePrint inp = case parse inp of
   Right d -> setSGR [SetColor Foreground Vivid Green] >> print d >> setSGR [SetColor Foreground Vivid White]
   Left d -> setSGR [SetColor Foreground Vivid Red] >> putStrLn d >> setSGR [SetColor Foreground Vivid White]
@@ -119,11 +120,11 @@ testCases =
                                                    , (Val "kek", Val "kek")
                                                    ])
 
-  , ("caseTest3", DataInt 42 <==> Case (Data $ DataADT "D" [Strict $ DataInt 42])
+  , ("caseTest3", DataInt 42 <==> Case (Data $ DataADT "D" [DataInt 42])
             [(Application (Val "D") (Data $ DataInt 42), Data $ DataInt 42)])
 
 
-  , ("caseTest4", DataInt 42 <==> Case (Data $ DataADT "D" [Strict $ DataInt 42])
+  , ("caseTest4", DataInt 42 <==> Case (Data $ DataADT "D" [DataInt 42])
             [ (Application (Val "A") (Data $ DataInt 42), Data $ DataInt 0)
             , (Application (Application (Val "D") (Data $ DataInt 0)) (Data $ DataInt 42), Data $ DataInt 42)
             , (Application (Val "D") (Data $ DataInt 42), Data $ DataInt 42)
@@ -143,7 +144,7 @@ testCases =
   , ("caseParse3", DataInt 42 <==> "case 5 of 5 -> 42 | 3 -> 0")
   , ("caseParse4", DataInt 42 <==> "case 42 of 1 -> 0 | n -> n")
 
-  , ("ADTParse", DataADT "D" (map Strict [DataInt 1, DataInt 2, DataInt 3])
+  , ("ADTParse", DataADT "D" [DataInt 1, DataInt 2, DataInt 3]
                  <==> "D 1 2 3"
     )
 

@@ -15,7 +15,7 @@ mult = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i * j)))
 divide = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i `div` j)))
 
 registerPrimitive :: Name -> Data -> WriterT [(Name, DataId)] Evaluator ()
-registerPrimitive name dat = lift (registerData (Strict dat)) >>= \i -> tell [(name, i)]
+registerPrimitive name dat = lift (registerData dat) >>= \i -> tell [(name, i)]
 
 importStdlib :: Evaluator Namespace
 importStdlib = fmap M.fromList $ execWriterT $

@@ -11,9 +11,7 @@ type Name = String
 type DataId = Int
 
 type Namespace = M.Map Name DataId
-type Dataspace = (M.Map DataId DataEntry, Int)
-data DataEntry = Strict Data | Lazy Namespace Expr
-  deriving (Show, Eq)
+type Dataspace = (M.Map DataId Data, Int)
 
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
@@ -24,6 +22,7 @@ data Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr
   | Case Expr [(Expr, Expr)]
+  | If Expr Expr Expr
   deriving (Eq, Show)
 
 data Type
@@ -39,7 +38,7 @@ data Data
   | DataBool Bool
   | DataLambda Namespace Name Expr
   | DataInternalFunc (Data -> Data)
-  | DataADT Name [DataEntry]
+  | DataADT Name [Data]
 
 instance Show Data where
   show = \case
