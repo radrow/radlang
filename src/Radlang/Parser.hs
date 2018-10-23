@@ -16,7 +16,7 @@ import           Radlang.Types
 type Parser = ParsecT Void String Identity
 
 forbiddenIds :: [Name]
-forbiddenIds = ["let", "in", "case", "of", "if", "else", "then"]
+forbiddenIds = ["let", "in", "case", "of", "if", "else", "then", "True", "False"]
 
 skipComments :: Parser ()
 skipComments = L.space
@@ -155,7 +155,13 @@ constant :: Parser Data
 constant = msum $ map try
   [ mzero
   , dataInt
+  , dataBool
   ]
 
 dataInt :: Parser Data
 dataInt = DataInt <$> signed
+
+dataBool :: Parser Data
+dataBool = (   try (word "True" >> pure (DataBool True))
+           <|> try (word "False" >> pure (DataBool False))
+           )
