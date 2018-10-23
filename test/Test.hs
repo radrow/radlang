@@ -162,5 +162,8 @@ testCases =
   , ("ifParse2", DataInt 42 <==> "if False then 0 else 42")
   , ("eq1", DataBool True <==> "eq 2 2")
   , ("eq2", DataBool False <==> "eq 2 3")
+  , ("ifLambda", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else 0 in f 0")
+  , ("rec1", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else f 0 in f 42")
+  , ("factorial", DataInt 24 <==> "let fac := \\n -> if eq n 0 then 1 else mult n (fac (minus n 1)) in fac 4")
   ]
 
