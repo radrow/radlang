@@ -1,10 +1,12 @@
-module Radlang.Space where
+module Radlang.EvaluationEnv where
 
-import Radlang.Types
 import qualified Data.Map.Strict as M
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import Control.Monad.Reader
+
+import Radlang.Helpers
+import Radlang.Types
 
 getNamespace :: Evaluator Namespace
 getNamespace = lift ask
@@ -40,9 +42,6 @@ registerData d = do
   put $ (M.insert (count + 1) d ds, count + 1)
   pure $ count + 1
 
-(<~) :: a -> b -> (a, b)
-(<~) = (,)
-
 -- |Evals with overbound variable id
 withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
 withAssg (n, d) = local (M.insert n d)
@@ -54,13 +53,3 @@ withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
 -- |Evals with updated namespace
 withNs :: Namespace -> Evaluator a -> Evaluator a
 withNs n = local (update n)
-
--- |Adds constructor with given arity into data&name space
-registerConstructor :: Name -> Int -> Evaluator Namespace
-registerConstructor name arity = do
-  let constr :: Int -> [Data] -> Data
-      constr 0 l = DataADT name (reverse l)
-      constr n l =  DataInternalFunc (\d -> constr (n-1) (d : l))
-  i <- registerData $ constr arity []
-  ns <- getNamespace
-  pure $ M.insert name i ns

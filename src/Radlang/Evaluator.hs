@@ -12,7 +12,7 @@ import qualified Data.Map.Strict as M
 
 import Radlang.Helpers
 import Radlang.Types
-import Radlang.Space
+import Radlang.EvaluationEnv
 import Radlang.Stdlib
 
 -- |Same as `withAssg`, but evaluation performed
@@ -33,7 +33,8 @@ eval expr =
     Val a -> lookupName a >>= \case
       Just x -> pure x
       Nothing -> throwError $ "Unbound value: " <> a
-    Data d -> pure d
+    ConstInt d -> pure $ DataInt d
+    ConstBool d -> pure $ DataBool d
     Application f arg ->
       eval f >>= \case
         DataLambda ns argname e -> do
@@ -54,48 +55,15 @@ eval expr =
       let caseWith :: ((Expr, Expr) -> Evaluator (Maybe Data)) -> Evaluator (Maybe Data)
           caseWith f = msum <$> traverse f cases
       cased <- eval ecased
-      namespace <- ask
       newe <- case cased of
         DataInt i -> caseWith (\(c, e) -> case c of
                                   Val v -> Just <$> withDataExpr (v <~ DataInt i) e
-                                  Data d -> case d of
-                                    DataInt ic ->
-                                        if ic == i
-                                        then Just <$> eval e
-                                        else pure Nothing
-                                    _ -> pure Nothing
+                                  ConstInt d ->
+                                    if d == i
+                                    then Just <$> eval e
+                                    else pure Nothing
                                   _ -> pure Nothing
                               )
-        DataADT name vals ->
-          caseWith (\(c, e) ->
-                 case c of
-                   Val v -> Just <$> withDataExpr (v <~ cased) e
-                   Application _ _ -> case rollApplication c of
-                     ((Val cname):cvals) -> runMaybeT $ do
-                       -- check if matches
-                       guard $ cname == name
-                       guard $ length cvals == length vals
-                       guard $ let zipper (Data cd) d = cd == d
-                                   zipper _ _ = True
-                               in all id (zipWith zipper cvals vals)
-
-                       -- matched – now we may eval expr
-                       -- create new namespace for evaluation of `e`
-                       let insd (Val v, d) = do
-                             i <- registerData d
-                             pure $ Just (v <~ i)
-                           insd _ = pure Nothing
-                       nsbuild <- lift $ for (zip cvals vals) $ insd
-                       let insn :: (Namespace -> (Name, DataId) -> Namespace)
-                           insn n (valname, dataid) = M.insert valname dataid n
-                           newns :: Namespace
-                           newns = foldl insn namespace (catMaybes nsbuild)
-
-                       lift $ withNsExpr newns e
-
-                     _ -> throwError "Invalid ADT match"
-                   _ -> pure Nothing
-                   )
         _ -> pure Nothing
       case newe of
         Nothing -> throwError "Case match exhaustion"

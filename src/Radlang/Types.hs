@@ -17,7 +17,8 @@ type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
 data Expr
   = Val Name
-  | Data Data
+  | ConstInt Int
+  | ConstBool Bool
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr
@@ -30,7 +31,6 @@ data Type
   | TypeBool
   | TypeString
   | TypeFunc Type Type
-  | TypeADT Name [Type]
   deriving (Eq, Show, Ord)
 
 data Data
@@ -38,7 +38,6 @@ data Data
   | DataBool Bool
   | DataLambda Namespace Name Expr
   | DataInternalFunc (Data -> Data)
-  | DataADT Name [Data]
 
 instance Show Data where
   show = \case
@@ -46,10 +45,8 @@ instance Show Data where
     DataBool b -> show b
     DataLambda n nn e -> "lambda in (" <> show n <> ") \\" <> nn <> " -> " <> show e
     DataInternalFunc _ -> "internal func"
-    DataADT n e -> n <> foldr (<>) "" (map show e)
 
 instance Eq Data where
   (DataInt a) == (DataInt b) = a == b
   (DataBool a) == (DataBool b) = a == b
-  (DataADT n e) == (DataADT n2 e2) = n == n2 && all id (zipWith (==) e e2)
   _ == _ = False -- we don't compare functions.
