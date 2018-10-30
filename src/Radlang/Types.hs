@@ -15,10 +15,12 @@ type DataId = Int
 
 type Namespace = Map Name DataId
 type Dataspace = (Map DataId Data, Int)
-newtype Typespace = Typespace (Map Name TypePoly)
+newtype Typespace = Typespace { getTypespaceMap :: Map Name TypePoly }
   deriving (Eq, Show, Ord)
 
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
+type Typechecker = ExceptT String (ReaderT Typespace (State TypecheckerState))
+data TypecheckerState = TypecheckerState { tsSub :: Substitution, tsSupply :: Int}
 
 data Expr
   = Val Name
@@ -31,6 +33,7 @@ data Expr
   | If Expr Expr Expr
   deriving (Eq, Show)
 
+-- |Primitive type definition
 data Type
   = TypeVal Name
   | TypeInt
@@ -38,11 +41,15 @@ data Type
   | TypeFunc Type Type
   deriving (Eq, Show, Ord)
 
+-- |Type served along with polymorphic names used inside
 data TypePoly = Poly (Set Name) Type
   deriving (Eq, Show, Ord)
 
-type Substitution = Map Name Type
+-- |Substitution of polymorphic types
+newtype Substitution = Subst { getSubstMap :: Map Name Type }
+  deriving (Eq, Show, Ord)
 
+-- |Types that may be considered as free types carriers
 class Ord t => IsType t where -- Ord is needed because use of Set
   free :: t -> Set Name
   substitute :: Substitution -> t -> t
@@ -57,23 +64,30 @@ instance IsType Type where
     TypeBool -> S.empty
     TypeFunc a v -> S.union (free a) (free v)
     TypeVal v -> S.singleton v
-  substitute s = \case
+  substitute s@(Subst sm) = \case
     TypeInt -> TypeInt
     TypeBool -> TypeBool
     TypeFunc a v -> TypeFunc (substitute s a) (substitute s v)
-    TypeVal n -> case M.lookup n s of
+    TypeVal n -> case M.lookup n sm of
       Just t -> t
       Nothing -> TypeVal n
 
 instance IsType TypePoly where
   free (Poly vars t) = free t S.\\ vars
-  substitute s (Poly vars t) = Poly vars $ substitute (foldr M.delete s vars) t
+  substitute (Subst s) (Poly vars t) =
+    Poly vars $ substitute (Subst $ foldr M.delete s vars) t
 
 instance IsType Typespace where
   free (Typespace ts) = free $ S.fromList (M.elems ts)
   substitute s (Typespace ts) = Typespace $
     M.map (substitute s) ts
 
+instance Semigroup Substitution where
+  (<>) s@(Subst s1) (Subst s2) =
+    Subst $ M.map (substitute s) s2 `M.union` s1
+
+instance Monoid Substitution where
+  mempty = Subst M.empty
 
 data Data
   = DataInt Int

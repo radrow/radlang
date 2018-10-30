@@ -6,6 +6,7 @@ import           Text.Megaparsec
 import           Prelude                hiding (lex)
 
 import           Radlang.Parser.General
+import Radlang.Parser.Type
 import           Radlang.Types
 
 expr :: Parser Expr
@@ -55,9 +56,12 @@ letE = do
 assignment :: Parser (Name, Maybe Type, Expr)
 assignment = do
   name <- valName
+  typeAnn <- optional $ do
+    operator ":"
+    type_
   operator ":="
   value <- expr
-  return (name, Nothing, value)
+  pure (name, typeAnn, value)
 
 caseE :: Parser Expr
 caseE = do

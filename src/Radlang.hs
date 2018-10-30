@@ -2,6 +2,7 @@ module Radlang
     ( parseProgram
     , module Radlang.Types
     , module Radlang.Evaluator
+    , module Radlang.Typechecker
     ) where
 
 import Data.Bifunctor(first)
@@ -10,6 +11,7 @@ import Text.Megaparsec as MP(parse, parseErrorPretty)
 import Radlang.Parser(expr)
 import Radlang.Evaluator
 import Radlang.Types
+import Radlang.Typechecker
 
 parseProgram :: String -> String -> Either String Expr
 parseProgram filename code = first parseErrorPretty $ MP.parse expr filename code

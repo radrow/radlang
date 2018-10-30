@@ -10,10 +10,9 @@ main = forever $ do
   line <- getLine
   let result = do
         e <- parseProgram "interactive" line
-        -- case typeErrors p of
-        --   Nothing -> return ()
-        --   Just e -> Left e
-        evalProgram e
+        t <- typecheck e
+        d <- evalProgram e
+        pure (t, d)
   case result of
     Left e -> hPutStrLn stderr e
-    Right r -> putStrLn $ show r
+    Right (t, d) -> putStrLn $ show d <> " : " <> show t
