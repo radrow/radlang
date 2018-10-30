@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a86b4ade8149b2161079de96ea7d75fe94d02421117b311113a2fa50645b8f7b
+-- hash: 1f86032bcc46ca9c15158668f31046fac5b7bc797cff4c82ff9d79392bd2b271
 
 name:           radlang
 version:        0.1.0.0
@@ -49,6 +49,7 @@ library
     , containers
     , megaparsec >=6.5
     , mtl
+    , set-monad >=0.3.0.0
     , transformers
   default-language: Haskell2010
 
@@ -66,6 +67,7 @@ executable rdl
     , megaparsec >=6.5
     , mtl
     , radlang
+    , set-monad >=0.3.0.0
     , transformers
   default-language: Haskell2010
 
@@ -83,6 +85,7 @@ executable rdli
     , megaparsec >=6.5
     , mtl
     , radlang
+    , set-monad >=0.3.0.0
     , transformers
   default-language: Haskell2010
 
@@ -102,5 +105,6 @@ test-suite radlang-test
     , megaparsec >=6.5
     , mtl
     , radlang
+    , set-monad >=0.3.0.0
     , transformers
   default-language: Haskell2010

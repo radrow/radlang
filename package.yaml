@@ -26,6 +26,7 @@ dependencies:
 - mtl
 - transformers
 - ansi-terminal
+- set-monad >= 0.3.0.0
 
 ghc-options:
   - -Wall

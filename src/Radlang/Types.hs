@@ -4,14 +4,19 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import qualified Data.Map.Strict            as M
+import  Data.Map.Strict(Map)
+import qualified Data.Set.Monad as S
+import Data.Set.Monad(Set)
 
 type ErrMsg = String
 type Name = String
 
 type DataId = Int
 
-type Namespace = M.Map Name DataId
-type Dataspace = (M.Map DataId Data, Int)
+type Namespace = Map Name DataId
+type Dataspace = (Map DataId Data, Int)
+newtype Typespace = Typespace (Map Name TypePoly)
+  deriving (Eq, Show, Ord)
 
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
@@ -27,11 +32,48 @@ data Expr
   deriving (Eq, Show)
 
 data Type
-  = TypeInt
+  = TypeVal Name
+  | TypeInt
   | TypeBool
-  | TypeString
   | TypeFunc Type Type
   deriving (Eq, Show, Ord)
+
+data TypePoly = Poly (Set Name) Type
+  deriving (Eq, Show, Ord)
+
+type Substitution = Map Name Type
+
+class Ord t => IsType t where -- Ord is needed because use of Set
+  free :: t -> Set Name
+  substitute :: Substitution -> t -> t
+
+instance IsType t => IsType (Set t) where
+  free s = s >>= free
+  substitute s = S.map (substitute s)
+
+instance IsType Type where
+  free = \case
+    TypeInt -> S.empty
+    TypeBool -> S.empty
+    TypeFunc a v -> S.union (free a) (free v)
+    TypeVal v -> S.singleton v
+  substitute s = \case
+    TypeInt -> TypeInt
+    TypeBool -> TypeBool
+    TypeFunc a v -> TypeFunc (substitute s a) (substitute s v)
+    TypeVal n -> case M.lookup n s of
+      Just t -> t
+      Nothing -> TypeVal n
+
+instance IsType TypePoly where
+  free (Poly vars t) = free t S.\\ vars
+  substitute s (Poly vars t) = Poly vars $ substitute (foldr M.delete s vars) t
+
+instance IsType Typespace where
+  free (Typespace ts) = free $ S.fromList (M.elems ts)
+  substitute s (Typespace ts) = Typespace $
+    M.map (substitute s) ts
+
 
 data Data
   = DataInt Int
