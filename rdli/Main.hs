@@ -7,6 +7,8 @@ import Radlang
 
 main :: IO ()
 main = forever $ do
+  putStr "RDL: "
+  hFlush stdout
   line <- getLine
   let result = do
         e <- parseProgram "interactive" line

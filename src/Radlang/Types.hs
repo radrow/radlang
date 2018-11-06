@@ -39,7 +39,7 @@ data Type
   | TypeInt
   | TypeBool
   | TypeFunc Type Type
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord)
 
 -- |Type served along with polymorphic names used inside
 data TypePoly = Poly (Set Name) Type
@@ -106,3 +106,14 @@ instance Eq Data where
   (DataInt a) == (DataInt b) = a == b
   (DataBool a) == (DataBool b) = a == b
   _ == _ = False -- we don't compare functions.
+
+instance Show Type where
+  show = \case
+    TypeVal a -> a
+    TypeInt -> "Int"
+    TypeBool -> "Bool"
+    TypeFunc a v ->
+      let sa = case a of
+            TypeFunc _ _ -> "(" <> show a <> ")"
+            _ -> show a
+      in sa <> " -> " <> show v

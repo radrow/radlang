@@ -11,10 +11,20 @@ import           Radlang.Types
 
 
 type_ :: Parser Type
-type_ = msum $ map try
-  [ intT
+type_ = msum $
+  [ mzero
+  , try funcT
   , boolT
-  , funcT
+  , intT
+  , valT
+  , paren type_
+  ]
+
+notFunc :: Parser Type
+notFunc = msum $
+  [ mzero
+  , boolT
+  , intT
   , valT
   , paren type_
   ]
@@ -22,8 +32,8 @@ type_ = msum $ map try
 intT = word "Int" >> pure TypeInt
 boolT = word "Bool" >> pure TypeBool
 funcT = do
-  from <- type_
+  from <- notFunc
   operator ("->")
   to <- type_
   pure $ TypeFunc from to
-valT = TypeVal <$> typeName
+valT = TypeVal <$> generalTypeName
