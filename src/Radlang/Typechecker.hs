@@ -42,7 +42,7 @@ newVar prefix = do
 -- |Replace all bound typevars in scheme with fresh typevars
 instantiate :: TypePoly -> Typechecker Type
 instantiate (Poly vars t) = do
-  nvars <- traverse (const newVar "__var_inst__") (S.toList vars)
+  nvars <- traverse (const newVar "_I") (S.toList vars)
   let newsub = Subst $ M.fromList $ zip (S.toList vars) nvars
   pure $ substitute newsub t
 
@@ -63,7 +63,7 @@ mgu t1 t2 = case (t1, t2) of
   (_, TypeVal n) -> bindVar n t1
   (TypeFunc a1 v1, TypeFunc a2 v2) -> do
     sa <- mgu a1 a2
-    sv <- mgu v1 v2
+    sv <- mgu (substitute sa v1) (substitute sa v2)
     pure $ sa <> sv
   _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
 
@@ -71,17 +71,20 @@ mgu t1 t2 = case (t1, t2) of
 inferType :: Expr -> Typechecker (Substitution, Type)
 inferType = \case
   ConstBool _ -> pure (mempty, TypeBool)
+
   ConstInt _ -> pure (mempty, TypeInt)
+
   Val e -> lookupType e >>= \case
     Nothing -> throwError $ "Unbound value: " <> e
     Just pt -> instantiate pt >>= \nt -> pure (mempty, nt)
+
   Application f a -> do
-    tvar <- newVar "__var_app_"
+    tvar <- newVar "_A"
     (s1, t1) <- inferType f
-    ts <- getTypespace
     (s2, t2) <- withSubstitution s1 $ inferType a
     s3 <- mgu (substitute s2 t1) (TypeFunc t2 tvar)
     pure $ (s3 <> s2 <> s1, substitute s3 tvar)
+
   Let assgs e -> do
     ts <- getTypespace
     (newSub, newTypes) <- foldM
@@ -100,12 +103,14 @@ inferType = \case
       assgs
     (se, te) <- withTypespace newTypes $ inferType e
     pure $ (se <> newSub, te)
+
   Lambda arg expr -> do
-    argT <- newVar "__var_lam_"
+    argT <- newVar "_L"
     (Typespace ts) <- getTypespace
     let newTs = Typespace $ M.insert arg (Poly S.empty argT) ts
     (s, exprT) <- withTypespace newTs $ inferType expr
-    pure (s, TypeFunc argT exprT)
+    pure (s, TypeFunc (substitute s argT) exprT)
+
   If cond th el -> do
     (scond, condT) <- inferType cond
     sbool <- mgu condT TypeBool

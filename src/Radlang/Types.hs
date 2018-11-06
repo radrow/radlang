@@ -21,6 +21,7 @@ newtype Typespace = Typespace { getTypespaceMap :: Map Name TypePoly }
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 type Typechecker = ExceptT String (ReaderT Typespace (State TypecheckerState))
 data TypecheckerState = TypecheckerState { tsSub :: Substitution, tsSupply :: Int}
+  deriving (Eq, Show)
 
 data Expr
   = Val Name
@@ -109,7 +110,7 @@ instance Eq Data where
 
 instance Show Type where
   show = \case
-    TypeVal a -> a
+    TypeVal a -> '~' : a
     TypeInt -> "Int"
     TypeBool -> "Bool"
     TypeFunc a v ->
