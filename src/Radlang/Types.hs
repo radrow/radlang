@@ -110,7 +110,7 @@ instance Eq Data where
 
 instance Show Type where
   show = \case
-    TypeVal a -> '~' : a
+    TypeVal a -> a
     TypeInt -> "Int"
     TypeBool -> "Bool"
     TypeFunc a v ->
