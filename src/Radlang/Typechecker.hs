@@ -97,16 +97,30 @@ inferType = \case
     ts <- getTypespace
     (newSub, newTypes) <- foldM
       (\(prevsub, (Typespace prevtsmap)) (name, typeAnn, value) -> do
+          -- I need to predict my type to check if recursion typechecks.
+          -- This will be substituted by real me
           me <- Poly S.empty <$> newVar ("_L_" <> name)
+
+          -- Typespace that includes type of me
           let withMe = Typespace $ M.insert name me prevtsmap
+
+          -- Get my real type
           (sv, tv) <- withTypespace withMe $ inferType value
+
+          -- Substitute my typename with type inferred previously
           let withMeSub@(Typespace withMeSubMap) = substitute sv withMe
+
+          -- Now search my name in substituted typespace and un-poly
           ti <- instantiate $ withMeSubMap M.! name
+
+          -- Typecheck me against real me
           suni <- mgu ti tv
 
+          -- Build output substitution and typespace
           let news = suni <> sv <> prevsub
               newts = substitute suni withMeSub
 
+          -- Consider type annotation and generalize
           tvgen <- maybe
                    (pure $ generalize newts tv)
                    (\annT -> mgu annT tv >>
