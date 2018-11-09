@@ -105,25 +105,25 @@ inferType = \case
           let withMe = Typespace $ M.insert name me prevtsmap
 
           -- Get my real type
-          (sv, tv) <- withTypespace withMe $ inferType value
+          (subVal, valueType) <- withTypespace withMe $ inferType value
 
           -- Substitute my typename with type inferred previously
-          let withMeSub@(Typespace withMeSubMap) = substitute sv withMe
+          let withMeSub@(Typespace withMeSubMap) = substitute subVal withMe
 
           -- Now search my name in substituted typespace and un-poly
-          ti <- instantiate $ withMeSubMap M.! name
+          nameType <- instantiate $ withMeSubMap M.! name
 
           -- Typecheck me against real me
-          suni <- mgu ti tv
+          subUnify <- mgu nameType valueType
 
           -- Build output substitution and typespace
-          let news = suni <> sv <> prevsub
-              newts = substitute suni withMeSub
+          let news = subUnify <> subVal <> prevsub
+              newts = substitute subUnify withMeSub
 
           -- Consider type annotation and generalize
           tvgen <- maybe
-                   (pure $ generalize newts tv)
-                   (\annT -> mgu annT tv >>
+                   (pure $ generalize newts valueType)
+                   (\annT -> mgu annT valueType >>
                      pure (generalize (Typespace M.empty) annT)
                    )
                    typeAnn
