@@ -75,6 +75,19 @@ mgu t1 t2 = case (t1, t2) of
     pure $ sa <> sv
   _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
 
+-- |Unify to make first subtype of second
+submgu :: Type -> Type -> Typechecker Substitution
+submgu t1 t2 = case (t1, t2) of
+  (TypeInt, TypeInt) -> pure mempty
+  (TypeBool, TypeBool) -> pure mempty
+  (TypeVal n, TypeVal _) -> bindVar n t2
+  (_, TypeVal n) -> bindVar n t1
+  (TypeFunc a1 v1, TypeFunc a2 v2) -> do
+    sa <- submgu a1 a2
+    sv <- submgu (substitute sa v1) (substitute sa v2)
+    pure $ sa <> sv
+  _ -> throwError $ "Cannot subtype " <> show t1 <> " into " <> show t2
+
 -- |Type inference along with check
 inferType :: Expr -> Typechecker (Substitution, Type)
 inferType = \case
@@ -122,8 +135,10 @@ inferType = \case
 
           -- Consider type annotation and generalize
           tvgen <- maybe
+                   -- If type is unspecified, leave it polymorphic
                    (pure $ generalize newts valueType)
-                   (\annT -> mgu annT valueType >>
+                   -- Unify types make perform full generalization
+                   (\annT -> submgu annT valueType >>
                      pure (generalize (Typespace M.empty) annT)
                    )
                    typeAnn
