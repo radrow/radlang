@@ -7,6 +7,8 @@ import Control.Monad.Reader
 import Control.Monad.Except
 
 import Radlang.Types
+import Radlang.Stdlib
+import Radlang.Helpers
 
 -- |Lookup type in typespace
 lookupType :: Name -> Typechecker (Maybe TypePoly)
@@ -121,4 +123,9 @@ inferType = \case
     pure (s, substitute s thT)
 
 typecheck :: Expr -> Either ErrMsg Type
-typecheck e = uncurry substitute <$> runTypechecker (inferType e)
+typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
+
+withStdlib :: Typechecker a -> Typechecker a
+withStdlib tc = do
+  let ts = Typespace $ M.fromList $ flip fmap stdlib $ \(name, _ ::: typ) -> (name <~ typ)
+  withTypespace ts tc

@@ -76,4 +76,4 @@ eval expr =
         _ -> throwError $ "Not a valid condition: " <> show c
 
 evalProgram :: Expr -> Either String Data
-evalProgram ex = evalState (runReaderT (runExceptT $ withStdlib (eval ex)) M.empty) (M.empty, 0)
+evalProgram ex = evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex)) M.empty) (M.empty, 0)

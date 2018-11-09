@@ -7,6 +7,7 @@ import Control.Monad.Reader
 
 import Radlang.Helpers
 import Radlang.Types
+import Radlang.Stdlib
 
 getNamespace :: Evaluator Namespace
 getNamespace = lift ask
@@ -53,3 +54,11 @@ withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
 -- |Evals with updated namespace
 withNs :: Namespace -> Evaluator a -> Evaluator a
 withNs n = local (update n)
+
+-- |Evals with stdlib included
+withStdlib :: Evaluator a -> Evaluator a
+withStdlib ev = do
+  ns <- fmap M.fromList $ forM stdlib $ \(name, val ::: _) -> do
+    i <- registerData val
+    pure (name <~ i)
+  withNs ns ev
