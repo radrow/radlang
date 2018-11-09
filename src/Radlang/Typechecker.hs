@@ -20,6 +20,12 @@ getTypespace = ask
 withTypespace :: Typespace -> Typechecker a -> Typechecker a
 withTypespace ts = local (const ts)
 
+withTypeAssg :: (Name, Type) -> Typechecker a -> Typechecker a
+withTypeAssg (n, t) tc = do
+  ts <- getTypespace
+  let newts = Typespace . (M.insert n (Poly S.empty t)) . getTypespaceMap $ ts
+  withTypespace newts tc
+
 withSubstitution :: Substitution -> Typechecker a -> Typechecker a
 withSubstitution s tc = ask >>= \t -> withTypespace (substitute s t) tc
 
@@ -90,16 +96,24 @@ inferType = \case
   Let assgs e -> do
     ts <- getTypespace
     (newSub, newTypes) <- foldM
-      (\(prevsub, prevts@(Typespace prevtsmap)) (name, typeAnn, value) -> do
-          (sv, tv) <- withTypespace prevts $ inferType value
-          let dropts = Typespace $ M.delete name prevtsmap
+      (\(prevsub, (Typespace prevtsmap)) (name, typeAnn, value) -> do
+          me <- Poly S.empty <$> newVar ("_L_" <> name)
+          let withMe = Typespace $ M.insert name me prevtsmap
+          (sv, tv) <- withTypespace withMe $ inferType value
+          let withMeSub@(Typespace withMeSubMap) = substitute sv withMe
+          ti <- instantiate $ withMeSubMap M.! name
+          suni <- mgu ti tv
+
+          let news = suni <> sv <> prevsub
+              newts = substitute suni withMeSub
+
           tvgen <- maybe
-                   (pure $ generalize dropts tv)
+                   (pure $ generalize newts tv)
                    (\annT -> mgu annT tv >>
                      pure (generalize (Typespace M.empty) annT)
                    )
                    typeAnn
-          pure $ (sv <> prevsub, Typespace $ M.insert name tvgen prevtsmap)
+          pure $ (news, Typespace $ M.insert name tvgen prevtsmap)
       )
       (mempty, ts)
       assgs
