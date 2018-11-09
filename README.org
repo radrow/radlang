@@ -1,0 +1,25 @@
+* radlang [WIP]
+
+Pure functional programming language
+
+** Installation
+
+Clone the repo
+
+~git clone https://github.com/radrow/radlang.git~
+
+cd into dir
+
+~cd radlang~
+
+build
+
+~stack build~
+
+install (locally)
+
+~stack install~
+
+** Execution
+
+Radlang interpreter can be run in two modes: evaluation from file ~rdl~ and interactive REPL ~rdli~.
