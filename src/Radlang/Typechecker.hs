@@ -77,8 +77,8 @@ mgu t1 t2 = case (t1, t2) of
     sa <- mgu a1 a2
     sv <- mgu (substitute sa v1) (substitute sa v2)
     pure $ sa <> sv
-  (TypeValRigid a, b) -> throwError $ "Cannot unify rigid different type variable: " <> a <> " vs " <> show b
-  (b, TypeValRigid a) -> throwError $ "Cannot unify rigid different type variable: " <> show b <> " vs " <> a
+  (TypeValRigid a, b) -> throwError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+  (b, TypeValRigid a) -> throwError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
   _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
 
 -- |Type inference along with check
