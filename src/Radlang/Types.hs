@@ -37,6 +37,7 @@ data Expr
 -- |Primitive type definition
 data Type
   = TypeVal Name
+  | TypeValRigid Name
   | TypeInt
   | TypeBool
   | TypeFunc Type Type
@@ -65,6 +66,7 @@ instance IsType Type where
     TypeBool -> S.empty
     TypeFunc a v -> S.union (free a) (free v)
     TypeVal v -> S.singleton v
+    TypeValRigid v -> S.singleton v
   substitute s@(Subst sm) = \case
     TypeInt -> TypeInt
     TypeBool -> TypeBool
@@ -72,6 +74,9 @@ instance IsType Type where
     TypeVal n -> case M.lookup n sm of
       Just t -> t
       Nothing -> TypeVal n
+    TypeValRigid n -> case M.lookup n sm of
+      Just t -> t
+      Nothing -> TypeValRigid n
 
 instance IsType TypePoly where
   free (Poly vars t) = free t S.\\ vars
@@ -111,6 +116,7 @@ instance Eq Data where
 instance Show Type where
   show = \case
     TypeVal a -> a
+    TypeValRigid a -> a
     TypeInt -> "Int"
     TypeBool -> "Bool"
     TypeFunc a v ->

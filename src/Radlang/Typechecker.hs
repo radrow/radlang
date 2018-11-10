@@ -69,24 +69,17 @@ mgu t1 t2 = case (t1, t2) of
   (TypeBool, TypeBool) -> pure mempty
   (TypeVal n, _) -> bindVar n t2
   (_, TypeVal n) -> bindVar n t1
+  (TypeValRigid a, TypeValRigid b) ->
+    if a == b
+    then pure mempty
+    else throwError $ "Cannot unify rigid different type variables: " <> a <> " vs " <> b
   (TypeFunc a1 v1, TypeFunc a2 v2) -> do
     sa <- mgu a1 a2
     sv <- mgu (substitute sa v1) (substitute sa v2)
     pure $ sa <> sv
+  (TypeValRigid a, b) -> throwError $ "Cannot unify rigid different type variable: " <> a <> " vs " <> show b
+  (b, TypeValRigid a) -> throwError $ "Cannot unify rigid different type variable: " <> show b <> " vs " <> a
   _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
-
--- |Unify to make first subtype of second
-submgu :: Type -> Type -> Typechecker Substitution
-submgu t1 t2 = case (t1, t2) of
-  (TypeInt, TypeInt) -> pure mempty
-  (TypeBool, TypeBool) -> pure mempty
-  (TypeVal n, TypeVal _) -> bindVar n t2
-  (_, TypeVal n) -> bindVar n t1
-  (TypeFunc a1 v1, TypeFunc a2 v2) -> do
-    sa <- submgu a1 a2
-    sv <- submgu (substitute sa v1) (substitute sa v2)
-    pure $ sa <> sv
-  _ -> throwError $ "Cannot subtype " <> show t1 <> " into " <> show t2
 
 -- |Type inference along with check
 inferType :: Expr -> Typechecker (Substitution, Type)
@@ -138,7 +131,7 @@ inferType = \case
                    -- If type is unspecified, leave it polymorphic
                    (pure $ generalize newts valueType)
                    -- Unify types make perform full generalization
-                   (\annT -> submgu annT valueType >>
+                   (\annT -> mgu annT valueType >>
                      pure (generalize (Typespace M.empty) annT)
                    )
                    typeAnn
