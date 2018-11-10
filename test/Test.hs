@@ -13,7 +13,9 @@ import           System.Console.ANSI
 import qualified Text.Megaparsec            as MP
 
 import           Radlang.Evaluator
+import           Radlang.Typechecker
 import           Radlang.Parser
+import           Radlang.Stdlib
 import           Radlang.Types
 
 
@@ -24,7 +26,6 @@ parsePrint :: String -> IO ()
 parsePrint inp = case parse inp of
   Right d -> setSGR [SetColor Foreground Vivid Green] >> print d >> setSGR [SetColor Foreground Vivid White]
   Left d -> setSGR [SetColor Foreground Vivid Red] >> putStrLn d >> setSGR [SetColor Foreground Vivid White]
-
 
 class Testable t where
   test :: t -> Either ErrMsg ()
@@ -61,6 +62,14 @@ instance Testable (Test Data String) where
   test (d :/= s) = case parse s >>= evalProgram of
     Left e  -> Left e
     Right r -> if r /= d then Right () else Left "Results match"
+instance Testable (Test Type String) where
+  test (t :== s) = void $ flip fmap (parse s) (\e -> Let [("TEST", Just t, e)] (Val "TEST")) >>= typecheck
+  test (t :/= s) = case flip fmap (parse s) (\e -> Let [("TEST", Just t, e)] (Val "TEST")) of
+    Left e  -> Left e
+    Right r -> case typecheck r of
+      Left _ -> Right ()
+      Right rr -> Left $ "Shouldn't typecheck, but got "<> show rr
+
 
 data AnyTest = forall a b. Testable (Test a b) => AnyTest (Test a b)
 
