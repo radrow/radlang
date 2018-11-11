@@ -19,7 +19,7 @@ import           Radlang.Types
 
 
 parse :: String -> Either ErrMsg Expr
-parse inp = bimap MP.parseErrorPretty processAST $ MP.parse ast "test" inp
+parse inp = bimap MP.parseErrorPretty processAST $ MP.parse (ast <* MP.eof) "test" inp
 
 parsePrint :: String -> IO ()
 parsePrint inp = case parse inp of
@@ -152,30 +152,41 @@ testCases =
 
   , ("lambdaParse", DataInt 42 <==> "(\\x -> x) 42")
   , ("lambdaLetParse", DataInt 42 <==> "let f := \\x -> plus x 2 in f 40")
+
   , ("primitiveAssignParse", DataInt 42 <==> "let f := plus in f 40 2")
+
   , ("ifParse1", DataInt 42 <==> "if True then 42 else 0")
   , ("ifParse2", DataInt 42 <==> "if False then 0 else 42")
+  , ("ifMulti", DataInt 42 <==> "if False then 0 if False then 0 else 42")
+
   , ("eq1", DataBool True <==> "eq 2 2")
   , ("eq2", DataBool False <==> "eq 2 3")
+
   , ("ifLambda", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else 0 in f 0")
   , ("ifLambdaCompl", DataInt 42 <==> "let f := \\a b -> if eq a 0 then b else 0 in f 0 42")
+
   , ("rec1", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else f 0 in f 42")
   , ("factorial", DataInt 24 <==> "let fac := \\n -> if eq n 0 then 1 else mult n (fac (minus n 1)) in fac 4")
 
   , ("typeInt", TypeInt <==> "3")
   , ("typeBool", TypeBool <==> "True")
+
   , ("typeLet", TypeInt <==> "let x := 3 in x")
   , ("typeLetFunc", TypeFunc (TypeVal "A") (TypeVal "A") <==> "let f x := x in f")
   , ("typeLetFunc2", TypeInt <==> "let f x y := plus y x in f 1 2")
+  , ("typeLetFunc3", TypeInt <==> "let f : Int -> Int := plus 3 in f 3")
+  , ("typeLetFunc4", TypeFunc TypeInt TypeInt <==> "let f x : Int -> Int := plus x x in f")
   , ("typeLetAnn", TypeInt <==> "let x : Int := 3 in x")
   , ("typeLetAnnBad", TypeBool </=> "let x : Int := True in x")
   , ("typeLetAnnBad2", TypeBool </=> "let x : Bool := 3 in x")
+
   , ("typeFunc", (TypeFunc (TypeVal "A") (TypeVal "A")) <==> "\\x -> x")
   , ("typeFuncRigid", (TypeFunc (TypeValRigid "A") (TypeValRigid "A")) <==> "\\x -> x")
   , ("typeFuncRigidBad", (TypeFunc (TypeValRigid "A") (TypeValRigid "B")) </=> "\\x -> x")
   , ("typeFuncRigidBad2", TypeValRigid "A" </=> "3")
   , ("typeFuncAnn", (TypeFunc (TypeValRigid "A") (TypeValRigid "A")) <==> "let f : ~A -> ~A := \\x -> x in f")
   , ("typeFuncRec", TypeInt <==> "let f : Int -> Int := \\x -> f x in f 3")
+
   , ("typeGeneralization", TypeFunc TypeInt TypeInt <==> "let f : Int -> Int := \\x -> x in f")
   , ("typeIf", TypeInt <==> "if True then 1 else 2")
   , ("typeIfBad1", TypeInt </=> "if 1 then 1 else 2")

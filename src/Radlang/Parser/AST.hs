@@ -12,17 +12,23 @@ import           Radlang.Parser.Type
 import           Radlang.Types
 
 ast :: Parser AST
-ast = try applicationE <|> astNonApp
+ast = astComplex <|> astSimple
 
-astNonApp :: Parser AST
-astNonApp = msum $ fmap try
+astSimple :: Parser AST
+astSimple = msum $ fmap try
+  [ mzero
+  , valE
+  , constantE
+  , paren ast
+  ]
+
+astComplex :: Parser AST
+astComplex = msum $ fmap try
   [ mzero
   , lambdaE
+  , applicationE
   , letE
   , ifE
-  , constantE
-  , valE
-  , paren ast
   ]
 
 
@@ -39,8 +45,8 @@ lambdaE = do
 
 applicationE :: Parser AST
 applicationE = do
-  fun <- astNonApp
-  chain <- some astNonApp
+  fun <- astSimple
+  chain <- some astSimple
   pure $ ASTApplication fun chain
 
 letE :: Parser AST
@@ -64,8 +70,8 @@ assignment = do
 
 ifE :: Parser AST
 ifE = do
-  word "if"
   ifthens <- some $ do
+    word "if"
     c <- ast
     word "then"
     t <- ast
