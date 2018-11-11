@@ -1,6 +1,8 @@
 * radlang
 
-Pure functional, strict (yet!) programming language featuring static type checking, type inference and general polymorphic types. Program in radlang is understood as valid expression. Toplevel definitions are not currently supported.
+Purely functional, strict (yet!) programming language featuring static type checking, type inference and general polymorphic types. Program in radlang is understood as valid expression.
+
+Syntax highly inspired by Haskell and OCaml.
 
 ** Installation
 
@@ -22,7 +24,7 @@ install (locally)
 
 ** Execution
 
-Radlang interpreter can be run in two modes: evaluation from file ~rdl~ and interactive REPL ~rdli~.
+Radlang interpreter can be run in two modes: evaluation from file ~rdl program.rdl~ and interactive REPL ~rdli~.
 
 ** Examples
 
