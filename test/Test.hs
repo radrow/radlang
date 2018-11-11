@@ -15,7 +15,6 @@ import qualified Text.Megaparsec            as MP
 import           Radlang.Evaluator
 import           Radlang.Typechecker
 import           Radlang.Parser
-import           Radlang.Stdlib
 import           Radlang.Types
 
 
@@ -67,6 +66,11 @@ instance Testable (Test Type String) where
   test (t :/= s) = case flip fmap (parse s) (\e -> Let [("TEST", Just t, e)] (Val "TEST")) of
     Left e  -> Left e
     Right r -> case typecheck r of
+      Left _ -> Right ()
+      Right rr -> Left $ "Shouldn't typecheck, but got "<> show rr
+instance Testable (Test Type Expr) where
+  test (t :== e) = void $ typecheck (Let [("TEST", Just t, e)] (Val "TEST"))
+  test (t :/= e) = case typecheck (Let [("TEST", Just t, e)] (Val "TEST")) of
       Left _ -> Right ()
       Right rr -> Left $ "Shouldn't typecheck, but got "<> show rr
 
@@ -156,5 +160,21 @@ testCases =
   , ("ifLambda", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else 0 in f 0")
   , ("rec1", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else f 0 in f 42")
   , ("factorial", DataInt 24 <==> "let fac := \\n -> if eq n 0 then 1 else mult n (fac (minus n 1)) in fac 4")
-  ]
 
+  , ("typeInt", TypeInt <==> "3")
+  , ("typeBool", TypeBool <==> "True")
+  , ("typeLet", TypeInt <==> "let x := 3 in x")
+  , ("typeLetAnn", TypeInt <==> "let x : Int := 3 in x")
+  , ("typeLetAnnBad", TypeBool </=> "let x : Int := True in x")
+  , ("typeLetAnnBad2", TypeBool </=> "let x : Bool := 3 in x")
+  , ("typeFunc", (TypeFunc (TypeVal "A") (TypeVal "A")) <==> "\\x -> x")
+  , ("typeFuncRigid", (TypeFunc (TypeValRigid "A") (TypeValRigid "A")) <==> "\\x -> x")
+  , ("typeFuncRigidBad", (TypeFunc (TypeValRigid "A") (TypeValRigid "B")) </=> "\\x -> x")
+  , ("typeFuncRigidBad2", TypeValRigid "A" </=> "3")
+  , ("typeFuncAnn", (TypeFunc (TypeValRigid "A") (TypeValRigid "A")) <==> "let f : ~A -> ~A := \\x -> x in f")
+  , ("typeFuncRec", TypeInt <==> "let f : Int -> Int := \\x -> f x in f 3")
+  , ("typeGeneralization", TypeFunc TypeInt TypeInt <==> "let f : Int -> Int := \\x -> x in f")
+  , ("typeIf", TypeInt <==> "if True then 1 else 2")
+  , ("typeIfBad1", TypeInt </=> "if 1 then 1 else 2")
+  , ("typeIfBad2", TypeInt </=> "if True then True else 2")
+  ]
