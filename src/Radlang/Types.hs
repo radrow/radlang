@@ -1,5 +1,6 @@
 module Radlang.Types where
 
+import Data.List.NonEmpty
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
@@ -30,9 +31,18 @@ data Expr
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr
-  | Case Expr [(Expr, Expr)]
   | If Expr Expr Expr
   deriving (Eq, Show)
+
+data AST
+  = ASTVal Name
+  | ASTInt Int
+  | ASTBool Bool
+  | ASTApplication AST (NonEmpty AST)
+  | ASTLet (NonEmpty (Name, [Name], Maybe Type, AST)) AST
+  | ASTLambda (NonEmpty Name) AST
+  | ASTIf (NonEmpty (AST, AST)) AST
+  deriving(Eq, Show)
 
 -- |Primitive type definition
 data Type

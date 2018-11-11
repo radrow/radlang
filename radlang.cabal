@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 37c99dcf6e01a4efe8befd1f75239fe6ac66b4284778214cfd79fbb00c36a8e0
+-- hash: 058d77e37e79fd52e9a5295c0b8490a67a55ac494e68805004f3c3e318effd99
 
 name:           radlang
 version:        0.1.0.0
@@ -32,6 +32,7 @@ library
       Radlang.Evaluator
       Radlang.Helpers
       Radlang.Parser
+      Radlang.Parser.AST
       Radlang.Parser.Expr
       Radlang.Parser.General
       Radlang.Parser.Type
@@ -50,6 +51,7 @@ library
     , containers
     , megaparsec >=6.5
     , mtl
+    , parser-combinators
     , set-monad >=0.3.0.0
     , transformers
   default-language: Haskell2010
@@ -67,6 +69,7 @@ executable rdl
     , containers
     , megaparsec >=6.5
     , mtl
+    , parser-combinators
     , radlang
     , set-monad >=0.3.0.0
     , transformers
@@ -85,6 +88,7 @@ executable rdli
     , containers
     , megaparsec >=6.5
     , mtl
+    , parser-combinators
     , radlang
     , set-monad >=0.3.0.0
     , transformers
@@ -105,6 +109,7 @@ test-suite radlang-test
     , containers
     , megaparsec >=6.5
     , mtl
+    , parser-combinators
     , radlang
     , set-monad >=0.3.0.0
     , transformers

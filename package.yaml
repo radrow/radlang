@@ -27,6 +27,7 @@ dependencies:
 - transformers
 - ansi-terminal
 - set-monad >= 0.3.0.0
+- parser-combinators
 
 ghc-options:
   - -Wall
