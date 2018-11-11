@@ -14,10 +14,9 @@ main = do
         else (,) (head args) <$> readFile (head args)
   let result = do
         e <- parseProgram fileName sourceCode
-        -- case typeErrors p of
-        --   Nothing -> return ()
-        --   Just e -> Left e
-        evalProgram e
+        t <- typecheck e
+        d <- evalProgram e
+        pure (t, d)
   case result of
     Left e -> hPutStrLn stderr e
-    Right r -> putStrLn $ show r
+    Right (t, d) -> putStrLn $ show d <> " : " <> show t
