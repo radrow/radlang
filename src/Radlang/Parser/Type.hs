@@ -36,4 +36,4 @@ funcT = do
   operator ("->")
   to <- type_
   pure $ TypeFunc from to
-valT = TypeVal <$> generalTypeName
+valT = TypeValRigid <$> generalTypeName

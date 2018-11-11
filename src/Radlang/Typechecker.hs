@@ -69,10 +69,16 @@ mgu t1 t2 = case (t1, t2) of
   (TypeBool, TypeBool) -> pure mempty
   (TypeVal n, _) -> bindVar n t2
   (_, TypeVal n) -> bindVar n t1
+  (TypeValRigid a, TypeValRigid b) ->
+    if a == b
+    then pure mempty
+    else throwError $ "Cannot unify rigid different type variables: " <> a <> " vs " <> b
   (TypeFunc a1 v1, TypeFunc a2 v2) -> do
     sa <- mgu a1 a2
     sv <- mgu (substitute sa v1) (substitute sa v2)
     pure $ sa <> sv
+  (TypeValRigid a, b) -> throwError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+  (b, TypeValRigid a) -> throwError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
   _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
 
 -- |Type inference along with check
@@ -122,7 +128,9 @@ inferType = \case
 
           -- Consider type annotation and generalize
           tvgen <- maybe
+                   -- If type is unspecified, leave it polymorphic
                    (pure $ generalize newts valueType)
+                   -- Unify types make perform full generalization
                    (\annT -> mgu annT valueType >>
                      pure (generalize (Typespace M.empty) annT)
                    )
