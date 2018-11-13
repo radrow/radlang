@@ -41,7 +41,7 @@ data TypecheckerState = TypecheckerState { tsSupply :: Int}
 -- |Desugared expression tree designed for evaluation
 data Expr
   = Val Name
-  | ConstInt Int
+  | ConstInt Integer
   | ConstBool Bool
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
@@ -52,7 +52,7 @@ data Expr
 -- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
 data AST
   = ASTVal Name
-  | ASTInt Int
+  | ASTInt Integer
   | ASTBool Bool
   | ASTApplication AST (NonEmpty AST)
   | ASTLet (NonEmpty (Name, [Name], Maybe Type, AST)) AST
@@ -124,7 +124,7 @@ instance Monoid Substitution where
   mempty = Subst M.empty
 
 data Data
-  = DataInt Int
+  = DataInt Integer
   | DataBool Bool
   | DataLambda Namespace Name Expr
   | DataInternalFunc (Data -> Data)

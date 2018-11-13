@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 409430b7ee1e18ea7db9a3433f0fba3a2489475d02d27999a3916d9692f6b61a
+-- hash: f09822702dd52671719f84fbbbca5118faa6a81e44d316481d893340f19ef3c4
 
 name:           radlang
-version:        1.0.0
+version:        1.0.1
 description:    Please see the README on GitHub at <https://github.com/radrow/radlang#readme>
 homepage:       https://github.com/radrow/radlang#readme
 bug-reports:    https://github.com/radrow/radlang/issues
