@@ -65,7 +65,8 @@ bindVar :: Name -> Type -> Typechecker Substitution
 bindVar n t = case t of
   TypeVal v | v == n -> pure mempty
   _ -> if S.member n (free t)
-       then throwError $ "Occur check fail: " <> show n <> " vs " <> show t
+          -- Occur check
+       then throwError $ "Cannot create infinite type: " <> n <> " := " <> show t
        else pure $ Subst $ M.singleton n t
 
 -- |Most general unifier
