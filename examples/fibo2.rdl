@@ -1,0 +1,6 @@
+let fibo :=
+  let fibo a b n :=
+    if eq n 0 then a
+    else fibo b (plus a b) (minus n 1)
+  in fibo 0 1
+in fibo 8
