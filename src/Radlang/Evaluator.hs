@@ -95,8 +95,8 @@ eval expr =
     Application f arg ->
       eval f >>= \case
         DataLambda ns argname e -> do
-          d <- withNsExpr ns arg
-          withData (argname <~ d) $ withNsExpr ns e
+          d <- eval arg
+          withNs ns $ withDataExpr (argname <~ d) e
         DataInternalFunc func -> func <$> eval arg
         d -> do
           ds <- getDataspace
