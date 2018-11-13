@@ -1,3 +1,5 @@
+-- |Parsers collection used by other parsing modules
+
 module Radlang.Parser.General where
 
 import           Control.Monad

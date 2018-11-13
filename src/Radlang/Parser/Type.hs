@@ -1,8 +1,9 @@
+-- |Types-related parsing
+
 module Radlang.Parser.Type where
 
 import           Control.Monad
 import           Text.Megaparsec
-import qualified Data.Set.Monad as S
 
 import           Prelude                hiding (lex)
 
@@ -29,11 +30,18 @@ notFunc = msum $
   , paren type_
   ]
 
+intT :: Parser Type
 intT = word "Int" >> pure TypeInt
+
+boolT :: Parser Type
 boolT = word "Bool" >> pure TypeBool
+
+funcT :: Parser Type
 funcT = do
   from <- notFunc
   operator ("->")
   to <- type_
   pure $ TypeFunc from to
+
+valT :: Parser Type
 valT = TypeValRigid <$> generalTypeName

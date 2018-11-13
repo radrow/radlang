@@ -1,3 +1,5 @@
+-- |Parser of abstract syntax tree – deals with code
+
 module Radlang.Parser.AST where
 
 import           Control.Monad
@@ -11,9 +13,11 @@ import           Radlang.Parser.General
 import           Radlang.Parser.Type
 import           Radlang.Types
 
+-- |Main AST parser
 ast :: Parser AST
 ast = astComplex <|> astSimple
 
+-- |Simple expression that usually behave like a single body
 astSimple :: Parser AST
 astSimple = msum $ fmap try
   [ mzero
@@ -21,7 +25,8 @@ astSimple = msum $ fmap try
   , constantE
   , paren ast
   ]
-
+-- |More complex expressions that are too big to be allowed in some places without
+-- parenthesses, i.e. arguments for functions.
 astComplex :: Parser AST
 astComplex = msum $ fmap try
   [ mzero
@@ -30,7 +35,6 @@ astComplex = msum $ fmap try
   , letE
   , ifE
   ]
-
 
 valE :: Parser AST
 valE = ASTVal <$> valName

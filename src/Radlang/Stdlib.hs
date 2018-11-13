@@ -1,3 +1,5 @@
+-- |Standard library that contains hard-coded functions
+
 {-#LANGUAGE GADTs #-}
 module Radlang.Stdlib where
 

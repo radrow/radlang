@@ -1,3 +1,5 @@
+-- |Definitions of types and instances used in program
+
 module Radlang.Types where
 
 import Data.List.NonEmpty
@@ -9,21 +11,34 @@ import  Data.Map.Strict(Map)
 import qualified Data.Set.Monad as S
 import Data.Set.Monad(Set)
 
+-- |Type aliasses to clarify purpose and ease refactor
 type ErrMsg = String
 type Name = String
 
+-- |Key in Dataspace map
 type DataId = Int
 
+-- |Map of value names into ids
 type Namespace = Map Name DataId
+
+-- |Map of ids into real data
 type Dataspace = (Map DataId Data, Int)
+
+-- |Map of typenames into real types
 newtype Typespace = Typespace { getTypespaceMap :: Map Name TypePoly }
   deriving (Eq, Show, Ord)
 
+-- |Transformer responsible for expression evaluation and error handling
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
+
+-- |Transformer responsible for typechecking expressions and error handling
 type Typechecker = ExceptT String (ReaderT Typespace (State TypecheckerState))
-data TypecheckerState = TypecheckerState { tsSub :: Substitution, tsSupply :: Int}
+
+-- |Typechecker state currently contains only count of runtime generated types
+data TypecheckerState = TypecheckerState { tsSupply :: Int}
   deriving (Eq, Show)
 
+-- |Desugared expression tree designed for evaluation
 data Expr
   = Val Name
   | ConstInt Int
@@ -34,6 +49,7 @@ data Expr
   | If Expr Expr Expr
   deriving (Eq, Show)
 
+-- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
 data AST
   = ASTVal Name
   | ASTInt Int
@@ -63,7 +79,9 @@ newtype Substitution = Subst { getSubstMap :: Map Name Type }
 
 -- |Types that may be considered as free types carriers
 class Ord t => IsType t where -- Ord is needed because use of Set
+  -- |Free type variables in t
   free :: t -> Set Name
+  -- |Application of substitution
   substitute :: Substitution -> t -> t
 
 instance IsType t => IsType (Set t) where
@@ -115,7 +133,7 @@ instance Show Data where
   show = \case
     DataInt i -> show i
     DataBool b -> show b
-    DataLambda n nn e -> "lambda in (" <> show n <> ") \\" <> nn <> " -> " <> show e
+    DataLambda _ n e -> "\\" <> n <> " -> " <> show e
     DataInternalFunc _ -> "internal func"
 
 instance Eq Data where

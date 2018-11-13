@@ -1,3 +1,5 @@
+-- |Some universal helper functions
+
 module Radlang.Helpers where
 
 import qualified Data.Set.Monad as S

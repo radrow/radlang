@@ -1,5 +1,8 @@
+-- |This module is responsible for evaluation of Expr tree into Data
+
 module Radlang.Evaluator where
 
+import Data.Bifunctor(first)
 import Control.Applicative
 import Control.Monad.State.Strict
 import Control.Monad.Reader
@@ -80,6 +83,7 @@ withDataExpr a e = withData a (eval e)
 withNsExpr :: Namespace -> Expr -> Evaluator Data
 withNsExpr n e = local (update n) (eval e)
 
+-- |Evaluator that returns computed result
 eval :: Expr -> Evaluator Data
 eval expr =
   case expr of
@@ -111,5 +115,6 @@ eval expr =
           if b then eval then_ else eval else_
         _ -> throwError $ "Not a valid condition: " <> show c
 
+-- |Executes Evaluator on given Expr
 evalProgram :: Expr -> Either String Data
-evalProgram ex = evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex)) M.empty) (M.empty, 0)
+evalProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex)) M.empty) (M.empty, 0)

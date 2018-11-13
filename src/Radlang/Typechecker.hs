@@ -1,3 +1,5 @@
+-- |Implementation of the W Algorithm for typechecking
+
 module Radlang.Typechecker where
 
 import Data.Map.Strict as M
@@ -14,31 +16,35 @@ import Radlang.Helpers
 lookupType :: Name -> Typechecker (Maybe TypePoly)
 lookupType n = M.lookup n . getTypespaceMap <$> getTypespace
 
+-- |Returns typespace
 getTypespace :: Typechecker Typespace
 getTypespace = ask
 
+-- |Runs Typechecker with another typespace
 withTypespace :: Typespace -> Typechecker a -> Typechecker a
 withTypespace ts = local (const ts)
 
+-- |Runs Typechecker with additional type assignment
 withTypeAssg :: (Name, Type) -> Typechecker a -> Typechecker a
 withTypeAssg (n, t) tc = do
   ts <- getTypespace
   let newts = Typespace . (M.insert n (Poly S.empty t)) . getTypespaceMap $ ts
   withTypespace newts tc
 
+-- |Substitutes variables in typespace of given Typechecker
 withSubstitution :: Substitution -> Typechecker a -> Typechecker a
 withSubstitution s tc = ask >>= \t -> withTypespace (substitute s t) tc
+
+-- |Runs Typecheker with standard library
+withStdlib :: Typechecker a -> Typechecker a
+withStdlib tc = do
+  let ts = Typespace $ M.fromList $ flip fmap stdlib $ \(name, _ ::: typ) -> (name <~ typ)
+  withTypespace ts tc
 
 -- |Abstracts out types that are free in t but not in typespace
 generalize :: Typespace -> Type -> TypePoly
 generalize ts t = Poly vars t where
   vars = free t S.\\ free ts
-
--- |Evaluation of typechecker
-runTypechecker :: Typechecker a -> Either String a
-runTypechecker = flip evalState (TypecheckerState mempty 0)
-  . flip runReaderT (Typespace M.empty)
-  . runExceptT
 
 -- |Returns new type variable
 newVar :: String -> Typechecker Type
@@ -158,10 +164,13 @@ inferType = \case
     let s = sval <> sel <> sth <> sbool <> scond
     pure (s, substitute s thT)
 
+
+-- |Evaluation of typechecker
+runTypechecker :: Typechecker a -> Either String a
+runTypechecker = flip evalState (TypecheckerState mempty 0)
+  . flip runReaderT (Typespace M.empty)
+  . runExceptT
+
+-- |Toplevel typechecking of expression
 typecheck :: Expr -> Either ErrMsg Type
 typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
-
-withStdlib :: Typechecker a -> Typechecker a
-withStdlib tc = do
-  let ts = Typespace $ M.fromList $ flip fmap stdlib $ \(name, _ ::: typ) -> (name <~ typ)
-  withTypespace ts tc
