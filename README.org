@@ -1,6 +1,8 @@
-* radlang [WIP]
+* radlang
 
-Pure functional programming language
+Purely functional, strict (yet!) programming language featuring static type checking, type inference and general polymorphic types. Program in radlang is understood as valid expression.
+
+Syntax highly inspired by Haskell and OCaml.
 
 ** Installation
 
@@ -22,4 +24,24 @@ install (locally)
 
 ** Execution
 
-Radlang interpreter can be run in two modes: evaluation from file ~rdl~ and interactive REPL ~rdli~.
+Radlang interpreter can be run in two modes: evaluation from file ~rdl program.rdl~ and interactive REPL ~rdli~.
+
+** Examples
+
+Polymorphism and higher order functions:
+
+#+BEGIN_SRC haskell
+let id := \x -> x;
+    compose f g x : (~B -> ~C) -> (~A -> ~B) -> ~A -> ~C := f (g x)
+in compose id id 42
+#+END_SRC
+
+Fibonacci:
+
+#+BEGIN_SRC haskell
+let fibo n : Int -> Int :=
+  if eq n 0 then 0
+  if eq n 1 then 1
+  else plus (fibo (minus n 1)) (fibo (minus n 2))
+in fibo 8
+#+END_SRC
