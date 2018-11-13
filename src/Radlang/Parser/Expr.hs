@@ -1,7 +1,7 @@
 -- |Not real parsing module, but takes significant part in it. Responsible for
 -- turning AST into ready to evaluate expression
 
-module Radlang.Parser.Expr where
+module Radlang.Parser.Expr(processAST) where
 
 import Data.List.NonEmpty as LNE
 

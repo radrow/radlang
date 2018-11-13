@@ -1,6 +1,6 @@
 -- |Implementation of the W Algorithm for typechecking
 
-module Radlang.Typechecker where
+module Radlang.Typechecker(typecheck) where
 
 import Data.Map.Strict as M
 import Data.Set.Monad as S
@@ -167,7 +167,7 @@ inferType = \case
 
 -- |Evaluation of typechecker
 runTypechecker :: Typechecker a -> Either String a
-runTypechecker = flip evalState (TypecheckerState mempty 0)
+runTypechecker = flip evalState (TypecheckerState 0)
   . flip runReaderT (Typespace M.empty)
   . runExceptT
 

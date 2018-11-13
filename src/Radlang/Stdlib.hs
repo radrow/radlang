@@ -1,12 +1,10 @@
 -- |Standard library that contains hard-coded functions
 
 {-#LANGUAGE GADTs #-}
-module Radlang.Stdlib where
+module Radlang.Stdlib(stdlib, Prim(..)) where
 
 import Radlang.Types
 import Radlang.Helpers
-
-import qualified  Data.Map.Strict as M
 
 import Prelude hiding (or, and)
 

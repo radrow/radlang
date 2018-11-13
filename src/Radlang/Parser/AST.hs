@@ -1,6 +1,6 @@
 -- |Parser of abstract syntax tree – deals with code
 
-module Radlang.Parser.AST where
+module Radlang.Parser.AST(ast) where
 
 import           Control.Monad
 import           Control.Monad.Combinators.NonEmpty

@@ -1,6 +1,6 @@
 -- |This module is responsible for evaluation of Expr tree into Data
 
-module Radlang.Evaluator where
+module Radlang.Evaluator(evalProgram) where
 
 import Data.Bifunctor(first)
 import Control.Applicative

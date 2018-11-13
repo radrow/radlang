@@ -1,6 +1,6 @@
 -- |Types-related parsing
 
-module Radlang.Parser.Type where
+module Radlang.Parser.Type(type_) where
 
 import           Control.Monad
 import           Text.Megaparsec
