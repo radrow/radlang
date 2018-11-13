@@ -45,3 +45,6 @@ let fibo n : Int -> Int :=
   else plus (fibo (minus n 1)) (fibo (minus n 2))
 in fibo 8
 #+END_SRC
+** Special thanks
+
+Special thanks to Wojciech Jabłoński who showed me neccessary algorithms and solutions without which writing this would be a total hell.
