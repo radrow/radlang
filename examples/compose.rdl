@@ -1,0 +1,3 @@
+let id := \x -> x;
+    compose f g x : (~B -> ~C) -> (~A -> ~B) -> ~A -> ~C := f (g x)
+in compose id id 42

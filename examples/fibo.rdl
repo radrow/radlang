@@ -1,4 +1,4 @@
-let fibo : Int -> Int := \n ->
+let fibo n : Int -> Int :=
   if eq n 0 then 0
   if eq n 1 then 1
   else plus (fibo (minus n 1)) (fibo (minus n 2))
