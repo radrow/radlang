@@ -45,6 +45,18 @@ let fibo n : Int -> Int :=
   else plus (fibo (minus n 1)) (fibo (minus n 2))
 in fibo 8
 #+END_SRC
+
+Linear Fibonacci:
+
+#+BEGIN_SRC haskell
+let fibo :=
+  let fibo a b n :=
+    if eq n 0 then a
+    else fibo b (plus a b) (minus n 1)
+  in fibo 0 1
+in fibo 4242
+#+END_SRC
+
 ** Special thanks
 
 Special thanks to Wojciech Jabłoński who showed me neccessary algorithms and solutions without which writing this would be a total hell.
