@@ -57,6 +57,15 @@ let fibo :=
 in fibo 4242
 #+END_SRC
 
+** Implementation
+
+In this section I will briefly describe how my idea works.
+
+Input ~String~ is turned into ~AST~ via [http://hackage.haskell.org/package/megaparsec-7.0.1][Megaparsec]]. ~AST~ is the almost exact context-free representation of code — it is completely desugared and it's purpose is just to "read" the input without going deeper into it's meaning.
+Next, ~AST~ is converted into ~Expr~ by ~processAST~ function. The process is pretty trivial — it will do job like replacing ~f a := \x y -> q~ with ~f := \a -> \x -> \y -> q~. Main reason for this layer is to resolve conflict between nice syntax and simplicity of evaluation.
+Then the ~Expr~ is thrown in front of the Type Correctness Court — the typechecker. It uses the Algorithm W for type inference in Hindley–Milner type system, which allows having nice polymorphic types and optional hints from programmer.
+After typecheck succeeds ~Expr~ is passed into ~Evaluator~ which carries namespace, dataspace and handles runtime errors. Namespace lives in ~Reader~ monad as it is scope local — it maps names into data indices. Dataspace however is under constant modification, so it is moved into ~State~ — it's task is to map data indices into actual data.
+
 ** Special thanks
 
 Special thanks to Wojciech Jabłoński who showed me neccessary algorithms and solutions without which writing this would be a total hell.
