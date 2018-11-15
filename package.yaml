@@ -1,7 +1,7 @@
 name:                radlang
 version:             1.0.1
 github:              "radrow/radlang"
-license:             BSD3
+license:             BSD2
 author:              "Radosław Rowicki"
 maintainer:          "rr386088@students.mimuw.edu.pl"
 copyright:           "2018 Radosław Rowicki"
