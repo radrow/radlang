@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.0.
+-- This file has been generated from package.yaml by hpack version 0.31.1.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f09822702dd52671719f84fbbbca5118faa6a81e44d316481d893340f19ef3c4
+-- hash: 74e3fc2be630a2c0a4c68492519d08f2a51ccdac00151489483474c21f9055bb
 
 name:           radlang
 version:        1.0.1
@@ -14,11 +14,11 @@ bug-reports:    https://github.com/radrow/radlang/issues
 author:         Radosław Rowicki
 maintainer:     rr386088@students.mimuw.edu.pl
 copyright:      2018 Radosław Rowicki
-license:        BSD3
+license:        BSD2
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    README.md
+    README.org
     ChangeLog.md
 
 source-repository head
@@ -42,7 +42,7 @@ library
       Paths_radlang
   hs-source-dirs:
       src
-  default-extensions: LambdaCase
+  default-extensions: LambdaCase GADTs
   ghc-options: -Wall -Wextra
   build-depends:
       ansi-terminal
@@ -95,7 +95,7 @@ executable rdli
 
 test-suite radlang-test
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: Main.hs
   other-modules:
       Test
       Paths_radlang

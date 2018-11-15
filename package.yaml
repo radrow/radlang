@@ -7,7 +7,7 @@ maintainer:          "rr386088@students.mimuw.edu.pl"
 copyright:           "2018 Radosław Rowicki"
 
 extra-source-files:
-- README.md
+- README.org
 - ChangeLog.md
 
 # Metadata used when publishing your package
@@ -37,6 +37,7 @@ library:
   source-dirs: src
   default-extensions:
     - LambdaCase
+    - GADTs
 
 executables:
   rdl:
@@ -60,7 +61,7 @@ executables:
 
 tests:
   radlang-test:
-    main:                Spec.hs
+    main:                Main.hs
     source-dirs:         test
     ghc-options:
     - -threaded
