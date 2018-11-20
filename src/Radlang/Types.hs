@@ -123,7 +123,7 @@ instance Semigroup Substitution where
 instance Monoid Substitution where
   mempty = Subst M.empty
 
-data Data = Lazy Namespace Expr | Strict StrictData
+data Data = Lazy Namespace DataId Expr | Strict StrictData
 
 data StrictData
   = DataInt Integer
