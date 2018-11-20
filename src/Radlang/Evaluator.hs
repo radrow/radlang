@@ -120,7 +120,7 @@ eval expr =
         d -> do
           throwError $ "Function application not into lambda: " <> show d
     Let defs eIn -> do
-      (ds, dcount) <- getDataspace
+      (_, dcount) <- getDataspace
       ns <- getNamespace
       let n = length defs
           ids = take n [dcount + 1..]
@@ -129,7 +129,7 @@ eval expr =
                   (\prevNs (name, _, _, i) -> M.insert name i prevNs)
                   ns
                   idDefs
-      forM idDefs $ \(_, _, e, i) -> registerData (Lazy newNs i e)
+      forM_ idDefs $ \(_, _, e, i) -> registerData (Lazy newNs i e)
       withNsExpr newNs eIn
 
     Lambda name e -> Strict . (\ns -> DataLambda ns name e) <$> ask
