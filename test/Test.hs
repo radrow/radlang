@@ -171,6 +171,7 @@ testCases =
   , ("lazyIf", DataInt 42 <==> "let x := x; iff c t e := if c then t else e in if True then 42 else x")
   , ("lazyFixConst", DataInt 42 <==> "let fix f := let x := f x in x; const a b := a in fix (const 42)")
   , ("lazyFixFactorial", DataInt 24 <==> "let fix f := let x := f x in x in fix (\\rec n -> if eq n 0 then 1 else mult n (rec (minus n 1))) 4")
+  , ("lazyMutualRec", DataInt 42 <==> "let f := g; g n := if eq n 0 then 42 else f (minus n 1) in g 5")
 
   , ("typeInt", TypeInt <==> "3")
   , ("typeBool", TypeBool <==> "True")

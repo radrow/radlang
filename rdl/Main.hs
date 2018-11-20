@@ -19,4 +19,4 @@ main = do
         pure (t, d)
   case result of
     Left e -> hPutStrLn stderr e
-    Right (t, d) -> putStrLn $ d <> " : " <> show t
+    Right (t, d) -> putStrLn $ show d <> " : " <> show t

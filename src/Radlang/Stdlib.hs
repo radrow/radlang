@@ -54,7 +54,7 @@ runtimeEq a b = case (a, b) of
 
 runtimeShow :: Data -> Evaluator String
 runtimeShow (Strict d) = pure $ show d
-runtimeShow l = force l >>= pure . show
+runtimeShow l = force l >>= runtimeShow . Strict
 
 eq :: StrictData
 eq = fun2 $ \i j -> do
