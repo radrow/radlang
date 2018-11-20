@@ -34,14 +34,14 @@ data Test a b where
   (:/=) :: a -> b -> Test a b
   Failing :: Expr -> Test () Expr
 
-instance Testable (Test Data Expr) where
+instance Testable (Test StrictData Expr) where
   test (t :== x) = do
-    (d :: Data) <- evalProgram x
+    (d :: StrictData) <- evalProgram x
     if t == d
       then return ()
       else throwError (show t <> ":/=" <> show d)
   test (t :/= x) = do
-    (d :: Data) <- evalProgram x
+    (d :: StrictData) <- evalProgram x
     if t /= d
       then return ()
       else throwError (show t <> ":==" <> show d)
@@ -54,7 +54,7 @@ instance Testable (Test () Expr) where
     Left _  -> Right ()
   test (() :== e) = void $ evalProgram e
   test (() :/= e) = void $ evalProgram e
-instance Testable (Test Data String) where
+instance Testable (Test StrictData String) where
   test (d :== s) = case parse s >>= evalProgram of
     Left e  -> Left e
     Right r -> if r == d then Right () else Left "Results mismatch"
@@ -167,6 +167,10 @@ testCases =
 
   , ("rec1", DataInt 42 <==> "let f := \\a -> if eq a 0 then 42 else f 0 in f 42")
   , ("factorial", DataInt 24 <==> "let fac := \\n -> if eq n 0 then 1 else mult n (fac (minus n 1)) in fac 4")
+
+  , ("lazyIf", DataInt 42 <==> "let x := x; iff c t e := if c then t else e in if True then 42 else x")
+  , ("lazyFixConst", DataInt 42 <==> "let fix f := let x := f x in x; const a b := a in fix (const 42)")
+  , ("lazyFixFactorial", DataInt 24 <==> "let fix f := let x := f x in x in fix (\\rec n -> if eq n 0 then 1 else mult n (rec (minus n 1))) 4")
 
   , ("typeInt", TypeInt <==> "3")
   , ("typeBool", TypeBool <==> "True")

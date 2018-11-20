@@ -1,50 +1,109 @@
 -- |Standard library that contains hard-coded functions
 
+{-# LANGUAGE ScopedTypeVariables #-}
 {-#LANGUAGE GADTs #-}
-module Radlang.Stdlib(stdlib, Prim(..)) where
+module Radlang.Stdlib(stdlib, Prim(..), runtimeShow) where
+
+import Control.Monad.Except
 
 import Radlang.Types
 import Radlang.Helpers
+import {-# SOURCE #-} Radlang.Evaluator
 
 import Prelude hiding (or, and, not)
 import qualified Prelude
 
 data Prim where
-  (:::) :: Data -> TypePoly -> Prim
+  (:::) :: StrictData -> TypePoly -> Prim
 infixr 9 :::
 
-fun :: (Data -> Data) -> Data
+fun :: (Data -> Evaluator Data) -> StrictData
 fun = DataInternalFunc
+fun2 :: (Data -> Data -> Evaluator Data) -> StrictData
+fun2 f = fun $ \a ->
+  pure . Strict . fun $ \b -> f a b
 
-plus :: Data
-plus = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i + j)))
-minus :: Data
-minus = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i - j)))
-mult :: Data
-mult = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i * j)))
-divide :: Data
-divide = fun (\(DataInt i) -> fun (\(DataInt j) -> DataInt (i `div` j)))
+plus :: StrictData
+plus = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataInt $ ii + jj)
+minus :: StrictData
+minus = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataInt $ ii - jj)
+mult :: StrictData
+mult = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataInt $ ii * jj)
+divide :: StrictData
+divide = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  if jj /= 0
+    then pure $ Strict (DataInt $ ii `div` jj)
+    else throwError "Division by zero"
 
-eq :: Data
-eq = fun (\a -> fun (\b -> DataBool $ a == b))
-neq :: Data
-neq = fun (\a -> fun (\b -> DataBool $ a /= b))
+runtimeEq :: StrictData -> StrictData -> Evaluator Bool
+runtimeEq a b = case (a, b) of
+  (DataInt i, DataInt j) -> pure $ i == j
+  (DataBool i, DataBool j) -> pure $ i == j
+  _ -> throwError "Objects not comparable"
 
-geq :: Data
-geq = fun (\(DataInt i) -> fun (\(DataInt j) -> DataBool (i >= j)))
-gt :: Data
-gt = fun (\(DataInt i) -> fun (\(DataInt j) -> DataBool (i > j)))
-leq :: Data
-leq = fun (\(DataInt i) -> fun (\(DataInt j) -> DataBool (i <= j)))
-lt :: Data
-lt = fun (\(DataInt i) -> fun (\(DataInt j) -> DataBool (i < j)))
+runtimeShow :: Data -> Evaluator String
+runtimeShow (Strict d) = pure $ show d
+runtimeShow l = force l >>= pure . show
 
-or :: Data
-or = fun (\(DataBool i) -> fun (\(DataBool j) -> DataBool (i || j)))
-and :: Data
-and = fun (\(DataBool i) -> fun (\(DataBool j) -> DataBool (i && j)))
-not :: Data
-not = fun (\(DataBool i) -> DataBool (Prelude.not i))
+eq :: StrictData
+eq = fun2 $ \i j -> do
+  ii <- force i
+  jj <- force j
+  b <- runtimeEq ii jj
+  pure $ Strict (DataBool $ b)
+neq :: StrictData
+neq = fun2 $ \i j -> do
+  ii <- force i
+  jj <- force j
+  b <- runtimeEq ii jj
+  pure $ Strict (DataBool $ Prelude.not b)
+
+geq :: StrictData
+geq = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataBool $ ii >= jj)
+gt :: StrictData
+gt = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataBool $ ii > jj)
+leq :: StrictData
+leq = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataBool $ ii <= jj)
+lt :: StrictData
+lt = fun2 $ \i j -> do
+  (DataInt ii) <- force i
+  (DataInt jj) <- force j
+  pure $ Strict (DataBool $ ii < jj)
+
+or :: StrictData
+or = fun2 $ \i j -> do
+  (DataBool ii) <- force i
+  (DataBool jj) <- force j
+  pure $ Strict (DataBool $ ii || jj)
+and :: StrictData
+and = fun2 $ \i j -> do
+  (DataBool ii) <- force i
+  (DataBool jj) <- force j
+  pure $ Strict (DataBool $ ii && jj)
+not :: StrictData
+not = fun $ \i -> do
+  (DataBool ii) <- force i
+  pure $ Strict $ DataBool (Prelude.not ii)
 
 
 stdlib :: [(Name, Prim)]

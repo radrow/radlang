@@ -15,8 +15,8 @@ main = do
   let result = do
         e <- parseProgram fileName sourceCode
         t <- typecheck e
-        d <- evalProgram e
+        d <- evalPrintProgram e
         pure (t, d)
   case result of
     Left e -> hPutStrLn stderr e
-    Right (t, d) -> putStrLn $ show d <> " : " <> show t
+    Right (t, d) -> putStrLn $ d <> " : " <> show t
