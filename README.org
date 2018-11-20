@@ -57,6 +57,18 @@ let fibo :=
 in fibo 4242
 #+END_SRC
 
+Fixed point based factorial:
+
+#+BEGIN_SRC haskell
+let fix f :=
+      let x := f x in x;
+    fact rec n :=
+       if eq n 0
+       then 1
+       else mult n (rec (minus n 1))
+in fix fact 4
+#+END_SRC
+
 ** Implementation
 
 In this section I will briefly describe how my idea works.
