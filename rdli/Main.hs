@@ -43,8 +43,8 @@ main = forever $ do
       Eval -> printResult $ do
         e <- parseProgram "interactive" line
         void $ typecheck e
-        d <- evalProgram e
-        pure $ show d
+        d <- evalPrintProgram e
+        pure d
       Typecheck -> printResult $ do
         e <- parseProgram "interactive" line
         t <- typecheck e

@@ -123,20 +123,22 @@ instance Semigroup Substitution where
 instance Monoid Substitution where
   mempty = Subst M.empty
 
-data Data
+data Data = Lazy Namespace Expr | Strict StrictData
+
+data StrictData
   = DataInt Integer
   | DataBool Bool
   | DataLambda Namespace Name Expr
-  | DataInternalFunc (Data -> Data)
+  | DataInternalFunc (Data -> Evaluator Data)
 
-instance Show Data where
+instance Show StrictData where
   show = \case
     DataInt i -> show i
     DataBool b -> show b
     DataLambda _ n e -> "\\" <> n <> " -> " <> show e
     DataInternalFunc _ -> "internal func"
 
-instance Eq Data where
+instance Eq StrictData where
   (DataInt a) == (DataInt b) = a == b
   (DataBool a) == (DataBool b) = a == b
   _ == _ = False -- we don't compare functions.

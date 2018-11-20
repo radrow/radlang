@@ -1,6 +1,6 @@
 -- |This module is responsible for evaluation of Expr tree into Data
 
-module Radlang.Evaluator(evalProgram) where
+module Radlang.Evaluator(evalProgram, evalPrintProgram, force) where
 
 import Data.Bifunctor(first)
 import Control.Applicative
@@ -67,7 +67,7 @@ withNs n = local (update n)
 withStdlib :: Evaluator a -> Evaluator a
 withStdlib ev = do
   ns <- fmap M.fromList $ forM stdlib $ \(name, val ::: _) -> do
-    i <- registerData val
+    i <- registerData $ Strict val
     pure (name <~ i)
   withNs ns ev
 
@@ -83,6 +83,15 @@ withDataExpr a e = withData a (eval e)
 withNsExpr :: Namespace -> Expr -> Evaluator Data
 withNsExpr n e = local (update n) (eval e)
 
+-- |Forces evaluation of lazy data
+force :: Data -> Evaluator StrictData
+force (Strict d) = pure d
+force (Lazy ns expr) = withNsExpr ns expr >>= force
+
+-- |Forces deeply data
+deepForce :: Data -> Evaluator StrictData
+deepForce = force
+
 -- |Evaluator that returns computed result
 eval :: Expr -> Evaluator Data
 eval expr =
@@ -90,31 +99,45 @@ eval expr =
     Val a -> lookupName a >>= \case
       Just x -> pure x
       Nothing -> throwError $ "Unbound value: " <> a
-    ConstInt d -> pure $ DataInt d
-    ConstBool d -> pure $ DataBool d
+    ConstInt d -> pure $ Strict $ DataInt d
+    ConstBool d -> pure $ Strict $ DataBool d
     Application f arg ->
-      eval f >>= \case
+      eval f >>= force >>= \case
         DataLambda ns argname e -> do
           d <- eval arg
           withNs ns $ withDataExpr (argname <~ d) e
-        DataInternalFunc func -> func <$> eval arg
+        DataInternalFunc func -> eval arg >>= func
         d -> do
-          ds <- getDataspace
-          ns <- getNamespace
-          throwError $ "Function application not into lambda: " <> show d <> "\n\n ds: " <> show ds <> "\n\n ns: " <> show ns
-    Let [] eIn -> eval eIn
-    Let ((name, _, e):rest) eIn -> do
-      d <- eval e
+          throwError $ "Function application not into lambda: " <> show d
+    Let defs eIn -> do
+      (ds, dcount) <- getDataspace
+      ns <- getNamespace
+      let n = length defs
+          ids = take n [dcount + 1..]
+          newNs = foldl
+                  (\prevNs ((name, _, _), i) -> M.insert name i prevNs)
+                  ns
+                  (zip defs ids)
+      forM defs $ \(_, _, e) -> registerData (Lazy newNs e)
+      withNsExpr newNs eIn
+
+    Let ((name, _, e):rest) eIn -> do -- FIXME: first namespace, then data
+      ns <- getNamespace
+      let d = Lazy ns e
       withDataExpr (name <~ d) (Let rest eIn)
-    Lambda name e -> (\ns -> DataLambda ns name e) <$> ask
+    Lambda name e -> Strict . (\ns -> DataLambda ns name e) <$> ask
 
     If cond then_ else_ -> do
-      c <- eval cond
+      c <- force =<< eval cond
       case c of
         DataBool b ->
           if b then eval then_ else eval else_
         _ -> throwError $ "Not a valid condition: " <> show c
 
 -- |Executes Evaluator on given Expr
-evalProgram :: Expr -> Either String Data
-evalProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex)) M.empty) (M.empty, 0)
+evalProgram :: Expr -> Either ErrMsg StrictData
+evalProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= deepForce)) M.empty) (M.empty, 0)
+
+-- |Executes Evaluator and prints result
+evalPrintProgram :: Expr -> Either ErrMsg String
+evalPrintProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= runtimeShow )) M.empty) (M.empty, 0)
