@@ -43,13 +43,20 @@ lookupName n = do
       Nothing -> throwError $ "Unbound id: " <> show i
     Nothing -> pure Nothing
 
-
 -- |Allocates new data and returns id
 registerData :: Data -> Evaluator DataId
 registerData d = do
   (ds, count) <- getDataspace
-  put $ (M.insert (count + 1) d ds, count + 1)
+  put (M.insert (count + 1) d ds, count + 1)
   pure $ count + 1
+
+
+-- |Allocates new data on given id
+updateDataAt :: Data -> DataId -> Evaluator ()
+updateDataAt d i = do
+  (ds, count) <- getDataspace
+  put (M.insert i d ds, count)
+  pure ()
 
 -- |Evals with overbound variable id
 withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
@@ -86,7 +93,10 @@ withNsExpr n e = local (update n) (eval e)
 -- |Forces evaluation of lazy data
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
-force (Lazy ns expr) = withNsExpr ns expr >>= force
+force (Lazy ns i expr) = do
+  forced <- withNsExpr ns expr >>= force
+  updateDataAt (Strict forced) i
+  pure forced
 
 -- |Forces deeply data
 deepForce :: Data -> Evaluator StrictData
@@ -114,17 +124,14 @@ eval expr =
       ns <- getNamespace
       let n = length defs
           ids = take n [dcount + 1..]
+          idDefs = map (\((a,b,c), i) -> (a,b,c,i)) (zip defs ids)
           newNs = foldl
-                  (\prevNs ((name, _, _), i) -> M.insert name i prevNs)
+                  (\prevNs (name, _, _, i) -> M.insert name i prevNs)
                   ns
-                  (zip defs ids)
-      forM defs $ \(_, _, e) -> registerData (Lazy newNs e)
+                  idDefs
+      forM idDefs $ \(_, _, e, i) -> registerData (Lazy newNs i e)
       withNsExpr newNs eIn
 
-    Let ((name, _, e):rest) eIn -> do -- FIXME: first namespace, then data
-      ns <- getNamespace
-      let d = Lazy ns e
-      withDataExpr (name <~ d) (Let rest eIn)
     Lambda name e -> Strict . (\ns -> DataLambda ns name e) <$> ask
 
     If cond then_ else_ -> do
