@@ -1,6 +1,6 @@
 * radlang
 
-Purely functional, strict (yet!) programming language featuring static type checking, type inference and general polymorphic types. Program in radlang is understood as valid expression.
+Purely functional, lazy programming language featuring static type checking, type inference and general polymorphic types. Program in radlang is understood as valid expression.
 
 Syntax highly inspired by Haskell and OCaml.
 
