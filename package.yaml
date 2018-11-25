@@ -25,7 +25,7 @@ dependencies:
 - containers
 - mtl
 - transformers
-- ansi-terminal
+- ansi-terminal >= 0.8.1
 - set-monad >= 0.3.0.0
 - parser-combinators
 

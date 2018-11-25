@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 74e3fc2be630a2c0a4c68492519d08f2a51ccdac00151489483474c21f9055bb
+-- hash: 7d6e0bfdb400305da419b217b16665f1bd2436fa3031db0a5ad58bf7f3576653
 
 name:           radlang
 version:        1.0.1
@@ -38,6 +38,9 @@ library
       Radlang.Stdlib
       Radlang.Typechecker
       Radlang.Types
+      Radlang.Types.General
+      Radlang.Types.Runtime
+      Radlang.Types.Typesystem
   other-modules:
       Paths_radlang
   hs-source-dirs:
@@ -45,7 +48,7 @@ library
   default-extensions: LambdaCase GADTs
   ghc-options: -Wall -Wextra
   build-depends:
-      ansi-terminal
+      ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
@@ -63,7 +66,7 @@ executable rdl
       rdl
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-terminal
+      ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
@@ -82,7 +85,7 @@ executable rdli
       rdli
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-terminal
+      ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
@@ -103,7 +106,7 @@ test-suite radlang-test
       test
   ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-terminal
+      ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers
     , megaparsec >=6.5
