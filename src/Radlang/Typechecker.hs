@@ -1,21 +1,20 @@
 {-#LANGUAGE MultiWayIf #-}
+{-#LANGUAGE ScopedTypeVariables #-}
 {-#LANGUAGE OverloadedLists #-}
 -- |Implementation of the W Algorithm for typechecking
 
-module Radlang.Typechecker() where
+module Radlang.Typechecker where
 
-import Data.List
-import Data.Map.Strict as M
-import Data.Set.Monad as S
+import Data.List as DL
+import qualified Data.Map.Strict as M
+import qualified Data.Set.Monad as S
+import Data.Set.Monad(Set)
 import Control.Applicative
 import Control.Monad.State.Strict
-import Control.Monad.Reader
 import Control.Monad.Except
 
 import Radlang.Types
 import Radlang.Typedefs
-import Radlang.Stdlib
-import Radlang.Helpers
 
 
 -- |Gets superclasses of class by name
@@ -118,6 +117,7 @@ matchPred (IsIn i1 t1) (IsIn i2 t2) =
   else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
 
 
+-- |Check whether class is defined
 classDefined :: ClassEnv -> Name -> Bool
 classDefined ce n = M.member n $ classes ce
 
@@ -138,7 +138,7 @@ addInst ps p@(IsIn i _) ce = do
   when (not $ classDefined ce i) (throwError $ "Class not defined: " <> i)
   its <- instances ce i
   c <- super ce i
-  let overlaps p q = catchError (mguPred p q >> pure True) (const $ pure False)
+  let overlaps pr q = catchError (mguPred pr q >> pure True) (const $ pure False)
       qs = fmap (\(_ :=> q) -> q) its
   filterM (overlaps p) (S.toList qs) >>= \case
     [] -> pure ()
@@ -177,14 +177,14 @@ entail ce ps p = do
         qs <- S.toList <$> byInst ce p
         ents <- traverse (entail ce ps) qs
         pure $ all id ents
-  inst <- catchError instCheck (const $ pure False) -- this `catch` may cause problems
-  pure $ any (elem p) sups || inst
+  instc <- catchError instCheck (const $ pure False) -- this `catch` may cause problems
+  pure $ any (elem p) sups || instc
 
 
 inHNF :: Pred -> Bool
 inHNF (IsIn _ t) = case t of
-  (TypeVarWobbly v) -> True
-  (TypeVarRigid v) -> False
+  (TypeVarWobbly _) -> True
+  (TypeVarRigid _) -> False
   (TypeApp tt _) -> inHNF (IsIn undefined tt)
   _ -> error "unimplemented ihnf"
 
@@ -217,9 +217,9 @@ reduce :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
 reduce ce ps = toHNFs ce ps >>= simplify ce
 
 
-quantify :: [TypeVar] -> Qual Type -> Scheme
+quantify :: Set TypeVar -> Qual Type -> Scheme
 quantify vs qt = Forall ks (substitute s qt) where
-  vs' = [v | v <- S.toList $ free qt, v `elem` vs]
+  vs' = [v | v <- S.toList $ free qt, v `S.member` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
   s = Subst $ M.fromList $ zip ns (fmap TypeADT [0..])
@@ -318,14 +318,14 @@ inferTypeAlt ce as (pats, e) = do
   pure (S.union ps qs, S.foldr fun t ts)
 
 
-inferTypeAlts :: ClassEnv -> [Assumption] -> Set Alt -> Type -> Typechecker (Set Pred)
+inferTypeAlts :: ClassEnv -> [Assumption] -> [Alt] -> Type -> Typechecker (Set Pred)
 inferTypeAlts ce as alts t = do
-  psts <- traverse (inferTypeAlt ce as) $ S.toList alts
+  psts <- traverse (inferTypeAlt ce as) alts
   void $ traverse (unify t) (fmap snd psts)
   pure (S.unions $ fmap fst psts)
 
 
-split :: ClassEnv -> Set TypeVar -> TypeVar -> Set Pred -> Typechecker (Set Pred, Set Pred)
+split :: ClassEnv -> Set TypeVar -> Set TypeVar -> Set Pred -> Typechecker (Set Pred, Set Pred)
 split ce fs gs ps = do
   ps' <- reduce ce ps
   let (ds, rs) = S.partition (all (`S.member` fs) . free) ps'
@@ -334,141 +334,129 @@ split ce fs gs ps = do
 
 type Ambiguity = (TypeVar, Set Pred)
 
-
-{-
--- |Returns typespace
-getTypespace :: Typechecker Typespace
-getTypespace = ask
+ambiguities :: Set TypeVar -> Set Pred -> Set Ambiguity
+ambiguities vs ps = fmap (\v -> (v, S.filter (elem v . free) ps)) $ free ps S.\\ vs
 
 
--- |Runs Typechecker with another typespace
-withTypespace :: Typespace -> Typechecker a -> Typechecker a
-withTypespace ts = local (const ts)
+candidates :: ClassEnv -> Ambiguity -> Typechecker (Set Type)
+candidates ce (v, qs) =
+  let is = fmap (\(IsIn i _) -> i) qs
+      ts = fmap (\(IsIn _ t) -> t) qs
+      filt :: Set Type -> Typechecker (Set Type)
+      filt tts = fmap S.fromList $ flip filterM (S.toList tts) $ \t ->
+        all id <$> traverse (entail ce S.empty) [IsIn i t | i <- S.toList is]
+  in if all ((TypeVarWobbly v)==) ts
+     && any (`S.member` numClasses) is
+     && all (`S.member` stdClasses) is
+     then filt (defaults ce)
+     else pure S.empty
 
 
--- |Runs Typechecker with additional type assignment
-withTypeAssg :: (Name, Type) -> Typechecker a -> Typechecker a
-withTypeAssg (n, t) tc = do
-  ts <- getTypespace
-  let newts = Typespace . (M.insert n (Poly S.empty t)) . getTypespaceMap $ ts
-  withTypespace newts tc
+withDefaults :: ([Ambiguity] -> [Type] -> a)
+             -> ClassEnv -> Set TypeVar -> Set Pred
+             -> Typechecker a
+withDefaults f ce vs ps = do -- TODO: Ensure if it is not fuckupped
+  let vps = ambiguities vs ps
+  tss <- traverse (candidates ce) $ S.toList vps
+  if any S.null tss
+    then throwError "Cannot resolve ambiguity"
+    else pure $ f (S.toList vps) (fmap S.findMin tss)
+
+defaultedPreds :: ClassEnv -> Set TypeVar -> Set Pred -> Typechecker (Set Pred)
+defaultedPreds = withDefaults (\vps _ -> S.unions (fmap snd vps))
 
 
--- |Substitutes variables in typespace of given Typechecker
-withSubstitution :: Substitution -> Typechecker a -> Typechecker a
-withSubstitution s tc = ask >>= \t -> withTypespace (substitute s t) tc
+defaultSubst :: ClassEnv -> Set TypeVar -> Set Pred -> Typechecker Substitution
+defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
 
--- |Runs Typecheker with standard library
-withStdlib :: Typechecker a -> Typechecker a
-withStdlib tc = do
-  let ts = Typespace $ M.fromList $ flip fmap stdlib $ \(name, _ ::: typ) -> (name <~ typ)
-  withTypespace ts tc
+type ExplBind = (Name, Scheme, [Alt])
+
+inferTypeExpl :: ClassEnv -> [Assumption] -> ExplBind -> Typechecker (Set Pred)
+inferTypeExpl ce as (i, sc, alts) = do
+  (qs :=> t) <- freshInst sc
+  ps <- inferTypeAlts ce as alts t
+  s <- getSubst
+  let qs' = substitute s qs
+      t'= substitute s t
+      fs = free $ substitute s as
+      gs = free t' S.\\ fs
+      sc' = quantify gs (qs' :=> t')
+  ps' <- S.fromList <$> filterM (\x -> not <$> entail ce qs' x) (S.toList $ substitute s ps)
+  (ds, rs) <- split ce fs gs ps'
+  if | sc /= sc' -> throwError "Signature is too general"
+     | not (S.null rs) -> throwError "Context is too weak"
+     | otherwise -> pure ds
 
 
--- |Abstracts out types that are free in t but not in typespace
-generalize :: Typespace -> Type -> TypePoly
-generalize ts t = Poly vars t where
-  vars = free t S.\\ free ts
+type ImplBind = (Name, [Alt])
 
 
+restricted :: Foldable t => t ImplBind -> Bool
+restricted bs = any simple bs where
+  simple (_, alts) = any (null . fst) alts
 
 
--- |Replace all bound typevars in scheme with fresh typevars
-instantiate :: TypePoly -> Typechecker Type
-instantiate (Poly vars t) = do
-  nvars <- traverse (const newVar "_I") (S.toList vars)
-  let newsub = Subst $ M.fromList $ zip (S.toList vars) nvars
-  pure $ substitute newsub t
+inferTypeImpl :: Infer [ImplBind] [Assumption]
+inferTypeImpl ce as bs = do
+  ts <- traverse (const $ newVar "IMPL" KType) bs
+  let is = fmap fst bs
+      scs = fmap toScheme ts
+      as' = zipWith (:>:) is scs ++ as
+      altss = fmap snd bs
+  pss <- sequence (zipWith (inferTypeAlts ce as') altss ts)
+  s <- getSubst
+  let ps' = substitute s (S.unions pss)
+      ts' = substitute s ts
+      fs = free (substitute s as)
+      vss = fmap free ts'
+      gs = foldr1 union (fmap S.toList vss) \\ S.toList fs
+  (ds, rs) <- split ce fs (foldr1 S.intersection vss) ps'
+  if restricted bs
+    then
+    let gs' = S.fromList gs S.\\ free rs
+        scs' = fmap (quantify gs' . (S.empty :=>)) ts'
+    in pure (S.union ds rs, zipWith (:>:) is scs')
+    else
+    let scs' = fmap (quantify (S.fromList gs) . (rs :=>)) ts'
+    in pure (ds, zipWith (:>:) is scs')
+
+type Bindings = ([ExplBind], [[ImplBind]])
 
 
-
-+
--- |Type inference along with check
-inferType :: Expr -> Typechecker (Substitution, Type)
-inferType = \case
-  ConstBool _ -> pure (mempty, TypeBool)
-
-  ConstInt _ -> pure (mempty, TypeInt)
-
-  Val e -> lookupType e >>= \case
-    Nothing -> throwError $ "Unbound value: " <> e
-    Just pt -> instantiate pt >>= \nt -> pure (mempty, nt)
-
-  Application f a -> do
-    tvar <- newVar "_A"
-    (s1, t1) <- inferType f
-    (s2, t2) <- withSubstitution s1 $ inferType a
-    s3 <- mgu (substitute s2 t1) (TypeFunc t2 tvar)
-    pure $ (s3 <> s2 <> s1, substitute s3 tvar)
-
-  Let assgs e -> do
-    ts <- getTypespace
-    (newSub, newTypes) <- foldM
-      (\(prevsub, (Typespace prevtsmap)) (name, typeAnn, value) -> do
-          -- I need to predict my type to check if recursion typechecks.
-          -- This will be substituted by real me
-          me <- Poly S.empty <$> newVar ("_L_" <> name)
-
-          -- Typespace that includes type of me
-          let withMe = Typespace $ M.insert name me prevtsmap
-
-          -- Get my real type
-          (subVal, valueType) <- withTypespace withMe $ inferType value
-
-          -- Substitute my typename with type inferred previously
-          let withMeSub@(Typespace withMeSubMap) = substitute subVal withMe
-
-          -- Now search my name in substituted typespace and un-poly
-          nameType <- instantiate $ withMeSubMap M.! name
-
-          -- Typecheck me against real me
-          subUnify <- mgu nameType valueType
-
-          -- Build output substitution and typespace
-          let news = subUnify <> subVal <> prevsub
-              newts = substitute subUnify withMeSub
-
-          -- Consider type annotation and generalize
-          tvgen <- maybe
-                   -- If type is unspecified, leave it polymorphic
-                   (pure $ generalize newts valueType)
-                   -- Unify types make perform full generalization
-                   (\annT -> mgu annT valueType >>
-                     pure (generalize (Typespace M.empty) annT)
-                   )
-                   typeAnn
-          pure $ (news, Typespace $ M.insert name tvgen prevtsmap)
-      )
-      (mempty, ts)
-      assgs
-    (se, te) <- withTypespace newTypes $ inferType e
-    pure $ (se <> newSub, te)
-
-  Lambda arg expr -> do
-    argT <- newVar "_L"
-    (Typespace ts) <- getTypespace
-    let newTs = Typespace $ M.insert arg (Poly S.empty argT) ts
-    (s, exprT) <- withTypespace newTs $ inferType expr
-    pure (s, TypeFunc (substitute s argT) exprT)
-
-  If cond th el -> do
-    (scond, condT) <- inferType cond
-    sbool <- mgu condT TypeBool
-    (sth, thT) <- withSubstitution (sbool <> scond) $ inferType th
-    (sel, elT) <- withSubstitution (sth <> sbool <> scond) $ inferType el
-    sval <- mgu thT elT
-    let s = sval <> sel <> sth <> sbool <> scond
-    pure (s, substitute s thT)
+inferTypeBindings :: Infer Bindings [Assumption]
+inferTypeBindings ce as (es, iss) = do
+  let as' = [v :>: sc | (v, sc, _) <- es]
+  (ps, as'') <- inferTypeSeq inferTypeImpl ce (as' ++ as) iss
+  qss <- traverse (inferTypeExpl ce (as'' ++ as' ++ as)) es
+  pure (S.union ps $ S.unions qss, as'' ++ as')
 
 
--- |Evaluation of typechecker
-runTypechecker :: Typechecker a -> Either String a
-runTypechecker = flip evalState (TypecheckerState 0)
-  . flip runReaderT (Typespace M.empty)
-  . runExceptT
+inferTypeSeq :: Infer bg [Assumption] -> Infer [bg] [Assumption]
+inferTypeSeq ti ce as = \case
+  [] -> pure (S.empty, [])
+  (bs:bss) -> do
+    (ps, as') <- ti ce as bs
+    (qs, as'') <- inferTypeSeq ti ce (as' ++ as) bss
+    pure (S.union ps qs, as'' ++ as')
 
--- |Toplevel typechecking of expression
-typecheck :: Expr -> Either ErrMsg Type
-typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
--}
+type Program = [Bindings]
+
+inferTypeProgram :: ClassEnv -> [Assumption] -> Program -> Typechecker [Assumption]
+inferTypeProgram ce as bgs = do
+  (ps, as') <- inferTypeSeq inferTypeBindings ce as bgs
+  s <- getSubst
+  rs <- reduce ce (substitute s ps)
+  s' <- defaultSubst ce S.empty rs
+  pure (substitute (s' <> s) as')
+
+
+-- -- |Evaluation of typechecker
+-- runTypechecker :: Typechecker a -> Either String a
+-- runTypechecker = flip evalState (TypecheckerState 0)
+--   . flip runReaderT (Typespace M.empty)
+--   . runExceptT
+
+-- -- |Toplevel typechecking of expression
+-- typecheck :: Expr -> Either ErrMsg Type
+-- typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
