@@ -109,8 +109,8 @@ eval expr =
     Val a -> lookupName a >>= \case
       Just x -> pure x
       Nothing -> throwError $ "Unbound value: " <> a
-    ConstInt d -> pure $ Strict $ DataInt d
-    ConstBool d -> pure $ Strict $ DataBool d
+    -- ConstInt d -> pure $ Strict $ DataInt d
+    -- ConstBool d -> pure $ Strict $ DataBool d
     Application f arg ->
       eval f >>= force >>= \case
         DataLambda ns argname e -> do
@@ -134,12 +134,12 @@ eval expr =
 
     Lambda name e -> Strict . (\ns -> DataLambda ns name e) <$> ask
 
-    If cond then_ else_ -> do
-      c <- force =<< eval cond
-      case c of
-        DataBool b ->
-          if b then eval then_ else eval else_
-        _ -> throwError $ "Not a valid condition: " <> show c
+    -- If cond then_ else_ -> do
+    --   c <- force =<< eval cond
+    --   case c of
+    --     DataBool b ->
+    --       if b then eval then_ else eval else_
+    --     _ -> throwError $ "Not a valid condition: " <> show c
 
 -- |Executes Evaluator on given Expr
 evalProgram :: Expr -> Either ErrMsg StrictData

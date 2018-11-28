@@ -2,7 +2,7 @@
 {-#LANGUAGE OverloadedLists #-}
 -- |Implementation of the W Algorithm for typechecking
 
-module Radlang.Typechecker(typecheck) where
+module Radlang.Typechecker() where
 
 import Data.List
 import Data.Map.Strict as M
@@ -13,6 +13,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 
 import Radlang.Types
+import Radlang.Typedefs
 import Radlang.Stdlib
 import Radlang.Helpers
 
@@ -42,6 +43,17 @@ emptyClassEnv = ClassEnv
   }
 
 
+-- |Creates substitution with type assigned
+bindVar :: TypeVar -> Type -> Typechecker Substitution
+bindVar tv t = if
+    | t == TypeVarWobbly tv -> pure mempty
+    | S.member tv (free t) ->
+      throwError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
+    | kind tv /= kind t -> throwError $ "Kinds don't match"
+    | otherwise -> pure $ Subst $ M.singleton (tName tv) t
+
+
+
 -- |Merge substitution ensuring that they agree
 merge :: Substitution -> Substitution -> Typechecker Substitution
 merge s1 s2 =
@@ -49,6 +61,61 @@ merge s1 s2 =
       agree = all (liftA2 (==) (substitute s1 . TypeVarWobbly) (substitute s2 .TypeVarWobbly))
         (fmap extract $ M.toList (getSubstMap s1) `intersect` M.toList (getSubstMap s2))
   in if agree then pure (s1 <> s2) else throwError "Cannot merge substitutions"
+
+
+
+-- |Most general unifier
+mgu :: Type -> Type -> Typechecker Substitution
+mgu t1 t2 = case (t1, t2) of
+  (TypeInt, TypeInt) -> pure mempty
+  (TypeVarWobbly tv, _) -> bindVar tv t2
+  (_, TypeVarWobbly tv) -> bindVar tv t1
+  (TypeApp f1 a1, TypeApp f2 a2) -> do
+    sf <- mgu f1 f2
+    sa <- mgu a1 a2
+    pure $ sa <> sf
+  (TypeVarRigid a, TypeVarRigid b) ->
+    if a == b
+    then pure mempty
+    else throwError $ "Cannot unify rigid different type variables: " <> tName a <> " vs " <> tName b
+  (TypeVarRigid (TypeVar a _), b) ->
+    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+  (b, TypeVarRigid (TypeVar a _)) ->
+    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
+  _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
+
+
+
+-- |Unifier that uses `merge` instead of `<>`
+match :: Type -> Type -> Typechecker Substitution
+match t1 t2 = case (t1, t2) of
+  (TypeInt, TypeInt) -> pure mempty
+  (TypeApp f1 a1, TypeApp f2 a2) -> do
+    sf <- match f1 f2
+    sa <- match a1 a2
+    merge sa sf
+  (TypeVarWobbly tv, t) | kind tv == kind t -> bindVar tv t2
+  (TypeVarRigid a, TypeVarRigid b) ->
+    if a == b
+    then pure mempty
+    else throwError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
+  (TypeVarRigid (TypeVar a _), b) ->
+    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+  (b, TypeVarRigid (TypeVar a _)) ->
+    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> show b <> " vs " <> a
+  _ -> throwError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
+
+
+mguPred :: Pred -> Pred -> Typechecker Substitution
+mguPred (IsIn i1 t1) (IsIn i2 t2) =
+  if i1 == i2 then mgu t1 t2
+  else throwError $ "Classes don't unify: " <> i1 <> " vs " <> i2
+
+
+matchPred :: Pred -> Pred -> Typechecker Substitution
+matchPred (IsIn i1 t1) (IsIn i2 t2) =
+  if i1 == i2 then match t1 t2
+  else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
 
 
 classDefined :: ClassEnv -> Name -> Bool
@@ -79,7 +146,7 @@ addInst ps p@(IsIn i _) ce = do
   pure $ updateClassEnv ce i (c, S.insert (ps :=> p) its)
 
 
--- |Deep search for all superclasses
+-- |Deep search for all superclasses' predicates
 bySuper :: ClassEnv -> Pred -> Typechecker (Set Pred)
 bySuper ce p@(IsIn i t) = do
   i' <- S.toList <$> super ce i
@@ -88,6 +155,7 @@ bySuper ce p@(IsIn i t) = do
     else S.insert p <$> (S.unions <$> (forM i' (\i'' -> bySuper ce (IsIn i'' t))))
 
 
+-- |Deep search for all matching instances' predicates
 byInst :: ClassEnv -> Pred -> Typechecker (Set Pred)
 byInst ce p@(IsIn i t) = do -- TODO ensure if it works
   let tryInst (ps :=> h) = do
@@ -99,13 +167,17 @@ byInst ce p@(IsIn i t) = do -- TODO ensure if it works
   msum its
 
 
+-- |Check if `p` will hold whenever all of `ps` are satisfied
 entail :: ClassEnv -> Set Pred -> Pred -> Typechecker Bool
 entail ce ps p = do
-  sups <- forM (S.toList ps) $ \pp -> bySuper ce pp
+  -- all sets of superclasses of `ps`
+  sups <- traverse (bySuper ce) (S.toList ps)
+  -- all matching instances have this property
   let instCheck = do
-        sups <- traverse (bySuper ce) (S.toList ps)
-        pure $ any (elem p) sups
-  inst <- catchError instCheck (const $ pure False)
+        qs <- S.toList <$> byInst ce p
+        ents <- traverse (entail ce ps) qs
+        pure $ all id ents
+  inst <- catchError instCheck (const $ pure False) -- this `catch` may cause problems
   pure $ any (elem p) sups || inst
 
 
@@ -125,22 +197,145 @@ toHNF ce p =
 
 
 toHNFs :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
-toHNFs = do pss <- mapM (toHNF ce) ps
-            pure $ join pss
+toHNFs ce ps = do
+  pss <- S.fromList <$> mapM (toHNF ce) (S.toList ps)
+  pure $ join pss
 
 
--- simplify is built in
+simplify :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
+simplify ce pps = S.fromList <$> loop [] (S.toList pps) where
+  loop :: [Pred] -> [Pred] -> Typechecker [Pred]
+  loop rs [] = pure rs
+  loop rs (p:ps) = do
+    e <- entail ce (S.fromList $ rs ++ ps) p
+    if e
+      then loop rs ps
+      else loop (p:rs) ps
 
 
 reduce :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
-reduce = toHNFs
+reduce ce ps = toHNFs ce ps >>= simplify ce
 
 
--- |Lookup type in typespace
-lookupType :: Name -> Typechecker (Maybe TypePoly)
-lookupType n = M.lookup n . getTypespaceMap <$> getTypespace
+quantify :: [TypeVar] -> Qual Type -> Scheme
+quantify vs qt = Forall ks (substitute s qt) where
+  vs' = [v | v <- S.toList $ free qt, v `elem` vs]
+  ks = fmap kind vs'
+  ns = fmap tName vs'
+  s = Subst $ M.fromList $ zip ns (fmap TypeADT [0..])
+
+toScheme :: Type -> Scheme
+toScheme t = Forall [] (S.empty :=> t)
 
 
+lookupType :: Name -> [Assumption] -> Typechecker Scheme -- TODO: to map
+lookupType i [] = throwError $ "Unbound id: " <> i
+lookupType i ((i' :>: sc): as) = if i == i' then pure sc else lookupType i as
+
+
+getSubst :: Typechecker Substitution
+getSubst = gets tsSubst
+
+
+extendSubst :: Substitution -> Typechecker ()
+extendSubst s = modify $ \ts -> ts{tsSubst = s <> tsSubst ts}
+
+
+unify :: Type -> Type -> Typechecker ()
+unify t1 t2 = do
+  s <- getSubst
+  u <- mgu (substitute s t1) (substitute s t2)
+  extendSubst u
+
+
+-- |Returns new type variable
+newVar :: String -> Kind -> Typechecker Type
+newVar prefix k = do
+  c <- gets tsSupply
+  modify $ \s -> s{ tsSupply = c + 1 }
+  pure $ TypeVarWobbly $ TypeVar (prefix <> show c) k
+
+freshInst :: Scheme -> Typechecker (Qual Type)
+freshInst (Forall ks qt) = do
+  ts <- mapM (newVar "_Inst") ks
+  pure $ inst ts qt
+
+type Infer e t = ClassEnv -> [Assumption] -> e -> Typechecker (Set Pred, t)
+
+inferTypeExpr :: Infer Expr Type
+inferTypeExpr ce as = \case
+  Val v -> do
+    sc <- lookupType v as
+    (ps :=> t) <- freshInst sc
+    pure (ps, t)
+  ConstLit _ -> newVar "_Int" KType >>= \v -> pure (S.singleton $ IsIn "Num" v, v)
+  Constructor (_ :>: sc) -> do
+    (ps :=> t) <- freshInst sc
+    pure (ps, t)
+  Application f a -> do
+    (ps, tf) <- inferTypeExpr ce as f
+    (qs, ta) <- inferTypeExpr ce as a
+    t <- newVar "_Arg" KType
+    unify (fun ta t) tf
+    pure (S.union ps qs, t)
+
+inferTypeLiteral :: Literal -> Typechecker (Set Pred, Type)
+inferTypeLiteral = \case
+  LitInt _ -> newVar "_LI" KType >>= \v -> pure (S.singleton (IsIn "Num" v), v)
+
+inferTypePattern :: Pattern -> Typechecker (Set Pred, [Assumption], Type)
+inferTypePattern = \case
+  PVar i -> newVar "_PV" KType >>= \v -> pure (S.empty, [i :>: toScheme v], v)
+  PWildcard -> newVar "_PW" KType >>= \v -> pure (S.empty, [], v)
+  PAs i pat -> do
+    (ps, as, t) <- inferTypePattern pat
+    pure (ps, (i :>: toScheme t) : as, t)
+  PLit l -> inferTypeLiteral l >>= \(ps, t) -> pure (ps, [], t)
+  PNPlusK n k -> newVar "_PNPK" KType >>= \t ->
+    pure ( S.singleton $ IsIn "Integral" t, [n :>: toScheme t], t)
+  PConstructor (i :>: sc) pats -> do
+    (ps, as, ts) <- inferTypePatterns pats
+    t' <- newVar "_PC" KType
+    (qs :=> t) <- freshInst sc
+    unify t (S.foldr fun t' ts)
+    pure (S.union ps qs, as, t')
+
+inferTypePatterns :: Set Pattern -> Typechecker (Set Pred, [Assumption], Set Type)
+inferTypePatterns pats = do
+  psats <- traverse inferTypePattern (S.toList pats)
+  let ps = S.unions $ fmap (\(x,_,_) -> x) psats
+      as = join $ fmap (\(_,x,_) -> x) psats
+      ts = fmap (\(_,_,x) -> x) psats
+  pure (ps, as, S.fromList ts)
+
+
+type Alt = (Set Pattern, Expr)
+
+inferTypeAlt :: Infer Alt Type
+inferTypeAlt ce as (pats, e) = do
+  (ps, as', ts) <- inferTypePatterns pats
+  (qs, t) <- inferTypeExpr ce (as' ++ as) e
+  pure (S.union ps qs, S.foldr fun t ts)
+
+
+inferTypeAlts :: ClassEnv -> [Assumption] -> Set Alt -> Type -> Typechecker (Set Pred)
+inferTypeAlts ce as alts t = do
+  psts <- traverse (inferTypeAlt ce as) $ S.toList alts
+  void $ traverse (unify t) (fmap snd psts)
+  pure (S.unions $ fmap fst psts)
+
+
+split :: ClassEnv -> Set TypeVar -> TypeVar -> Set Pred -> Typechecker (Set Pred, Set Pred)
+split ce fs gs ps = do
+  ps' <- reduce ce ps
+  let (ds, rs) = S.partition (all (`S.member` fs) . free) ps'
+  rs' <- defaultedPreds ce (S.union fs gs) rs
+  pure (ds, rs S.\\ rs')
+
+type Ambiguity = (TypeVar, Set Pred)
+
+
+{-
 -- |Returns typespace
 getTypespace :: Typechecker Typespace
 getTypespace = ask
@@ -177,12 +372,6 @@ generalize ts t = Poly vars t where
   vars = free t S.\\ free ts
 
 
--- |Returns new type variable
-newVar :: String -> Kind -> Typechecker Type
-newVar prefix k = do
-  c <- gets tsSupply
-  modify $ \s -> s{ tsSupply = c + 1 }
-  pure $ TypeVarWobbly $ TypeVar (prefix <> show c) k
 
 
 -- |Replace all bound typevars in scheme with fresh typevars
@@ -193,70 +382,8 @@ instantiate (Poly vars t) = do
   pure $ substitute newsub t
 
 
--- |Creates substitution with type assigned
-bindVar :: TypeVar -> Type -> Typechecker Substitution
-bindVar tv t = if
-    | t == TypeVarWobbly tv -> pure mempty
-    | S.member (tName tv) (free t) ->
-      throwError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
-    | kind tv /= kind t -> throwError $ "Kinds don't match"
-    | otherwise -> pure $ Subst $ M.singleton (tName tv) t
 
-
--- |Most general unifier
-mgu :: Type -> Type -> Typechecker Substitution
-mgu t1 t2 = case (t1, t2) of
-  (TypeInt, TypeInt) -> pure mempty
-  (TypeVarWobbly tv, _) -> bindVar tv t2
-  (_, TypeVarWobbly tv) -> bindVar tv t1
-  (TypeApp f1 a1, TypeApp f2 a2) -> do
-    sf <- mgu f1 f2
-    sa <- mgu a1 a2
-    pure $ sa <> sf
-  (TypeVarRigid a, TypeVarRigid b) ->
-    if a == b
-    then pure mempty
-    else throwError $ "Cannot unify rigid different type variables: " <> tName a <> " vs " <> tName b
-  (TypeVarRigid (TypeVar a _), b) ->
-    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
-  (b, TypeVarRigid (TypeVar a _)) ->
-    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
-
-
--- |Unifier that uses `merge` instead of `<>`
-match :: Type -> Type -> Typechecker Substitution
-match t1 t2 = case (t1, t2) of
-  (TypeInt, TypeInt) -> pure mempty
-  (TypeApp f1 a1, TypeApp f2 a2) -> do
-    sf <- mgu f1 f2
-    sa <- mgu a1 a2
-    merge sa sf
-  (TypeVarWobbly tv, t) | kind tv == kind t -> bindVar tv t2
-  (TypeVarRigid a, TypeVarRigid b) ->
-    if a == b
-    then pure mempty
-    else throwError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
-  (TypeVarRigid (TypeVar a _), b) ->
-    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> show b
-  (b, TypeVarRigid (TypeVar a _)) ->
-    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> throwError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
-
-
-mguPred :: Pred -> Pred -> Typechecker Substitution
-mguPred (IsIn i1 t1) (IsIn i2 t2) =
-  if i1 == i2 then mgu t1 t2
-  else throwError $ "Classes don't unify: " <> i1 <> " vs " <> i2
-
-
-matchPred :: Pred -> Pred -> Typechecker Substitution
-matchPred (IsIn i1 t1) (IsIn i2 t2) =
-  if i1 == i2 then match t1 t2
-  else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
-
-
-
++
 -- |Type inference along with check
 inferType :: Expr -> Typechecker (Substitution, Type)
 inferType = \case
@@ -344,3 +471,4 @@ runTypechecker = flip evalState (TypecheckerState 0)
 -- |Toplevel typechecking of expression
 typecheck :: Expr -> Either ErrMsg Type
 typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
+-}

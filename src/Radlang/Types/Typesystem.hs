@@ -18,7 +18,7 @@ import Radlang.Types.General
 ---- DEFINITIONS ----
 
 -- |Typechecker state currently contains only count of runtime generated types
-data TypecheckerState = TypecheckerState { tsSupply :: Int}
+data TypecheckerState = TypecheckerState { tsSupply :: Int, tsSubst :: Substitution}
   deriving (Eq, Show)
 
 
@@ -52,12 +52,20 @@ data TypePoly = Poly (Set Name) Type
   deriving (Eq, Show, Ord)
 
 
+data Scheme = Forall [Kind] (Qual Type)
+  deriving (Eq, Ord, Show)
+
+
 data Pred = IsIn Name Type
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
 
 
 data Qual t = Set Pred :=> t
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Show)
+
+
+data Assumption = Name :>: Scheme
+  deriving (Eq, Ord, Show)
 
 
 type Inst = Qual Pred
@@ -79,13 +87,17 @@ newtype Substitution = Subst { getSubstMap :: Map Name Type }
 -- |Types that may be considered as free types carriers
 class Ord t => IsType t where -- Ord is needed because use of Set
   -- |Free type variables in t
-  free :: t -> Set Name
+  free :: t -> Set TypeVar
   -- |Application of substitution
   substitute :: Substitution -> t -> t
 
 
 class HasKind t where
   kind :: t -> Kind
+
+
+class Instantiate t where
+  inst :: [Type] -> t -> t
 
 
 ---- INSTANCES ----
@@ -95,12 +107,18 @@ instance IsType t => IsType (Set t) where
   substitute s = S.map (substitute s)
 
 
+
+instance IsType t => IsType [t] where
+  free s = S.unions $ fmap free s
+  substitute s = fmap (substitute s)
+
+
 instance IsType Type where
   free = \case
     TypeInt -> S.empty
     TypeApp a v -> S.union (free a) (free v)
-    TypeVarWobbly (TypeVar v _) -> S.singleton v
-    TypeVarRigid (TypeVar v _) -> S.singleton v
+    TypeVarWobbly tv -> S.singleton tv
+    TypeVarRigid _ -> S.empty
     TypeADT _ -> undefined
   substitute s@(Subst sm) = \case
     TypeInt -> TypeInt
@@ -124,16 +142,26 @@ instance IsType t => IsType (Qual t) where
   substitute s (ps :=> t) = substitute s ps :=> substitute s t
 
 
-instance IsType TypePoly where
-  free (Poly vars t) = free t S.\\ vars
-  substitute (Subst s) (Poly vars t) =
-    Poly vars $ substitute (Subst $ foldr M.delete s vars) t
+instance IsType Scheme where
+  substitute s (Forall ks qt) = Forall ks (substitute s qt)
+  free (Forall _ qt) = free qt
 
 
-instance IsType Typespace where
-  free (Typespace ts) = free $ S.fromList (M.elems ts)
-  substitute s (Typespace ts) = Typespace $
-    M.map (substitute s) ts
+instance IsType Assumption where
+  free (_ :>: sc) = free sc
+  substitute s (i :>: sc) = i :>: substitute s sc
+
+
+-- instance IsType TypePoly where
+--   free (Poly vars t) = free t S.\\ vars
+--   substitute (Subst s) (Poly vars t) =
+--     Poly vars $ substitute (Subst $ foldr M.delete s vars) t
+
+
+-- instance IsType Typespace where
+  -- free (Typespace ts) = free $ S.fromList (M.elems ts)
+  -- substitute s (Typespace ts) = Typespace $
+  --   M.map (substitute s) ts
 
 
 instance Semigroup Substitution where
@@ -166,3 +194,26 @@ instance HasKind Type where
 
 instance HasKind TypeVar where
   kind (TypeVar _ k) = k
+
+
+instance Instantiate Type where
+  inst ts (TypeApp l r) = TypeApp (inst ts l) (inst ts r)
+  inst ts (TypeADT n) = ts !! n
+  inst _ t = t
+
+
+instance Instantiate a => Instantiate [a] where
+  inst ts = fmap (inst ts)
+
+
+instance Instantiate a => Instantiate (Set a) where
+  inst ts = fmap (inst ts)
+
+
+
+instance Instantiate t => Instantiate (Qual t) where
+  inst ts (ps :=> t) = inst ts ps :=> inst ts t
+
+
+instance Instantiate Pred where
+  inst ts (IsIn c t) = IsIn c (inst ts t)

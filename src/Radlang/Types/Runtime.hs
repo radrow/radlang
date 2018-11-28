@@ -7,6 +7,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import  Data.Map.Strict(Map)
+import Data.Set.Monad
 
 import Radlang.Types.Typesystem
 import Radlang.Types.General
@@ -20,16 +21,35 @@ type Dataspace = (Map DataId Data, Int)
 -- |Transformer responsible for expression evaluation and error handling
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
+
+data Literal
+  = LitInt Integer
+  deriving (Eq, Show, Ord)
+
+
 -- |Desugared expression tree designed for evaluation
 data Expr
   = Val Name
-  | ConstInt Integer
-  | ConstBool Bool
+  | ConstLit Literal
+  | Constructor Assumption
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr
   | If Expr Expr Expr
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
+
+
+data Pattern
+  = PVar Name
+  | PWildcard
+  | PAs Name Pattern
+  | PLit Literal
+  | PNPlusK Name Integer
+  | PConstructor Assumption (Set Pattern)
+  deriving (Eq, Show, Ord)
+
+newtype Alternative = Alt (Set Pattern, Expr)
+  deriving (Eq, Show, Ord)
 
 -- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
 data AST
