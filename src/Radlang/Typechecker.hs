@@ -11,6 +11,7 @@ import qualified Data.Set.Monad as S
 import Data.Set.Monad(Set)
 import Control.Applicative
 import Control.Monad.State.Strict
+import Control.Monad.Reader
 import Control.Monad.Except
 
 import Radlang.Types
@@ -31,10 +32,12 @@ instances ce n = case M.lookup n (classes ce) of
   Nothing -> throwError $ "instances lookup: " <> n <> " not defined"
 
 
+-- |Inserts new class to env
 updateClassEnv :: ClassEnv -> Name -> Class -> ClassEnv
 updateClassEnv ce n c = ce {classes = M.insert n c (classes ce)}
 
 
+-- |Empty class environment
 emptyClassEnv :: ClassEnv
 emptyClassEnv = ClassEnv
   { classes = []
@@ -53,7 +56,7 @@ bindVar tv t = if
 
 
 
--- |Merge substitution ensuring that they agree
+-- |Merge substitutions ensuring that they agree
 merge :: Substitution -> Substitution -> Typechecker Substitution
 merge s1 s2 =
   let extract (n, t) = TypeVar n (kind t)
@@ -105,12 +108,14 @@ match t1 t2 = case (t1, t2) of
   _ -> throwError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
 
 
+-- |mgu for predicates
 mguPred :: Pred -> Pred -> Typechecker Substitution
 mguPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then mgu t1 t2
   else throwError $ "Classes don't unify: " <> i1 <> " vs " <> i2
 
 
+-- |match for predicates
 matchPred :: Pred -> Pred -> Typechecker Substitution
 matchPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then match t1 t2
@@ -132,8 +137,8 @@ addClass n sups ce = do
   pure $ updateClassEnv ce n (sups, S.empty)
 
 
--- |Declares new instance
-addInst :: Set Pred -> Pred -> ClassEnv -> Typechecker ClassEnv
+-- |Declares new instance with qualification
+addInst :: [Pred] -> Pred -> ClassEnv -> Typechecker ClassEnv
 addInst ps p@(IsIn i _) ce = do
   when (not $ classDefined ce i) (throwError $ "Class not defined: " <> i)
   its <- instances ce i
@@ -147,100 +152,109 @@ addInst ps p@(IsIn i _) ce = do
 
 
 -- |Deep search for all superclasses' predicates
-bySuper :: ClassEnv -> Pred -> Typechecker (Set Pred)
-bySuper ce p@(IsIn i t) = do
+predsBySuper :: ClassEnv -> Pred -> Typechecker [Pred]
+predsBySuper ce p@(IsIn i t) = do
   i' <- S.toList <$> super ce i
   if Prelude.null i'
-    then pure $ S.singleton p
-    else S.insert p <$> (S.unions <$> (forM i' (\i'' -> bySuper ce (IsIn i'' t))))
+    then pure [p]
+    else insert p <$> (join <$> (forM i' (\i'' -> predsBySuper ce (IsIn i'' t))))
 
 
 -- |Deep search for all matching instances' predicates
-byInst :: ClassEnv -> Pred -> Typechecker (Set Pred)
-byInst ce p@(IsIn i t) = do -- TODO ensure if it works
-  let tryInst (ps :=> h) = do
+predsByInstances :: ClassEnv -> Pred -> Typechecker [Pred]
+predsByInstances ce p@(IsIn i _) = do
+  -- list of instances of i
+  insts <- S.toList <$> instances ce i
+  -- opertation that tries to strictly unify p with instance declaration
+  let tryInst :: Qual Pred -> Typechecker [Pred]
+      tryInst (ps :=> h) = do
         u <- matchPred h p
         pure $ fmap (substitute u) ps
-  insts <- S.toList <$> instances ce i
-  let its :: [Typechecker (Set Pred)]
-      its = flip fmap insts $ \it -> tryInst it
-  msum its
+  msum $ fmap tryInst insts
 
 
 -- |Check if `p` will hold whenever all of `ps` are satisfied
-entail :: ClassEnv -> Set Pred -> Pred -> Typechecker Bool
+entail :: ClassEnv -> [Pred] -> Pred -> Typechecker Bool
 entail ce ps p = do
   -- all sets of superclasses of `ps`
-  sups <- traverse (bySuper ce) (S.toList ps)
+  sups <- mapM (predsBySuper ce) ps
   -- all matching instances have this property
   let instCheck = do
-        qs <- S.toList <$> byInst ce p
-        ents <- traverse (entail ce ps) qs
+        qs <- predsByInstances ce p
+        ents <- mapM (entail ce ps) qs
         pure $ all id ents
-  instc <- catchError instCheck (const $ pure False) -- this `catch` may cause problems
+  instc <- catchError instCheck (const $ pure False) -- FIXME this `catch` may cause problems
   pure $ any (elem p) sups || instc
 
 
+-- |Check if predicate is in head normal form. -- TODO: what does it mean?
 inHNF :: Pred -> Bool
 inHNF (IsIn _ t) = case t of
   (TypeVarWobbly _) -> True
   (TypeVarRigid _) -> False
   (TypeApp tt _) -> inHNF (IsIn undefined tt)
-  _ -> error "unimplemented ihnf"
+  _ -> error "unimplemented ihnf" -- FIXME
 
 
-toHNF :: ClassEnv -> Pred -> Typechecker (Set Pred)
+-- |Turn predicate into head normal form
+toHNF :: ClassEnv -> Pred -> Typechecker [Pred]
 toHNF ce p =
   if inHNF p
-    then pure $ S.singleton p
-    else byInst ce p >>= toHNFs ce
+    then pure [p]
+    else predsByInstances ce p >>= toHNFs ce
 
-
-toHNFs :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
+-- |Turn a set of predicates into hnf
+toHNFs :: ClassEnv -> [Pred] -> Typechecker [Pred]
 toHNFs ce ps = do
-  pss <- S.fromList <$> mapM (toHNF ce) (S.toList ps)
+  pss <- mapM (toHNF ce) ps
   pure $ join pss
 
 
-simplify :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
-simplify ce pps = S.fromList <$> loop [] (S.toList pps) where
-  loop :: [Pred] -> [Pred] -> Typechecker [Pred]
+-- |Remove predicates that are entailed by others
+simplify :: ClassEnv -> [Pred] -> Typechecker [Pred]
+simplify ce pps = loop [] pps where
   loop rs [] = pure rs
   loop rs (p:ps) = do
-    e <- entail ce (S.fromList $ rs ++ ps) p
-    if e
-      then loop rs ps
-      else loop (p:rs) ps
+    e <- entail ce (rs ++ ps) p
+    if e then loop rs ps else loop (p:rs) ps
 
 
-reduce :: ClassEnv -> Set Pred -> Typechecker (Set Pred)
+-- |Turns predicates into head normal form and then simplifies
+reduce :: ClassEnv -> [Pred] -> Typechecker [Pred]
 reduce ce ps = toHNFs ce ps >>= simplify ce
 
 
-quantify :: Set TypeVar -> Qual Type -> Scheme
+-- |Create scheme of generic type by itś arguments
+quantify :: [TypeVar] -> Qual Type -> Scheme
 quantify vs qt = Forall ks (substitute s qt) where
-  vs' = [v | v <- S.toList $ free qt, v `S.member` vs]
+  vs' = [v | v <- S.toList $ free qt, v `elem` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
-  s = Subst $ M.fromList $ zip ns (fmap TypeADT [0..])
+  s = Subst $ M.fromList $ zip ns (fmap TypeGeneric [0..])
 
+
+-- |Turn plain type into scheme
 toScheme :: Type -> Scheme
-toScheme t = Forall [] (S.empty :=> t)
+toScheme t = Forall [] ([] :=> t)
 
 
+-- |Find typescheme in typespace
 lookupType :: Name -> [Assumption] -> Typechecker Scheme -- TODO: to map
 lookupType i [] = throwError $ "Unbound id: " <> i
 lookupType i ((i' :>: sc): as) = if i == i' then pure sc else lookupType i as
 
 
+-- |Get access to currently carried substitution
 getSubst :: Typechecker Substitution
 getSubst = gets tsSubst
 
 
+-- |Extend current substitution with new one
 extendSubst :: Substitution -> Typechecker ()
 extendSubst s = modify $ \ts -> ts{tsSubst = s <> tsSubst ts}
 
 
+-- |Unify types and update substitution
 unify :: Type -> Type -> Typechecker ()
 unify t1 t2 = do
   s <- getSubst
@@ -255,12 +269,15 @@ newVar prefix k = do
   modify $ \s -> s{ tsSupply = c + 1 }
   pure $ TypeVarWobbly $ TypeVar (prefix <> show c) k
 
+
+-- |Create new type varaibles for each parameter of scheme
 freshInst :: Scheme -> Typechecker (Qual Type)
 freshInst (Forall ks qt) = do
   ts <- mapM (newVar "_Inst") ks
-  pure $ inst ts qt
+  pure $ instantiate ts qt
 
-type Infer e t = ClassEnv -> [Assumption] -> e -> Typechecker (Set Pred, t)
+type Infer e t = ClassEnv -> [Assumption] -> e -> Typechecker ([Pred], t)
+
 
 inferTypeExpr :: Infer Expr Type
 inferTypeExpr ce as = \case
@@ -268,7 +285,7 @@ inferTypeExpr ce as = \case
     sc <- lookupType v as
     (ps :=> t) <- freshInst sc
     pure (ps, t)
-  ConstLit _ -> newVar "_Int" KType >>= \v -> pure (S.singleton $ IsIn "Num" v, v)
+  ConstLit _ -> newVar "_Int" KType >>= \v -> pure ([IsIn "Num" v], v)
   Constructor (_ :>: sc) -> do
     (ps :=> t) <- freshInst sc
     pure (ps, t)
@@ -277,115 +294,120 @@ inferTypeExpr ce as = \case
     (qs, ta) <- inferTypeExpr ce as a
     t <- newVar "_Arg" KType
     unify (fun ta t) tf
-    pure (S.union ps qs, t)
+    pure (ps ++ qs, t)
 
-inferTypeLiteral :: Literal -> Typechecker (Set Pred, Type)
+inferTypeLiteral :: Literal -> Typechecker ([Pred], Type)
 inferTypeLiteral = \case
-  LitInt _ -> newVar "_LI" KType >>= \v -> pure (S.singleton (IsIn "Num" v), v)
+  LitInt _ -> newVar "_LI" KType >>= \v -> pure ([IsIn "Num" v], v)
 
-inferTypePattern :: Pattern -> Typechecker (Set Pred, [Assumption], Type)
+inferTypePattern :: Pattern -> Typechecker ([Pred], [Assumption], Type)
 inferTypePattern = \case
-  PVar i -> newVar "_PV" KType >>= \v -> pure (S.empty, [i :>: toScheme v], v)
-  PWildcard -> newVar "_PW" KType >>= \v -> pure (S.empty, [], v)
+  PVar i -> newVar "_PV" KType >>= \v -> pure ([], [i :>: toScheme v], v)
+  PWildcard -> newVar "_PW" KType >>= \v -> pure ([], [], v)
   PAs i pat -> do
     (ps, as, t) <- inferTypePattern pat
     pure (ps, (i :>: toScheme t) : as, t)
   PLit l -> inferTypeLiteral l >>= \(ps, t) -> pure (ps, [], t)
-  PNPlusK n k -> newVar "_PNPK" KType >>= \t ->
-    pure ( S.singleton $ IsIn "Integral" t, [n :>: toScheme t], t)
-  PConstructor (i :>: sc) pats -> do
+  PNPlusK n _ -> newVar "_PNPK" KType >>= \t ->
+    pure ([IsIn "Integral" t], [n :>: toScheme t], t)
+  PConstructor (_ :>: sc) pats -> do
     (ps, as, ts) <- inferTypePatterns pats
     t' <- newVar "_PC" KType
     (qs :=> t) <- freshInst sc
     unify t (S.foldr fun t' ts)
-    pure (S.union ps qs, as, t')
+    pure (ps ++ qs, as, t')
 
-inferTypePatterns :: Set Pattern -> Typechecker (Set Pred, [Assumption], Set Type)
+inferTypePatterns :: Set Pattern -> Typechecker ([Pred], [Assumption], Set Type)
 inferTypePatterns pats = do
-  psats <- traverse inferTypePattern (S.toList pats)
-  let ps = S.unions $ fmap (\(x,_,_) -> x) psats
+  psats <- mapM inferTypePattern (S.toList pats)
+  let ps = join $ fmap (\(x,_,_) -> x) psats
       as = join $ fmap (\(_,x,_) -> x) psats
       ts = fmap (\(_,_,x) -> x) psats
   pure (ps, as, S.fromList ts)
 
 
+-- |Left and right side of function definition
 type Alt = (Set Pattern, Expr)
+
 
 inferTypeAlt :: Infer Alt Type
 inferTypeAlt ce as (pats, e) = do
   (ps, as', ts) <- inferTypePatterns pats
   (qs, t) <- inferTypeExpr ce (as' ++ as) e
-  pure (S.union ps qs, S.foldr fun t ts)
+  pure (ps ++ qs, S.foldr fun t ts)
 
 
-inferTypeAlts :: ClassEnv -> [Assumption] -> [Alt] -> Type -> Typechecker (Set Pred)
+inferTypeAlts :: ClassEnv -> [Assumption] -> [Alt] -> Type -> Typechecker [Pred]
 inferTypeAlts ce as alts t = do
-  psts <- traverse (inferTypeAlt ce as) alts
-  void $ traverse (unify t) (fmap snd psts)
-  pure (S.unions $ fmap fst psts)
+  psts <- mapM (inferTypeAlt ce as) alts
+  void $ mapM (unify t) (fmap snd psts)
+  pure (join $ fmap fst psts)
 
 
-split :: ClassEnv -> Set TypeVar -> Set TypeVar -> Set Pred -> Typechecker (Set Pred, Set Pred)
+-- |Split predicates on deferred and contraints. fs are fixed variables and gs are varaibles over which we want to quantify
+split :: ClassEnv -> [TypeVar] -> [TypeVar] -> [Pred] -> Typechecker ([Pred], [Pred])
 split ce fs gs ps = do
   ps' <- reduce ce ps
-  let (ds, rs) = S.partition (all (`S.member` fs) . free) ps'
-  rs' <- defaultedPreds ce (S.union fs gs) rs
-  pure (ds, rs S.\\ rs')
-
-type Ambiguity = (TypeVar, Set Pred)
-
-ambiguities :: Set TypeVar -> Set Pred -> Set Ambiguity
-ambiguities vs ps = fmap (\v -> (v, S.filter (elem v . free) ps)) $ free ps S.\\ vs
+  let (ds, rs) = partition (all (`elem` fs) . free) ps'
+  rs' <- defaultedPreds ce (fs ++ gs) rs
+  pure (ds, rs \\ rs')
 
 
-candidates :: ClassEnv -> Ambiguity -> Typechecker (Set Type)
+
+type Ambiguity = (TypeVar, [Pred])
+
+ambiguities :: [TypeVar] -> [Pred] -> [Ambiguity]
+ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ S.toList (free ps) \\ vs
+
+
+candidates :: ClassEnv -> Ambiguity -> Typechecker [Type]
 candidates ce (v, qs) =
   let is = fmap (\(IsIn i _) -> i) qs
       ts = fmap (\(IsIn _ t) -> t) qs
-      filt :: Set Type -> Typechecker (Set Type)
-      filt tts = fmap S.fromList $ flip filterM (S.toList tts) $ \t ->
-        all id <$> traverse (entail ce S.empty) [IsIn i t | i <- S.toList is]
+      filt :: [Type] -> Typechecker [Type]
+      filt tts = flip filterM tts $ \t ->
+        all id <$> mapM (entail ce []) [IsIn i t | i <- is]
   in if all ((TypeVarWobbly v)==) ts
      && any (`S.member` numClasses) is
      && all (`S.member` stdClasses) is
-     then filt (defaults ce)
-     else pure S.empty
+     then filt (S.toList $ defaults ce)
+     else pure []
 
 
 withDefaults :: ([Ambiguity] -> [Type] -> a)
-             -> ClassEnv -> Set TypeVar -> Set Pred
+             -> ClassEnv -> [TypeVar] -> [Pred]
              -> Typechecker a
-withDefaults f ce vs ps = do -- TODO: Ensure if it is not fuckupped
+withDefaults f ce vs ps = do
   let vps = ambiguities vs ps
-  tss <- traverse (candidates ce) $ S.toList vps
-  if any S.null tss
+  tss <- mapM (candidates ce) vps
+  if any null tss
     then throwError "Cannot resolve ambiguity"
-    else pure $ f (S.toList vps) (fmap S.findMin tss)
+    else pure $ f vps (fmap head tss)
 
-defaultedPreds :: ClassEnv -> Set TypeVar -> Set Pred -> Typechecker (Set Pred)
-defaultedPreds = withDefaults (\vps _ -> S.unions (fmap snd vps))
+defaultedPreds :: ClassEnv -> [TypeVar] -> [Pred] -> Typechecker [Pred]
+defaultedPreds = withDefaults (\vps _ -> join (fmap snd vps))
 
 
-defaultSubst :: ClassEnv -> Set TypeVar -> Set Pred -> Typechecker Substitution
+defaultSubst :: ClassEnv -> [TypeVar] -> [Pred] -> Typechecker Substitution
 defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
 
 type ExplBind = (Name, Scheme, [Alt])
 
-inferTypeExpl :: ClassEnv -> [Assumption] -> ExplBind -> Typechecker (Set Pred)
-inferTypeExpl ce as (i, sc, alts) = do
+inferTypeExpl :: ClassEnv -> [Assumption] -> ExplBind -> Typechecker [Pred]
+inferTypeExpl ce as (_, sc, alts) = do
   (qs :=> t) <- freshInst sc
   ps <- inferTypeAlts ce as alts t
   s <- getSubst
   let qs' = substitute s qs
       t'= substitute s t
-      fs = free $ substitute s as
-      gs = free t' S.\\ fs
+      fs = S.toList $ free $ substitute s as
+      gs = (S.toList $ free t') \\ fs
       sc' = quantify gs (qs' :=> t')
-  ps' <- S.fromList <$> filterM (\x -> not <$> entail ce qs' x) (S.toList $ substitute s ps)
+  ps' <- filterM (\x -> not <$> entail ce qs' x) (substitute s ps)
   (ds, rs) <- split ce fs gs ps'
   if | sc /= sc' -> throwError "Signature is too general"
-     | not (S.null rs) -> throwError "Context is too weak"
+     | not (null rs) -> throwError "Context is too weak"
      | otherwise -> pure ds
 
 
@@ -399,26 +421,26 @@ restricted bs = any simple bs where
 
 inferTypeImpl :: Infer [ImplBind] [Assumption]
 inferTypeImpl ce as bs = do
-  ts <- traverse (const $ newVar "IMPL" KType) bs
+  ts <- mapM (const $ newVar "IMPL" KType) bs
   let is = fmap fst bs
       scs = fmap toScheme ts
       as' = zipWith (:>:) is scs ++ as
       altss = fmap snd bs
   pss <- sequence (zipWith (inferTypeAlts ce as') altss ts)
   s <- getSubst
-  let ps' = substitute s (S.unions pss)
+  let ps' = substitute s (join pss)
       ts' = substitute s ts
-      fs = free (substitute s as)
-      vss = fmap free ts'
-      gs = foldr1 union (fmap S.toList vss) \\ S.toList fs
-  (ds, rs) <- split ce fs (foldr1 S.intersection vss) ps'
+      fs = S.toList $ free (substitute s as)
+      vss = fmap (S.toList . free) ts'
+      gs = foldr1 union vss \\ fs
+  (ds, rs) <- split ce fs (foldr1 intersect vss) ps'
   if restricted bs
     then
-    let gs' = S.fromList gs S.\\ free rs
-        scs' = fmap (quantify gs' . (S.empty :=>)) ts'
-    in pure (S.union ds rs, zipWith (:>:) is scs')
+    let gs' = filter (`S.member` free rs) gs
+        scs' = fmap (quantify gs' . ([] :=>)) ts'
+    in pure (ds ++ rs, zipWith (:>:) is scs')
     else
-    let scs' = fmap (quantify (S.fromList gs) . (rs :=>)) ts'
+    let scs' = fmap (quantify gs . (rs :=>)) ts'
     in pure (ds, zipWith (:>:) is scs')
 
 type Bindings = ([ExplBind], [[ImplBind]])
@@ -428,17 +450,17 @@ inferTypeBindings :: Infer Bindings [Assumption]
 inferTypeBindings ce as (es, iss) = do
   let as' = [v :>: sc | (v, sc, _) <- es]
   (ps, as'') <- inferTypeSeq inferTypeImpl ce (as' ++ as) iss
-  qss <- traverse (inferTypeExpl ce (as'' ++ as' ++ as)) es
-  pure (S.union ps $ S.unions qss, as'' ++ as')
+  qss <- mapM (inferTypeExpl ce (as'' ++ as' ++ as)) es
+  pure (ps ++ join qss, as'' ++ as')
 
 
 inferTypeSeq :: Infer bg [Assumption] -> Infer [bg] [Assumption]
 inferTypeSeq ti ce as = \case
-  [] -> pure (S.empty, [])
+  [] -> pure ([], [])
   (bs:bss) -> do
     (ps, as') <- ti ce as bs
     (qs, as'') <- inferTypeSeq ti ce (as' ++ as) bss
-    pure (S.union ps qs, as'' ++ as')
+    pure (ps ++ qs, as'' ++ as')
 
 type Program = [Bindings]
 
@@ -447,16 +469,25 @@ inferTypeProgram ce as bgs = do
   (ps, as') <- inferTypeSeq inferTypeBindings ce as bgs
   s <- getSubst
   rs <- reduce ce (substitute s ps)
-  s' <- defaultSubst ce S.empty rs
+  s' <- defaultSubst ce [] rs
   pure (substitute (s' <> s) as')
 
 
--- -- |Evaluation of typechecker
--- runTypechecker :: Typechecker a -> Either String a
--- runTypechecker = flip evalState (TypecheckerState 0)
---   . flip runReaderT (Typespace M.empty)
---   . runExceptT
+-- |Evaluation of typechecker
+runTypechecker :: Typechecker a -> Either String a
+runTypechecker = flip evalState (TypecheckerState 0 mempty)
+  . flip runReaderT ()
+  . runExceptT
 
--- -- |Toplevel typechecking of expression
--- typecheck :: Expr -> Either ErrMsg Type
--- typecheck e = uncurry substitute <$> runTypechecker (withStdlib $ inferType e)
+-- |Toplevel typechecking of expression
+typecheck :: Program -> Either ErrMsg [Assumption]
+typecheck p = runTypechecker (inferTypeProgram emptyClassEnv [] p)
+
+pat = PVar "wisienka"
+expr = ConstLit $ LitInt 3
+
+impl :: ImplBind
+impl = ("wisienka", [(S.singleton pat, expr)])
+
+pr :: Program
+pr = [([],[[impl]])]

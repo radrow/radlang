@@ -22,13 +22,8 @@ data TypecheckerState = TypecheckerState { tsSupply :: Int, tsSubst :: Substitut
   deriving (Eq, Show)
 
 
--- |Map of typenames into real types
-newtype Typespace = Typespace { getTypespaceMap :: Map Name TypePoly }
-  deriving (Eq, Show, Ord)
-
-
 -- |Transformer responsible for typechecking expressions and error handling
-type Typechecker = ExceptT String (ReaderT Typespace (State TypecheckerState))
+type Typechecker = ExceptT String (ReaderT () (State TypecheckerState))
 
 
 -- |Primitive type definition
@@ -36,7 +31,7 @@ data Type
   = TypeVarWobbly TypeVar -- Inferred type variable
   | TypeVarRigid TypeVar -- User specified polymorphic type
   | TypeInt
-  | TypeADT Int -- ADT with given arity
+  | TypeGeneric Int -- ADT with given arity
   | TypeApp Type Type
   deriving (Eq, Ord)
 
@@ -47,33 +42,35 @@ data Kind = KType | KFunc Kind Kind
   deriving (Eq, Show, Ord)
 
 
--- |Type served along with polymorphic names used inside
-data TypePoly = Poly (Set Name) Type
-  deriving (Eq, Show, Ord)
-
-
+-- |Type scheme for polymorphic types
 data Scheme = Forall [Kind] (Qual Type)
   deriving (Eq, Ord, Show)
 
 
+-- |Predicate that type is in class
 data Pred = IsIn Name Type
   deriving (Eq, Ord, Show)
 
 
-data Qual t = Set Pred :=> t
+-- |Object with qualified with predicates
+data Qual t = [Pred] :=> t
   deriving (Eq, Ord, Show)
 
 
+-- |Turn this into map
 data Assumption = Name :>: Scheme
   deriving (Eq, Ord, Show)
 
 
+-- |Instance declaration
 type Inst = Qual Pred
 
 
+-- |Typeclass!
 type Class = (Set Name, Set Inst)
 
 
+-- |Main container for classes
 data ClassEnv = ClassEnv { classes :: Map Name Class
                          , defaults :: Set Type
                          }
@@ -97,7 +94,8 @@ class HasKind t where
 
 
 class Instantiate t where
-  inst :: [Type] -> t -> t
+  -- |Replace each occurence of generic var in any TypeGeneric n in t with ts !! n
+  instantiate :: [Type] -> t -> t
 
 
 ---- INSTANCES ----
@@ -118,8 +116,7 @@ instance IsType Type where
     TypeInt -> S.empty
     TypeApp a v -> S.union (free a) (free v)
     TypeVarWobbly tv -> S.singleton tv
-    TypeVarRigid _ -> S.empty
-    TypeADT _ -> undefined
+    _ -> S.empty
   substitute s@(Subst sm) = \case
     TypeInt -> TypeInt
     TypeApp a v -> TypeApp (substitute s a) (substitute s v)
@@ -129,7 +126,7 @@ instance IsType Type where
     TypeVarRigid (TypeVar n k) -> case M.lookup n sm of
       Just t -> t
       Nothing -> TypeVarRigid $ TypeVar n k
-    TypeADT _ -> undefined
+    t -> t
 
 
 instance IsType Pred where
@@ -150,12 +147,6 @@ instance IsType Scheme where
 instance IsType Assumption where
   free (_ :>: sc) = free sc
   substitute s (i :>: sc) = i :>: substitute s sc
-
-
--- instance IsType TypePoly where
---   free (Poly vars t) = free t S.\\ vars
---   substitute (Subst s) (Poly vars t) =
---     Poly vars $ substitute (Subst $ foldr M.delete s vars) t
 
 
 -- instance IsType Typespace where
@@ -179,14 +170,14 @@ instance Show Type where
     TypeVarRigid (TypeVar a _) -> a
     TypeInt -> "Int"
     TypeApp a b -> show a <> " " <> show b
-    TypeADT _ -> undefined
+    TypeGeneric n -> "Generic" <> show n
 
 
 instance HasKind Type where
   kind (TypeVarWobbly tv) = kind tv
   kind (TypeVarRigid tv) = kind tv
   kind TypeInt = KType
-  kind (TypeADT _) = undefined
+  kind (TypeGeneric _) = error "kindcheck generic"
   kind (TypeApp f _) = case kind f of
     (KFunc _ k) -> k
     _ -> error "Kindcheck failed"
@@ -197,23 +188,23 @@ instance HasKind TypeVar where
 
 
 instance Instantiate Type where
-  inst ts (TypeApp l r) = TypeApp (inst ts l) (inst ts r)
-  inst ts (TypeADT n) = ts !! n
-  inst _ t = t
+  instantiate ts (TypeApp l r) = TypeApp (instantiate ts l) (instantiate ts r)
+  instantiate ts (TypeGeneric n) = ts !! n
+  instantiate _ t = t
 
 
 instance Instantiate a => Instantiate [a] where
-  inst ts = fmap (inst ts)
+  instantiate ts = fmap (instantiate ts)
 
 
 instance Instantiate a => Instantiate (Set a) where
-  inst ts = fmap (inst ts)
+  instantiate ts = fmap (instantiate ts)
 
 
 
 instance Instantiate t => Instantiate (Qual t) where
-  inst ts (ps :=> t) = inst ts ps :=> inst ts t
+  instantiate ts (ps :=> t) = instantiate ts ps :=> instantiate ts t
 
 
 instance Instantiate Pred where
-  inst ts (IsIn c t) = IsIn c (inst ts t)
+  instantiate ts (IsIn c t) = IsIn c (instantiate ts t)
