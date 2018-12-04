@@ -31,7 +31,7 @@ data Literal
 data Expr
   = Val Name
   | ConstLit Literal
-  | Constructor Assumption
+  | Constructor (Name, TypePoly)
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr
@@ -45,7 +45,7 @@ data Pattern
   | PAs Name Pattern
   | PLit Literal
   | PNPlusK Name Integer
-  | PConstructor Assumption (Set Pattern)
+  | PConstructor (Name, TypePoly) (Set Pattern)
   deriving (Eq, Show, Ord)
 
 newtype Alternative = Alt (Set Pattern, Expr)

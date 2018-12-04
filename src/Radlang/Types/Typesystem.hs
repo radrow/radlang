@@ -1,9 +1,12 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeOperators #-}
 
 -- |Types related to typechecking
 
 module Radlang.Types.Typesystem where
 
+import Data.Foldable
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
@@ -17,33 +20,78 @@ import Radlang.Types.General
 
 ---- DEFINITIONS ----
 
--- |Typechecker state currently contains only count of runtime generated types
-data TypecheckerState = TypecheckerState { tsSupply :: Int, tsSubst :: Substitution}
-  deriving (Eq, Show)
 
+data TypeInferState = TypeInferState
+  { tiSupply :: Int
+  , tiSubst :: Substitution
+  } deriving (Eq, Show)
+
+data TypecheckerState = TypecheckerState
+  { tcSupply :: Int
+  , tcSubst :: Substitution
+  , tcTypeEnv :: TypeEnv
+  } deriving (Eq, Show)
+
+-- |Main container for classes
+data ClassEnv = ClassEnv { classes :: Map Name Class
+                         , defaults :: Set Type
+                         }
+  deriving (Eq, Ord, Show)
+
+
+newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
+  deriving (Eq, Ord, Show)
+
+
+newtype ClassEnvBuilder a =
+  ClassEnvBuilder (ExceptT ErrMsg (State ClassEnv) a)
+  deriving ( Functor, Applicative, Monad
+           , MonadError ErrMsg, MonadState ClassEnv)
+
+newtype TypeInfer a =
+  TypeInfer (ExceptT ErrMsg (ReaderT (TypeEnv, ClassEnv) (State TypeInferState)) a)
+  deriving ( Functor, Applicative, Monad
+           , MonadError ErrMsg, MonadReader (TypeEnv, ClassEnv), MonadState TypeInferState)
 
 -- |Transformer responsible for typechecking expressions and error handling
-type Typechecker = ExceptT String (ReaderT () (State TypecheckerState))
+newtype Typechecker a =
+  Typechecker (ExceptT ErrMsg (ReaderT ClassEnv (State TypecheckerState)) a)
+  deriving ( Functor, Applicative, Monad
+           , MonadError ErrMsg, MonadReader ClassEnv, MonadState TypecheckerState)
+
+
+class HasClassEnv m where
+  getClassEnv :: m ClassEnv
+
+instance HasClassEnv ClassEnvBuilder where
+  getClassEnv = get
+instance HasClassEnv TypeInfer where
+  getClassEnv = asks snd
+instance HasClassEnv Typechecker where
+  getClassEnv = ask
 
 
 -- |Primitive type definition
 data Type
   = TypeVarWobbly TypeVar -- Inferred type variable
-  | TypeVarRigid TypeVar -- User specified polymorphic type
-  | TypeInt
+  | TypeVarRigid TypeVar -- Non generalizable type
   | TypeGeneric Int -- ADT with given arity
   | TypeApp Type Type
   deriving (Eq, Ord)
 
+
+-- |Type variable
 data TypeVar = TypeVar {tName :: Name, tKind :: Kind}
   deriving (Eq, Show, Ord)
 
+
+-- |Kind – the type of type
 data Kind = KType | KFunc Kind Kind
   deriving (Eq, Show, Ord)
 
 
 -- |Type scheme for polymorphic types
-data Scheme = Forall [Kind] (Qual Type)
+data TypePoly = Forall [Kind] (Qual Type)
   deriving (Eq, Ord, Show)
 
 
@@ -57,23 +105,16 @@ data Qual t = [Pred] :=> t
   deriving (Eq, Ord, Show)
 
 
--- |Turn this into map
-data Assumption = Name :>: Scheme
-  deriving (Eq, Ord, Show)
-
-
 -- |Instance declaration
 type Inst = Qual Pred
 
 
 -- |Typeclass!
-type Class = (Set Name, Set Inst)
-
-
--- |Main container for classes
-data ClassEnv = ClassEnv { classes :: Map Name Class
-                         , defaults :: Set Type
-                         }
+data Class = Class
+  { classSuper :: Set Name -- superclasses of class
+  , classInstances :: Set Inst -- instances of class
+  }
+  deriving (Eq, Ord, Show)
 
 
 -- |Substitution of polymorphic types
@@ -113,12 +154,10 @@ instance IsType t => IsType [t] where
 
 instance IsType Type where
   free = \case
-    TypeInt -> S.empty
     TypeApp a v -> S.union (free a) (free v)
     TypeVarWobbly tv -> S.singleton tv
     _ -> S.empty
   substitute s@(Subst sm) = \case
-    TypeInt -> TypeInt
     TypeApp a v -> TypeApp (substitute s a) (substitute s v)
     TypeVarWobbly (TypeVar n k) -> case M.lookup n sm of
       Just t -> t
@@ -139,14 +178,14 @@ instance IsType t => IsType (Qual t) where
   substitute s (ps :=> t) = substitute s ps :=> substitute s t
 
 
-instance IsType Scheme where
+instance IsType TypePoly where
   substitute s (Forall ks qt) = Forall ks (substitute s qt)
   free (Forall _ qt) = free qt
 
 
-instance IsType Assumption where
-  free (_ :>: sc) = free sc
-  substitute s (i :>: sc) = i :>: substitute s sc
+instance IsType TypeEnv where
+  free = fold . fmap (free . snd) . M.toList . types
+  substitute s te = TypeEnv $ fmap (substitute s) (types te)
 
 
 -- instance IsType Typespace where
@@ -168,7 +207,6 @@ instance Show Type where
   show = \case
     TypeVarWobbly (TypeVar a _) -> a
     TypeVarRigid (TypeVar a _) -> a
-    TypeInt -> "Int"
     TypeApp a b -> show a <> " " <> show b
     TypeGeneric n -> "Generic" <> show n
 
@@ -176,7 +214,6 @@ instance Show Type where
 instance HasKind Type where
   kind (TypeVarWobbly tv) = kind tv
   kind (TypeVarRigid tv) = kind tv
-  kind TypeInt = KType
   kind (TypeGeneric _) = error "kindcheck generic"
   kind (TypeApp f _) = case kind f of
     (KFunc _ k) -> k
