@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeOperators #-}
@@ -7,6 +8,7 @@
 module Radlang.Types.Typesystem where
 
 import Data.Foldable
+import Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
@@ -45,22 +47,21 @@ newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
 
 newtype ClassEnvBuilder a =
   ClassEnvBuilder (ExceptT ErrMsg (State ClassEnv) a)
-  deriving ( Functor, Applicative, Monad
+  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadState ClassEnv)
 
 newtype TypeInfer a =
   TypeInfer (ExceptT ErrMsg (ReaderT (TypeEnv, ClassEnv) (State TypeInferState)) a)
-  deriving ( Functor, Applicative, Monad
+  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadReader (TypeEnv, ClassEnv), MonadState TypeInferState)
 
 -- |Transformer responsible for typechecking expressions and error handling
 newtype Typechecker a =
   Typechecker (ExceptT ErrMsg (ReaderT ClassEnv (State TypecheckerState)) a)
-  deriving ( Functor, Applicative, Monad
+  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadReader ClassEnv, MonadState TypecheckerState)
 
-
-class HasClassEnv m where
+class (MonadError ErrMsg m, MonadPlus m) => HasClassEnv m where
   getClassEnv :: m ClassEnv
 
 instance HasClassEnv ClassEnvBuilder where
@@ -69,6 +70,32 @@ instance HasClassEnv TypeInfer where
   getClassEnv = asks snd
 instance HasClassEnv Typechecker where
   getClassEnv = ask
+
+class (MonadError ErrMsg m, MonadPlus m) => HasTypeEnv m where
+  getTypeEnv :: m TypeEnv
+instance HasTypeEnv TypeInfer where
+  getTypeEnv = asks fst
+instance HasTypeEnv Typechecker where
+  getTypeEnv = gets tcTypeEnv
+
+class (MonadError ErrMsg m, MonadPlus m) => Substitutor m where
+  getSubst :: m Substitution
+  setSubst :: Substitution -> m ()
+
+instance Substitutor TypeInfer where
+  getSubst = gets tiSubst
+  setSubst s = modify $ \ti -> ti{tiSubst = s}
+instance Substitutor Typechecker where
+  getSubst = gets tcSubst
+  setSubst s = modify $ \tc -> tc{tcSubst = s}
+
+class (MonadError ErrMsg m, MonadPlus m) => IdSupply m where
+  newId :: m Int
+instance IdSupply TypeInfer where
+  newId = gets tiSupply >>= \i -> modify (\s -> s{tiSupply = i + 1}) >> pure (i + 1)
+instance IdSupply Typechecker where
+  newId = gets tcSupply >>= \i -> modify (\s -> s{tcSupply = i + 1}) >> pure (i + 1)
+
 
 
 -- |Primitive type definition
