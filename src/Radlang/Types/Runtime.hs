@@ -24,6 +24,7 @@ type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
 data Literal
   = LitInt Integer
+  | LitString String
   deriving (Eq, Show, Ord)
 
 
@@ -45,7 +46,7 @@ data Pattern
   | PAs Name Pattern
   | PLit Literal
   | PNPlusK Name Integer
-  | PConstructor (Name, TypePoly) (Set Pattern)
+  | PConstructor Name [Pattern]
   deriving (Eq, Show, Ord)
 
 newtype Alternative = Alt (Set Pattern, Expr)
@@ -54,8 +55,7 @@ newtype Alternative = Alt (Set Pattern, Expr)
 -- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
 data AST
   = ASTVal Name
-  | ASTInt Integer
-  | ASTBool Bool
+  | ASTLit Literal
   | ASTApplication AST (NonEmpty AST)
   | ASTLet (NonEmpty (Name, [Name], Maybe Type, AST)) AST
   | ASTLambda (NonEmpty Name) AST

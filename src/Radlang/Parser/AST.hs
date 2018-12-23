@@ -6,6 +6,7 @@ import           Control.Monad
 import           Control.Monad.Combinators.NonEmpty
 import           Data.List.NonEmpty                 ()
 import           Text.Megaparsec                    hiding (sepBy1, some)
+import           Text.Megaparsec.Char
 
 import           Prelude                            hiding (lex)
 
@@ -85,16 +86,18 @@ ifE = do
   pure $ ASTIf ifthens e
 
 constantE :: Parser AST
-constantE = msum $ fmap try
+constantE = fmap ASTLit $ msum $ fmap try
   [ mzero
   , constInt
-  , constBool
+  , constString
   ]
 
-constInt :: Parser AST
-constInt = ASTInt <$> signed
+constInt :: Parser Literal
+constInt = LitInt <$> signed
 
-constBool :: Parser AST
-constBool = ( try (word "True" >> pure (ASTBool True))
-              <|> try (word "False" >> pure (ASTBool False))
-            )
+constString :: Parser Literal
+constString = LitString <$> do
+  void $ char '"'
+  s <- many alphaNumChar
+  void $ char '"'
+  pure s

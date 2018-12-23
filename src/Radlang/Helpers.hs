@@ -15,6 +15,3 @@ rollApplication :: Expr -> [Expr]
 rollApplication = reverse . go where
   go (Application f x) = x : go f
   go els = [els]
-
-makePoly :: Type -> TypePoly
-makePoly = Poly S.empty

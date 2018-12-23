@@ -3,6 +3,7 @@ module Radlang.Typedefs where
 import Data.Set.Monad as S
 import Data.Map.Strict as M
 
+import Radlang.Helpers
 import Radlang.Types.General
 import Radlang.Types
 
@@ -19,12 +20,6 @@ tFunc = TypeVarRigid $ TypeVar "Func" (KFunc KType (KFunc KType KType))
 fun :: Type -> Type -> Type
 a `fun` b = TypeApp (TypeApp tFunc a) b
 
-numClasses :: Set Name
-numClasses = S.fromList ["Num", "Integral"]
-
-stdClasses :: Set Name
-stdClasses = S.fromList ["Eq", "Ord", "Show", "Functor", "Monad", "MonadPlus"] `S.union` numClasses
-
 
 stdPreds :: [Qual Pred]
 stdPreds =
@@ -35,11 +30,39 @@ stdPreds =
   , [] :=> IsIn "Show" tInt
   ]
 
+ofClass :: Name -> Set (Qual Pred)
 ofClass n = S.fromList $ Prelude.filter (\(_ :=> IsIn k _) -> k == n) stdPreds
+envPart :: b -> [Char] -> ([Char], b, Set (Qual Pred))
 envPart s n = (n, s, ofClass n)
 
+num :: Class
+num = Class S.empty $ S.fromList
+  [ [] :=> IsIn "Num" (TypeVarRigid $ TypeVar "Int" KType)
+  ]
 
--- initClassEnv :: ClassEnv
--- initClassEnv = M.fromList
---   [ envPart S.empty "Num"
---   ]
+eq :: Class
+eq = Class S.empty $ S.fromList
+  [ [] :=> IsIn "Eq" (TypeVarRigid $ TypeVar "Int" KType)
+  ]
+
+ord :: Class
+ord = Class (S.singleton "Eq") $ S.fromList
+  [ [] :=> IsIn "Ord" (TypeVarRigid $ TypeVar "Int" KType)
+  ]
+
+stdClasses :: Map Name Class
+stdClasses = M.fromList
+  [ "Num" <~ num
+  , "Eq" <~ eq
+  , "Ord" <~ ord
+  ]
+
+
+stdDefaults :: Map Name [Type]
+stdDefaults = M.map (Prelude.map (\tn -> TypeVarRigid $ TypeVar tn KType)) $ M.fromList
+  [ "Num" <~ ["Int"]
+  ]
+
+
+stdClassEnv :: ClassEnv
+stdClassEnv = ClassEnv stdClasses stdDefaults

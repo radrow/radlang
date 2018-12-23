@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -36,7 +37,7 @@ data TypecheckerState = TypecheckerState
 
 -- |Main container for classes
 data ClassEnv = ClassEnv { classes :: Map Name Class
-                         , defaults :: Set Type
+                         , defaults :: Map Name [Type]
                          }
   deriving (Eq, Ord, Show)
 
@@ -109,34 +110,34 @@ data Type
 
 -- |Type variable
 data TypeVar = TypeVar {tName :: Name, tKind :: Kind}
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord)
 
 
 -- |Kind – the type of type
 data Kind = KType | KFunc Kind Kind
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Ord)
 
 
 -- |Type scheme for polymorphic types
 data TypePoly = Forall [Kind] (Qual Type)
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
 
 
 -- |Predicate that type is in class
 data Pred = IsIn Name Type
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
 
 
 -- |Object with qualified with predicates
 data Qual t = [Pred] :=> t
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
 
 
 -- |Instance declaration
 type Inst = Qual Pred
 
 
--- |Typeclass!
+-- |Typeclass is a set of its superclasses and instances
 data Class = Class
   { classSuper :: Set Name -- superclasses of class
   , classInstances :: Set Inst -- instances of class
@@ -210,8 +211,13 @@ instance IsType TypePoly where
   free (Forall _ qt) = free qt
 
 
+instance (Ord k, IsType t) => IsType (Map k t) where
+  free = fold . fmap (free . snd) . M.toList
+  substitute s te = fmap (substitute s) te
+
+
 instance IsType TypeEnv where
-  free = fold . fmap (free . snd) . M.toList . types
+  free = free . types
   substitute s te = TypeEnv $ fmap (substitute s) (types te)
 
 
@@ -272,3 +278,29 @@ instance Instantiate t => Instantiate (Qual t) where
 
 instance Instantiate Pred where
   instantiate ts (IsIn c t) = IsIn c (instantiate ts t)
+
+
+---- SHOWS
+
+instance Show Pred where
+  show (IsIn c t) = show t <> " is " <> c
+
+instance Show t => Show (Qual t) where
+  show ([] :=> t) = show t where
+  show (ps :=> t) = showPs ps <> " :- " <> show t where
+    showPs [] = undefined
+    showPs [p] = show p
+    showPs (p:pt) = "(" <> show p <> ", " <> showPs pt <> ")"
+
+instance Show Kind where
+  show KType = "Type"
+  show (KFunc k1 k2) = "(" <> show k1 <> " -> " <> show k2 <> ")"
+
+instance Show TypeVar where
+  show (TypeVar t KType) = show t
+  show (TypeVar t k) = "(" <> show t <> " : " <> show k <> ")"
+
+instance Show TypePoly where
+  show (Forall [] t) = show t
+  show (Forall ks t) = "forall " <> show ks <> " : " <> show t
+

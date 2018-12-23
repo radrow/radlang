@@ -72,4 +72,4 @@ constructorName = uId
 typeName :: Parser Name
 typeName = uId
 generalTypeName :: Parser Name
-generalTypeName = liftM2 (:) (char '~' >> pure '~') uId
+generalTypeName = uId
