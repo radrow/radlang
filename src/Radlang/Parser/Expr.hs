@@ -10,7 +10,7 @@ import Radlang.Types
 processAST :: AST -> Expr
 processAST = \case
   ASTVal v -> Val v
-  ASTLit l -> ConstLit l
+  ASTLit l -> Lit l
   ASTApplication fun args ->
     foldl1 Application (processAST <$> cons fun args)
   ASTLet assgs inWhat ->

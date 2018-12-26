@@ -31,8 +31,8 @@ data Literal
 -- |Desugared expression tree designed for evaluation
 data Expr
   = Val Name
-  | ConstLit Literal
-  | Constructor (Name, TypePoly)
+  | Lit Literal
+  | Constant (Name, TypePoly)
   | Application Expr Expr
   | Let [(Name, Maybe Type, Expr)] Expr
   | Lambda Name Expr

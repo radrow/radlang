@@ -7,55 +7,83 @@ import Radlang.Helpers
 import Radlang.Types.General
 import Radlang.Types
 
+tRigid :: Name -> Type
+tRigid n = TypeVarRigid $ TypeVar n KType
+tWobbly :: Name -> Type
+tWobbly n = TypeVarWobbly $ TypeVar n KType
+
 tUnit :: Type
-tUnit = TypeVarRigid $ TypeVar "Unit" KType
+tUnit = tRigid "Unit"
 tInt :: Type
-tInt = TypeVarRigid $ TypeVar "Int" KType
+tInt = tRigid "Int"
+tChar :: Type
+tChar = tRigid "Char"
+tBool :: Type
+tBool = tRigid "Bool"
 
 tList :: Type
 tList = TypeVarRigid $ TypeVar "List" (KFunc KType KType)
+tListOf :: Type -> Type
+tListOf = TypeApp tList
 tFunc :: Type
 tFunc = TypeVarRigid $ TypeVar "Func" (KFunc KType (KFunc KType KType))
+
+tString :: Type
+tString = tListOf tChar
+
 
 fun :: Type -> Type -> Type
 a `fun` b = TypeApp (TypeApp tFunc a) b
 
 
 stdPreds :: [Qual Pred]
-stdPreds =
-  [ [] :=> IsIn "Num" tInt
-  , [] :=> IsIn "Integral" tInt
-  , [] :=> IsIn "Eq" tInt
-  , [] :=> IsIn "Ord" tInt
-  , [] :=> IsIn "Show" tInt
-  ]
-
+stdPreds = concat $ fmap unpack (M.toList stdClasses) where
+  unpack (_, (Class _ insts)) = (S.toList insts)
 ofClass :: Name -> Set (Qual Pred)
 ofClass n = S.fromList $ Prelude.filter (\(_ :=> IsIn k _) -> k == n) stdPreds
 envPart :: b -> [Char] -> ([Char], b, Set (Qual Pred))
 envPart s n = (n, s, ofClass n)
 
+
 num :: Class
 num = Class S.empty $ S.fromList
-  [ [] :=> IsIn "Num" (TypeVarRigid $ TypeVar "Int" KType)
+  [ [] :=> IsIn "Num" tInt
   ]
 
 eq :: Class
 eq = Class S.empty $ S.fromList
-  [ [] :=> IsIn "Eq" (TypeVarRigid $ TypeVar "Int" KType)
+  [ [] :=> IsIn "Eq" tInt
+  , [] :=> IsIn "Eq" tChar
+  , [] :=> IsIn "Eq" tBool
+  , [IsIn "Eq" (tWobbly "A")] :=> IsIn "Eq" (tListOf (tWobbly "A"))
   ]
 
 ord :: Class
 ord = Class (S.singleton "Eq") $ S.fromList
-  [ [] :=> IsIn "Ord" (TypeVarRigid $ TypeVar "Int" KType)
+  [ [] :=> IsIn "Ord" tInt
+  , [] :=> IsIn "Ord" tBool
+  , [] :=> IsIn "Ord" tChar
+  , [IsIn "Ord" (tWobbly "A")] :=> IsIn "Ord" (tListOf (tWobbly "A"))
   ]
+
+isString :: Class
+isString = Class S.empty $ S.fromList
+  [ [] :=> IsIn "IsString" tString
+  ]
+
+
+stdNumClasses :: Map Name Class
+stdNumClasses = M.fromList
+  [ "Num" <~ num
+  ]
+
 
 stdClasses :: Map Name Class
 stdClasses = M.fromList
-  [ "Num" <~ num
-  , "Eq" <~ eq
+  [ "Eq" <~ eq
   , "Ord" <~ ord
-  ]
+  , "IsString" <~ isString
+  ] `M.union` stdNumClasses
 
 
 stdDefaults :: Map Name [Type]
@@ -66,3 +94,16 @@ stdDefaults = M.map (Prelude.map (\tn -> TypeVarRigid $ TypeVar tn KType)) $ M.f
 
 stdClassEnv :: ClassEnv
 stdClassEnv = ClassEnv stdClasses stdDefaults
+
+
+stdTypeEnv :: TypeEnv
+stdTypeEnv = TypeEnv $ M.fromList
+ [ "true" <~ Forall [] ([] :=> tBool)
+ , "false" <~ Forall [] ([] :=> tBool)
+
+ , "eq" <~ Forall [KType] ([IsIn "Eq" $ tWobbly "~A"] :=>
+                          fun (tWobbly "~A")
+                           (fun (tWobbly "~A") tBool)
+                         )
+ , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+ ]

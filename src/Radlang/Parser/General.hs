@@ -2,6 +2,7 @@
 
 module Radlang.Parser.General where
 
+import Control.Applicative (liftA2)
 import           Control.Monad
 import           Control.Monad.Identity
 import           Data.Void
@@ -15,6 +16,12 @@ import           Radlang.Types
 
 
 type Parser = ParsecT Void String Identity
+
+testPars :: Show a => Parser a -> String -> IO ()
+testPars p inp = (either
+  (putStrLn . parseErrorPretty)
+  print) $
+  (parse (p <* eof) "TEST" inp)
 
 forbiddenIds :: [Name]
 forbiddenIds = ["let", "in", "case", "of", "if", "else", "then", "True", "False"]
@@ -72,4 +79,4 @@ constructorName = uId
 typeName :: Parser Name
 typeName = uId
 generalTypeName :: Parser Name
-generalTypeName = uId
+generalTypeName = liftA2 (:) (char '~') uId

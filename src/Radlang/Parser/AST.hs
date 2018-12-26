@@ -57,7 +57,7 @@ applicationE = do
 letE :: Parser AST
 letE = do
   word "let"
-  assgs <- sepBy1 assignment (operator ";")
+  assgs <- sepBy1 assignment (operator "|")
   word "in"
   inWhat <- ast
   pure $ ASTLet assgs inWhat
@@ -96,8 +96,4 @@ constInt :: Parser Literal
 constInt = LitInt <$> signed
 
 constString :: Parser Literal
-constString = LitString <$> do
-  void $ char '"'
-  s <- many alphaNumChar
-  void $ char '"'
-  pure s
+constString = LitString <$> between (symbol "\"") (symbol "\"") (many alphaNumChar)

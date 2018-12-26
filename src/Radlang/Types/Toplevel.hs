@@ -20,4 +20,3 @@ type ExplBindings = Map Name (TypePoly, [Alt])
 type ImplBindings = Map Name [Alt]
 
 type BindingGroup = (ExplBindings, [ImplBindings])
-type Program = [BindingGroup]

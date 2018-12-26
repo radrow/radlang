@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 
 -- |Types related to typechecking
@@ -10,6 +11,7 @@ module Radlang.Types.Typesystem where
 
 import Data.Foldable
 import Control.Applicative
+import Control.Monad.Identity
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
@@ -46,55 +48,61 @@ newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
   deriving (Eq, Ord, Show)
 
 
-newtype ClassEnvBuilder a =
-  ClassEnvBuilder (ExceptT ErrMsg (State ClassEnv) a)
+newtype ClassEnvBuilderT m a =
+  ClassEnvBuilder (ExceptT ErrMsg (StateT ClassEnv m) a)
   deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadState ClassEnv)
+deriving instance MonadIO (ClassEnvBuilderT IO)
+type ClassEnvBuilder = ClassEnvBuilderT Identity
 
-newtype TypeInfer a =
-  TypeInfer (ExceptT ErrMsg (ReaderT (TypeEnv, ClassEnv) (State TypeInferState)) a)
+newtype TypeInferT m a =
+  TypeInfer (ExceptT ErrMsg (ReaderT (TypeEnv, ClassEnv) (StateT TypeInferState m)) a)
   deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadReader (TypeEnv, ClassEnv), MonadState TypeInferState)
+deriving instance MonadIO (TypeInferT IO)
+type TypeInfer = TypeInferT Identity
 
 -- |Transformer responsible for typechecking expressions and error handling
-newtype Typechecker a =
-  Typechecker (ExceptT ErrMsg (ReaderT ClassEnv (State TypecheckerState)) a)
+newtype TypecheckerT m a =
+  Typechecker (ExceptT ErrMsg (ReaderT ClassEnv (StateT TypecheckerState m)) a)
   deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadReader ClassEnv, MonadState TypecheckerState)
+deriving instance MonadIO (TypecheckerT IO)
+type Typechecker = TypecheckerT Identity
 
 class (MonadError ErrMsg m, MonadPlus m) => HasClassEnv m where
   getClassEnv :: m ClassEnv
 
-instance HasClassEnv ClassEnvBuilder where
+instance Monad m => HasClassEnv (ClassEnvBuilderT m) where
   getClassEnv = get
-instance HasClassEnv TypeInfer where
+instance Monad m => HasClassEnv (TypeInferT m) where
   getClassEnv = asks snd
-instance HasClassEnv Typechecker where
+instance Monad m => HasClassEnv (TypecheckerT m) where
   getClassEnv = ask
 
 class (MonadError ErrMsg m, MonadPlus m) => HasTypeEnv m where
   getTypeEnv :: m TypeEnv
-instance HasTypeEnv TypeInfer where
+instance Monad m => HasTypeEnv (TypeInferT m) where
   getTypeEnv = asks fst
-instance HasTypeEnv Typechecker where
+instance Monad m => HasTypeEnv (TypecheckerT m) where
   getTypeEnv = gets tcTypeEnv
 
 class (MonadError ErrMsg m, MonadPlus m) => Substitutor m where
   getSubst :: m Substitution
   setSubst :: Substitution -> m ()
 
-instance Substitutor TypeInfer where
+instance Monad m => Substitutor (TypeInferT m) where
   getSubst = gets tiSubst
   setSubst s = modify $ \ti -> ti{tiSubst = s}
-instance Substitutor Typechecker where
+instance Monad m => Substitutor (TypecheckerT m) where
   getSubst = gets tcSubst
   setSubst s = modify $ \tc -> tc{tcSubst = s}
 
 class (MonadError ErrMsg m, MonadPlus m) => IdSupply m where
   newId :: m Int
-instance IdSupply TypeInfer where
+instance Monad m => IdSupply (TypeInferT m) where
   newId = gets tiSupply >>= \i -> modify (\s -> s{tiSupply = i + 1}) >> pure (i + 1)
-instance IdSupply Typechecker where
+instance Monad m => IdSupply (TypecheckerT m) where
   newId = gets tcSupply >>= \i -> modify (\s -> s{tcSupply = i + 1}) >> pure (i + 1)
 
 
@@ -103,7 +111,7 @@ instance IdSupply Typechecker where
 data Type
   = TypeVarWobbly TypeVar -- Inferred type variable
   | TypeVarRigid TypeVar -- Non generalizable type
-  | TypeGeneric Int -- ADT with given arity
+  | TypeGeneric Int -- Generic type with it's index on TypePoly list
   | TypeApp Type Type
   deriving (Eq, Ord)
 
@@ -236,10 +244,17 @@ instance Monoid Substitution where
   mempty = Subst M.empty
 
 
+-- deriving instance Show Type
 instance Show Type where
   show = \case
     TypeVarWobbly (TypeVar a _) -> a
     TypeVarRigid (TypeVar a _) -> a
+    TypeApp (TypeApp (TypeVarRigid (TypeVar "Func" _)) arg)
+      val -> let aa = case arg of
+                   TypeVarRigid _ -> show arg
+                   TypeVarWobbly _ -> show arg
+                   _ -> "(" <> show arg <> ")"
+             in aa <> " -> " <> show val
     TypeApp a b -> show a <> " " <> show b
     TypeGeneric n -> "Generic" <> show n
 
@@ -250,7 +265,8 @@ instance HasKind Type where
   kind (TypeGeneric _) = error "kindcheck generic"
   kind (TypeApp f _) = case kind f of
     (KFunc _ k) -> k
-    _ -> error "Kindcheck failed"
+    _ -> error $ "Kindcheck failed: expected " <> show f
+      <> " to be functional kind, but got KType"
 
 
 instance HasKind TypeVar where
