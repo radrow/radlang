@@ -4,7 +4,7 @@ module Radlang
     ( parseProgram
     , module Radlang.Types
     , module Radlang.Evaluator
-    , module Radlang.Typechecker
+    , module Radlang.TypecheckerDebug
     , module Radlang.Parser
     ) where
 
@@ -14,8 +14,8 @@ import Text.Megaparsec as MP(parse, parseErrorPretty, eof)
 import Radlang.Parser
 import Radlang.Evaluator
 import Radlang.Types
-import Radlang.Typechecker
+import Radlang.TypecheckerDebug
 
 -- |Toplevel parser run with desugaring
-parseProgram :: String -> String -> Either String Expr
-parseProgram filename code = bimap parseErrorPretty processAST $ MP.parse (ast <* eof) filename code
+parseProgram :: String -> String -> Either String Program
+parseProgram filename code = bimap parseErrorPretty id $ MP.parse (program <* eof) filename code

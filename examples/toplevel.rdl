@@ -1,8 +1,1 @@
-str := "DDD";;
-id x := x;;
-
-s := "XD";;
-a := id 3;;
-
-k : A is Num, B is Kok :- A;;
-end := 3
+e := eq ;;

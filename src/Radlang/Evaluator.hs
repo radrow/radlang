@@ -70,13 +70,13 @@ withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
 withNs :: Namespace -> Evaluator a -> Evaluator a
 withNs n = local (update n)
 
--- |Evals with stdlib included
-withStdlib :: Evaluator a -> Evaluator a
-withStdlib ev = do
-  ns <- fmap M.fromList $ forM stdlib $ \(name, val ::: _) -> do
-    i <- registerData $ Strict val
-    pure (name <~ i)
-  withNs ns ev
+-- -- |Evals with stdlib included
+-- withStdlib :: Evaluator a -> Evaluator a
+-- withStdlib ev = do
+--   ns <- fmap M.fromList $ forM stdlib $ \(name, val ::: _) -> do
+--     i <- registerData $ Strict val
+--     pure (name <~ i)
+--   withNs ns ev
 
 -- |Same as `withAssg`, but evaluation performed
 withAssgExpr :: (Name, Int) -> Expr -> Evaluator Data
@@ -143,8 +143,8 @@ eval expr =
 
 -- |Executes Evaluator on given Expr
 evalProgram :: Expr -> Either ErrMsg StrictData
-evalProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= deepForce)) M.empty) (M.empty, 0)
+evalProgram ex = Left ":("--first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= deepForce)) M.empty) (M.empty, 0)
 
 -- |Executes Evaluator and prints result
 evalPrintProgram :: Expr -> Either ErrMsg String
-evalPrintProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= runtimeShow )) M.empty) (M.empty, 0)
+evalPrintProgram ex = Left ":("--first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= runtimeShow )) M.empty) (M.empty, 0)

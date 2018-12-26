@@ -13,9 +13,29 @@ import Radlang.Types
 import Radlang.Parser.General
 import Radlang.Parser.Type
 import Radlang.Parser.Expr
-import Radlang.Parser.AST
-import Radlang.TypecheckerDebug
 import Radlang.DependencyAnalysis
+import Radlang.TypecheckerDebug
+
+
+data RawProgramPart
+  = RPNewType NewType
+  | RPTypeAlias TypeAlias
+  | RPTypeDecl TypeDecl
+  | RPDataDef DataDef
+  | RPClassDef ClassDef
+  | RPImplDef ImplDef
+  deriving (Eq, Show)
+
+
+data RawProgram = RawProgram
+  { rawprgNewTypes :: [NewType]
+  , rawprgTypeAliases :: [TypeAlias]
+  , rawprgTypeDecls :: [TypeDecl]
+  , rawprgDataDefs :: [DataDef]
+  , rawprgClassDefs :: [ClassDef]
+  , rawprgImplDefs :: [ImplDef]
+  }
+  deriving (Eq, Show)
 
 
 groupImplicits :: Program -> Program
@@ -59,56 +79,9 @@ processProgram (RawProgram newtypes typealiases typedecls datadefs classdefs imp
   typealiases newtypes classdefs impldefs
 
 
-data Program = Program
-  { prgBindings :: [BindingGroup]
-  , prgTypeAliases :: [TypeAlias]
-  , prgNewTypes :: [NewType]
-  , prgClassDefs :: [ClassDef]
-  , prgImplDefs :: [ImplDef]
-  } deriving (Eq, Show)
-
-data RawProgramPart
-  = RPNewType NewType
-  | RPTypeAlias TypeAlias
-  | RPTypeDecl TypeDecl
-  | RPDataDef DataDef
-  | RPClassDef ClassDef
-  | RPImplDef ImplDef
-  deriving (Eq, Show)
-
-data RawProgram = RawProgram
-  { rawprgNewTypes :: [NewType]
-  , rawprgTypeAliases :: [TypeAlias]
-  , rawprgTypeDecls :: [TypeDecl]
-  , rawprgDataDefs :: [DataDef]
-  , rawprgClassDefs :: [ClassDef]
-  , rawprgImplDefs :: [ImplDef]
-  }
-  deriving (Eq, Show)
-
-data NewType = NewType Name [Name] [ConstructorDef]
-  deriving (Eq, Ord, Show)
-
-data ConstructorDef = ConstructorDef Name [Type]
-  deriving (Eq, Ord, Show)
-
-data TypeAlias = TypeAlias Name Type
-  deriving (Eq, Ord, Show)
-
-data TypeDecl = TypeDecl Name (Qual Type)
-  deriving (Eq, Ord, Show)
-
-data DataDef = DataDef Name [Pattern] Expr
-  deriving (Eq, Show)
-
-data ClassDef = ClassDef Name Name [TypeDecl]
-  deriving (Eq, Show)
-
-data ImplDef = ImplDef Name Type [DataDef]
-  deriving (Eq, Show)
-
 program :: Parser Program
 program = processProgram <$> rawProgram
+
 
 rawProgram :: Parser RawProgram
 rawProgram = do
@@ -160,7 +133,7 @@ dataDef = do
   name <- valName
   pats <- many pattern
   operator ":="
-  def <- processAST <$> ast
+  def <- expr
   pure $ DataDef name pats def
 
 pattern = msum $ fmap try
@@ -212,130 +185,3 @@ implDef = do
   arg <- type_
   methods <- brac $ many $ dataDef <* (operator ";;")
   pure $ ImplDef cname arg methods
-
-
--- tt :: IO ()
-tt = runTypecheckerT $ execTypeInfer $ void . inferTypeExpr $
-  Application (Application (Val "eq") (Lit $ LitString "")) (Lit $ LitInt 3)
-
-test :: IO ()
-test = do
-  f <- readFile "examples/toplevel.rdl"
-  testt f
-
-testt :: String -> IO ()
-testt f = case parse (program <* eof) "XD" f of
-  Left a -> putStrLn $ parseErrorPretty a
-  Right p -> (either id printTypeEnv <$> typecheck (prgBindings p)) >>= putStrLn
-
-
-printTypeEnv :: TypeEnv -> String
-printTypeEnv (TypeEnv te) =
-  let l :: [(String, TypePoly)]
-      l = M.toList te
-  in
-  unlines $ fmap (\(v, t) -> v <> " : " <> show t) l
-
-{-
-toplevelBindings :: [Toplevel] -> BindingGroup
-toplevelBindings = Prelude.foldl ins (M.empty, [M.empty]) where
-  ins :: BindingGroup -> Toplevel -> BindingGroup
-  ins (exs, [imps]) tl = case tl of
-    TopTypeDecl n qt -> case (M.lookup n exs, M.lookup n imps) of
-      (Nothing, Nothing) ->
-        (M.insert n (quantify (S.toList $ free qt) qt, []) exs, [imps])
-      (Nothing, Just alts) -> let
-        e = M.insert n (quantify (S.toList $ free qt) qt, alts) exs
-        i = M.delete n imps
-        in (e, [i])
-      (Just _, _) -> error "Typedecl duplicate"
-    TopValDef n args body -> case (M.lookup n exs, M.lookup n imps) of
-      (Nothing, Nothing) -> let
-        i = M.insert n [(args, processAST body)] imps
-        in (exs, [i])
-      (Just (t, alts), Nothing) -> let
-        e = M.insert n (t, (args, processAST body):alts) exs
-        in (e, [imps])
-      (Nothing, Just alts) -> let
-        i = M.insert n ((args, processAST body):alts) imps
-        in (exs, [i])
-      _ -> error "Impossible happened: binding both explicit and implicit"
-  ins _ _ = error "ins not implemented for this case"
-
-data Toplevel
-  = TopTypeDecl Name (Qual Type)
-  | TopValDef Name [Pattern] AST
-  deriving (Eq, Show)
-
-program :: Parser [Toplevel]
-program =
-  sepBy (msum $ fmap try [typeDecl, valDef]) (operator ";;")
-
-typeDecl :: Parser Toplevel
-typeDecl = do
-  n <- lId
-  operator ":"
-  t <- qual type_
-  pure $ TopTypeDecl n t
-
-qual :: Parser a -> Parser (Qual a)
-qual aPars = do
-  preds <- sepBy (try predicate) (operator ",")
-  when (not (Prelude.null preds)) $ operator ":-"
-  a <- aPars
-  pure $ preds :=> a
-
-predicate :: Parser Pred
-predicate = do
-  t <- type_
-  word "is"
-  cl <- uId
-  pure $ IsIn cl t
-
-valDef :: Parser Toplevel
-valDef = do
-  n <- lId
-  args <- many pattern
-  operator ":="
-  body <- ast
-  pure $ TopValDef n args body
-
-
-pattern :: Parser Pattern
-pattern = msum $ fmap try
-  [ mzero
-  , val
-  , wildcard
-  , as
-  , literalPattern
-  -- , nplusk
-  , constructor
-  ]
-
-val :: Parser Pattern
-val = PVar <$> lId
-
-wildcard :: Parser Pattern
-wildcard = operator "_" >> pure PWildcard
-
-as :: Parser Pattern
-as = do
-  n <- lId
-  operator "="
-  p <- pattern
-  pure $ PAs n p
-
-literalPattern :: Parser Pattern
-literalPattern = msum $ fmap try
-  [ PLit . LitInt <$> signed
-  , PLit . LitString <$>
-      between (symbol "\"") (symbol "\"") (many alphaNumChar)
-  ]
-
-constructor :: Parser Pattern
-constructor = do
-  cname <- constructorName
-  args <- many pattern
-  pure $ PConstructor cname args
-
--}

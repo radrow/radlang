@@ -33,20 +33,20 @@ printResult = \case
   Left e -> hPutStrLn stderr e
 
 main :: IO ()
-main = forever $ do
-  hPutStr stderr "RDL: "
-  hFlush stderr
-  lineRead <- getLine
-  let (action, line) = processLine lineRead
-  unless (all isSpace lineRead) $
-    case action of
-      Eval -> printResult $ do
-        e <- parseProgram "interactive" line
-        void $ typecheck e
-        d <- evalPrintProgram e
-        pure d
-      Typecheck -> printResult $ do
-        e <- parseProgram "interactive" line
-        t <- typecheck e
-        pure $ show t
-      Quit -> hPutStrLn stderr "Bye!" >> exitSuccess
+main = forever $ do pure ()
+  -- hPutStr stderr "RDL: "
+  -- hFlush stderr
+  -- lineRead <- getLine
+  -- let (action, line) = processLine lineRead
+  -- unless (all isSpace lineRead) $
+  --   case action of
+  --     Eval -> printResult $ do
+  --       e <- parseProgram "interactive" line
+  --       void $ typecheck e
+  --       d <- evalPrintProgram e
+  --       pure d
+  --     Typecheck -> printResult $ do
+  --       e <- parseProgram "interactive" line
+  --       t <- typecheck e
+  --       pure $ show t
+  --     Quit -> hPutStrLn stderr "Bye!" >> exitSuccess

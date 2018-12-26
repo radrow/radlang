@@ -1,0 +1,23 @@
+type alias String := List Char
+newtype X ~A := X | Y Int | Z ~A
+
+interface TClass ~A {
+  f : ~A -> ~A
+} default Int
+
+impl TClass Int {
+  f x := plus x 1
+}
+
+id : ~A -> ~A
+id x := x
+
+k :=
+  let x := 3
+    | y : List Char
+    | y := "XD\n"
+    | z := \x -> id x
+    | w := plus@(2 3 4 5)  -- plus 2 (plus 3 (plus 4 5))
+    | w := @plus(2 3 4 5)  -- plus (plus (plus 2 3) 4) 5
+  in [1,2,3]
+

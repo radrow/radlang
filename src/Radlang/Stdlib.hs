@@ -2,8 +2,7 @@
 
 {-# LANGUAGE ScopedTypeVariables #-}
 {-#LANGUAGE GADTs #-}
-module Radlang.Stdlib(stdlib, Prim(..), runtimeShow) where
-
+module Radlang.Stdlib where
 import Control.Monad.Except
 
 import Radlang.Types
@@ -17,6 +16,7 @@ data Prim where
   (:::) :: StrictData -> TypePoly -> Prim
 infixr 9 :::
 
+{-
 fun :: (Data -> Evaluator Data) -> StrictData
 fun = DataInternalFunc
 fun2 :: (Data -> Data -> Evaluator Data) -> StrictData
@@ -122,3 +122,4 @@ stdlib =
   , "and" <~ and ::: makePoly (TypeFunc TypeBool (TypeFunc TypeBool TypeBool))
   , "not" <~ not ::: makePoly (TypeFunc TypeBool TypeBool)
   ]
+-}

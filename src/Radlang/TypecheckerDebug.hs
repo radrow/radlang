@@ -20,6 +20,7 @@ import Radlang.Types
 import Radlang.Typedefs
 import Radlang.Helpers
 
+
 dbg :: MonadIO m => String -> m ()
 dbg = liftIO . putStrLn . ("DEBUG: " <>)
 
@@ -520,16 +521,8 @@ runTypecheckerT
 typecheck :: [BindingGroup] -> IO (Either ErrMsg TypeEnv)
 typecheck p = runTypecheckerT (inferTypeBindingGroups p)
 
-pat :: Pattern
-pat = PVar "wisienka"
-expr :: Expr
-expr = Lit $ LitInt 3
 
-impl :: ImplBinding
-impl = ("wisienka", [([pat], expr)])
 
-pr :: [BindingGroup]
-pr = [([],[[impl]])]
 
 stdTypeEnv :: TypeEnv
 stdTypeEnv = TypeEnv $ M.fromList

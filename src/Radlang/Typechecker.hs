@@ -5,7 +5,7 @@
 -- |Implementation of the W Algorithm for typechecking
 
 module Radlang.Typechecker where
-
+{-
 import Data.Bifunctor
 import Data.List as DL
 import qualified Data.Map.Strict as M
@@ -522,3 +522,4 @@ impl = ("wisienka", [([pat], expr)])
 
 pr :: Program
 pr = [([],[[impl]])]
+-}
