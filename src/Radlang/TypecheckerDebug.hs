@@ -477,6 +477,7 @@ inferTypeImpl bs = do
     let scs' = M.elems $ fmap (quantify gs . (rs :=>)) ts'
     in do
       updateTypeEnv (TypeEnv $ M.fromList $ zip is scs')
+      updateTypeEnv (TypeEnv $ M.fromList $ zip is scs')
       pure ds
 
 
@@ -532,12 +533,13 @@ pr = [([],[[impl]])]
 
 stdTypeEnv :: TypeEnv
 stdTypeEnv = TypeEnv $ M.fromList
- [ "true" <~ Forall [] ([] :=> tBool)
- , "false" <~ Forall [] ([] :=> tBool)
+ [ "eq" <~ quantify [TypeVar "~A" KType] ([IsIn "Eq" $ tWobbly "~A"] :=>
+                                          fun (tWobbly "~A")
+                                          (fun (tWobbly "~A") tBool)
+                                         )
+ -- , "true" <~ Forall [] ([] :=> tBool)
+ -- , "false" <~ Forall [] ([] :=> tBool)
 
- , "eq" <~ quantify [TypeVar "~A" KType] ([IsIn "Eq" $ tWobbly "~A"] :=>
-                          fun (tWobbly "~A")
-                           (fun (tWobbly "~A") tBool)
-                         )
- , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+
+ -- , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
  ]

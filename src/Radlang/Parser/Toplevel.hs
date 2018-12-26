@@ -50,19 +50,21 @@ toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
         i = M.insert n ((args, body):alts) imps
         in (exs, [i])
       _ -> error "Impossible happened: binding both explicit and implicit"
-  ins _ _ = error "ins not implemented for this case"
+  ins _ _ = error "toplevelBindings process error: imps not a singleton"
 
 
 processProgram :: RawProgram -> Program
-processProgram (RawProgram newtypes typealiases typedecls datadefs) =
+processProgram (RawProgram newtypes typealiases typedecls datadefs classdefs impldefs) =
   Program (toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs)
-  typealiases newtypes
+  typealiases newtypes classdefs impldefs
 
 
 data Program = Program
   { prgBindings :: [BindingGroup]
   , prgTypeAliases :: [TypeAlias]
   , prgNewTypes :: [NewType]
+  , prgClassDefs :: [ClassDef]
+  , prgImplDefs :: [ImplDef]
   } deriving (Eq, Show)
 
 data RawProgramPart
@@ -70,6 +72,8 @@ data RawProgramPart
   | RPTypeAlias TypeAlias
   | RPTypeDecl TypeDecl
   | RPDataDef DataDef
+  | RPClassDef ClassDef
+  | RPImplDef ImplDef
   deriving (Eq, Show)
 
 data RawProgram = RawProgram
@@ -77,6 +81,8 @@ data RawProgram = RawProgram
   , rawprgTypeAliases :: [TypeAlias]
   , rawprgTypeDecls :: [TypeDecl]
   , rawprgDataDefs :: [DataDef]
+  , rawprgClassDefs :: [ClassDef]
+  , rawprgImplDefs :: [ImplDef]
   }
   deriving (Eq, Show)
 
@@ -95,13 +101,19 @@ data TypeDecl = TypeDecl Name (Qual Type)
 data DataDef = DataDef Name [Pattern] Expr
   deriving (Eq, Show)
 
+data ClassDef = ClassDef Name Name [TypeDecl]
+  deriving (Eq, Show)
+
+data ImplDef = ImplDef Name Type [DataDef]
+  deriving (Eq, Show)
+
 program :: Parser Program
 program = processProgram <$> rawProgram
 
 rawProgram :: Parser RawProgram
 rawProgram = do
   parts <- many $ rawProgramPart <* (operator ";;")
-  pure $ foldl insert (RawProgram [] [] [] []) parts where
+  pure $ foldl insert (RawProgram [] [] [] [] [] []) parts where
     insert rp = \case
       RPNewType nt -> rp {rawprgNewTypes = nt : rawprgNewTypes rp}
       RPTypeAlias ta -> rp {rawprgTypeAliases = ta : rawprgTypeAliases rp}
@@ -113,6 +125,8 @@ rawProgramPart = msum $ fmap try
   , RPTypeAlias <$> typeAlias
   , RPTypeDecl <$> typeDecl
   , RPDataDef <$> dataDef
+  , RPClassDef <$> classDef
+  , RPImplDef <$> implDef
   ]
 
 newType = do
@@ -181,6 +195,25 @@ escapedChar = do
     '0' -> pure '\0'
     bad -> fail $ "Cannot escape char '" <> [bad] <> "'"
 
+
+classDef :: Parser ClassDef
+classDef = do
+  word "interface"
+  name <- className
+  arg <- generalTypeName
+  methods <- brac $ many $ typeDecl <* (operator ";;")
+  pure $ ClassDef name arg methods
+
+
+implDef :: Parser ImplDef
+implDef = do
+  word "impl"
+  cname <- className
+  arg <- type_
+  methods <- brac $ many $ dataDef <* (operator ";;")
+  pure $ ImplDef cname arg methods
+
+
 -- tt :: IO ()
 tt = runTypecheckerT $ execTypeInfer $ void . inferTypeExpr $
   Application (Application (Val "eq") (Lit $ LitString "")) (Lit $ LitInt 3)
@@ -188,9 +221,12 @@ tt = runTypecheckerT $ execTypeInfer $ void . inferTypeExpr $
 test :: IO ()
 test = do
   f <- readFile "examples/toplevel.rdl"
-  case parse (program <* eof) "XD" f of
-    Left a -> putStrLn $ parseErrorPretty a
-    Right p -> (either id printTypeEnv <$> typecheck (prgBindings p)) >>= putStrLn
+  testt f
+
+testt :: String -> IO ()
+testt f = case parse (program <* eof) "XD" f of
+  Left a -> putStrLn $ parseErrorPretty a
+  Right p -> (either id printTypeEnv <$> typecheck (prgBindings p)) >>= putStrLn
 
 
 printTypeEnv :: TypeEnv -> String
