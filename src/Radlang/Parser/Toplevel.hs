@@ -15,6 +15,17 @@ import Radlang.Parser.Type
 import Radlang.Parser.Expr
 import Radlang.Parser.AST
 import Radlang.TypecheckerDebug
+import Radlang.DependencyAnalysis
+
+
+groupImplicits :: Program -> Program
+groupImplicits p =
+  p { prgBindings = flip fmap (prgBindings p) $ \case
+        (es, [im]) -> (es, groupBindings im)
+        (es, []) -> (es, [])
+        _ -> error "Implicits already grouped"
+    }
+
 
 toplevelBindings :: [Either TypeDecl DataDef] -> [BindingGroup]
 toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
@@ -41,9 +52,12 @@ toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
       _ -> error "Impossible happened: binding both explicit and implicit"
   ins _ _ = error "ins not implemented for this case"
 
+
+processProgram :: RawProgram -> Program
 processProgram (RawProgram newtypes typealiases typedecls datadefs) =
   Program (toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs)
   typealiases newtypes
+
 
 data Program = Program
   { prgBindings :: [BindingGroup]
@@ -177,6 +191,7 @@ test = do
   case parse (program <* eof) "XD" f of
     Left a -> putStrLn $ parseErrorPretty a
     Right p -> (either id printTypeEnv <$> typecheck (prgBindings p)) >>= putStrLn
+
 
 printTypeEnv :: TypeEnv -> String
 printTypeEnv (TypeEnv te) =

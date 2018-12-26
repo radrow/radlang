@@ -94,16 +94,3 @@ stdDefaults = M.map (Prelude.map (\tn -> TypeVarRigid $ TypeVar tn KType)) $ M.f
 
 stdClassEnv :: ClassEnv
 stdClassEnv = ClassEnv stdClasses stdDefaults
-
-
-stdTypeEnv :: TypeEnv
-stdTypeEnv = TypeEnv $ M.fromList
- [ "true" <~ Forall [] ([] :=> tBool)
- , "false" <~ Forall [] ([] :=> tBool)
-
- , "eq" <~ Forall [KType] ([IsIn "Eq" $ tWobbly "~A"] :=>
-                          fun (tWobbly "~A")
-                           (fun (tWobbly "~A") tBool)
-                         )
- , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
- ]

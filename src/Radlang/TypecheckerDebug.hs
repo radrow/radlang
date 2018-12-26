@@ -18,9 +18,10 @@ import Control.Monad.Except
 
 import Radlang.Types
 import Radlang.Typedefs
+import Radlang.Helpers
 
 dbg :: MonadIO m => String -> m ()
-dbg = liftIO . putStrLn
+dbg = liftIO . putStrLn . ("DEBUG: " <>)
 
 typeEnvUnion :: TypeEnv -> TypeEnv -> TypeEnv
 typeEnvUnion (TypeEnv t1) (TypeEnv t2) = TypeEnv (M.union t1 t2)
@@ -103,7 +104,7 @@ mgu t1 t2 = case (t1, t2) of
 -- |Unifier that uses `merge` instead of `<>`
 match :: (MonadError ErrMsg m, MonadIO m)
   => Type -> Type -> m Substitution
-match t1 t2 = liftIO (putStrLn $ "matching " <> show t1 <> " with " <> show t2) >> case (t1, t2) of
+match t1 t2 = case (t1, t2) of
   (TypeApp f1 a1, TypeApp f2 a2) -> do
     sf <- match f1 f2
     sa <- match a1 a2
@@ -129,9 +130,7 @@ mguPred (IsIn i1 t1) (IsIn i2 t2) =
 
 -- |match for predicates
 matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m Substitution
-matchPred p1@(IsIn i1 t1) p2@(IsIn i2 t2) =
-  dbg ("matching preds: " <> show p1 <> " vs " <> show p2)
-  >>
+matchPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then match t1 t2
   else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
 
@@ -181,11 +180,8 @@ predsByInstances :: (MonadIO m, HasClassEnv m) => Pred -> m [Pred]
 predsByInstances p@(IsIn i _) = do
   -- list of instances of i
   insts <- S.toList <$> instances i
-  dbg $ "Searching preds for " <> i
-  dbg $ "Instances are: " <> show insts
   -- opertation that tries to strictly unify p with instance declaration
-  let -- tryInst :: Qual Pred -> TypecheckerT IO [Pred]
-      tryInst (ps :=> h) = do
+  let tryInst (ps :=> h) = do
         u <- matchPred h p
         pure $ fmap (substitute u) ps
   msum $ fmap tryInst insts
@@ -271,14 +267,9 @@ extendSubst s = getSubst >>= \ts -> setSubst $ s <> ts
 -- |Unify types and update substitution
 unify :: (Substitutor m, MonadIO m) => Type -> Type -> m ()
 unify t1 t2 = do
-  dbg $ "unifying " <> show t1 <> " with " <> show t2
   s <- getSubst
-  dbg $ "MGU for " <> show (substitute s t1) <> " and " <> show (substitute s t2)
   u <- mgu (substitute s t1) (substitute s t2)
-  dbg $ "Got subst " <> show u
   extendSubst u
-  ss <- getSubst
-  dbg $ "New subst " <> show ss
 
 
 -- |Returns new type variable
@@ -312,6 +303,7 @@ inferTypeExpr = \case
     t <- newVar "_FunRes" KType
     unify (fun ta t) tf
     pure (ps ++ qs, t)
+  _ -> error "infer expr case not implemented"
 
 inferTypeLiteral :: Infer Literal Type
 inferTypeLiteral = \case
@@ -400,9 +392,9 @@ withDefaults :: (HasClassEnv m, MonadIO m)
 withDefaults f vs ps = do
   let vps = ambiguities vs ps
   tss <- mapM candidates vps
-  if any null tss
-    then throwError $ "Cannot resolve ambiguity: candidates for " <> show vps <> " are empty"
-    else pure $ f vps (fmap head tss)
+  case find (null . fst) (zip tss vps) of
+    Just (_, bad) -> throwError $ "Cannot resolve ambiguity: candidates for " <> show bad <> " are empty"
+    Nothing -> pure $ f vps (fmap head tss)
 
 defaultedPreds :: (HasClassEnv m,
                    MonadIO m)
@@ -473,8 +465,7 @@ inferTypeImpl bs = do
       fs = S.toList $ free (substitute s as)
       vss = fmap (S.toList . free) ts'
       gs = foldr1 union vss \\ fs
-  when (null vss) $ throwError "inferTypeImpl: Empty vss"
-  (ds, rs) <- split fs (foldr1 intersect vss) ps'
+  (ds, rs) <- split fs (if null vss then [] else foldr1 intersect vss) ps' -- FIXME: Is this ok?
   if restricted (M.toList bs)
     then
     let gs' = filter (`S.member` free rs) gs
@@ -538,3 +529,15 @@ impl = ("wisienka", [([pat], expr)])
 
 pr :: [BindingGroup]
 pr = [([],[[impl]])]
+
+stdTypeEnv :: TypeEnv
+stdTypeEnv = TypeEnv $ M.fromList
+ [ "true" <~ Forall [] ([] :=> tBool)
+ , "false" <~ Forall [] ([] :=> tBool)
+
+ , "eq" <~ quantify [TypeVar "~A" KType] ([IsIn "Eq" $ tWobbly "~A"] :=>
+                          fun (tWobbly "~A")
+                           (fun (tWobbly "~A") tBool)
+                         )
+ , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+ ]

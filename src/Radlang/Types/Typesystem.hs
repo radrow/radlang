@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -256,7 +257,9 @@ instance Show Type where
                    _ -> "(" <> show arg <> ")"
              in aa <> " -> " <> show val
     TypeApp a b -> show a <> " " <> show b
-    TypeGeneric n -> "Generic" <> show n
+    TypeGeneric n ->
+      let (prims, letter) = divMod n 25
+      in "~" <> pure (['A'..] !! letter) <> foldr (<>) "" (take prims (repeat "'"))
 
 
 instance HasKind Type where
@@ -318,5 +321,6 @@ instance Show TypeVar where
 
 instance Show TypePoly where
   show (Forall [] t) = show t
-  show (Forall ks t) = "forall " <> show ks <> " : " <> show t
+  show (Forall ks t) = show t <> " where " <>
+    concatMap (\i -> "\n  " <> show (TypeGeneric i) <> " : " <> show (ks !! i)) [0..length ks -1]
 
