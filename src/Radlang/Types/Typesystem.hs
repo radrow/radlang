@@ -94,19 +94,25 @@ class (MonadError ErrMsg m, MonadPlus m) => IdSupply m where
 ---- DEFINITIONS ----
 
 
--- |State of the type inferer
-data TypeInferState = TypeInferState
-  { tiSupply :: Int
-  , tiSubst :: Substitution
-  } deriving (Eq, Show)
+-- |Main configuration datatype for typechecker
+newtype TypecheckerConfig = TypecheckerConfig
+  { monomorphismRestriction :: Bool
+  }
 
 
--- |State of the typechecker
+-- |Mutable state of the typechecker
 data TypecheckerState = TypecheckerState
   { tcSupply :: Int
   , tcSubst :: Substitution
-  , tcTypeEnv :: TypeEnv
   } deriving (Eq, Show)
+
+
+-- |Immutable environment of typechecker
+data TypecheckerEnv = TypecheckerEnv
+  { classEnv :: ClassEnv
+  , typeEnv :: TypeEnv
+  , tcConfig :: TypecheckerConfig
+  }
 
 
 -- |Main container for classes
@@ -119,6 +125,15 @@ data ClassEnv = ClassEnv { classes :: Map Name Class
 -- |Map from data names to their most general inferred types
 newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
   deriving (Eq, Ord, Show)
+
+
+instance Semigroup TypeEnv where
+  (TypeEnv t1) <> (TypeEnv t2) = TypeEnv (M.union t1 t2)
+
+
+instance Monoid TypeEnv where
+  mempty = TypeEnv M.empty
+  mappend = (<>)
 
 
 instance IsType TypeEnv where
@@ -141,39 +156,11 @@ instance Monad m => HasClassEnv (ClassEnvBuilderT m) where
   getClassEnv = get
 
 
--- |Computation that infers type of some certain object. It works with constant type env
-newtype TypeInferT m a =
-  TypeInfer (ExceptT ErrMsg (ReaderT (TypeEnv, ClassEnv) (StateT TypeInferState m)) a)
-  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
-           , MonadError ErrMsg, MonadReader (TypeEnv, ClassEnv), MonadState TypeInferState)
-type TypeInfer = TypeInferT Identity
-
-
-deriving instance MonadIO (TypeInferT IO)
-
-
-instance Monad m => HasClassEnv (TypeInferT m) where
-  getClassEnv = asks snd
-
-
-instance Monad m => HasTypeEnv (TypeInferT m) where
-  getTypeEnv = asks fst
-
-
-instance Monad m => Substitutor (TypeInferT m) where
-  getSubst = gets tiSubst
-  setSubst s = modify $ \ti -> ti{tiSubst = s}
-
-
-instance Monad m => IdSupply (TypecheckerT m) where
-  newId = gets tcSupply >>= \i -> modify (\s -> s{tcSupply = i + 1}) >> pure (i + 1)
-
-
 -- |Transformer responsible for typechecking whole program and error handling
 newtype TypecheckerT m a =
-  Typechecker (ExceptT ErrMsg (ReaderT ClassEnv (StateT TypecheckerState m)) a)
+  Typechecker (ExceptT ErrMsg (ReaderT TypecheckerEnv (StateT TypecheckerState m)) a)
   deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
-           , MonadError ErrMsg, MonadReader ClassEnv, MonadState TypecheckerState)
+           , MonadError ErrMsg, MonadReader TypecheckerEnv, MonadState TypecheckerState)
 type Typechecker = TypecheckerT Identity
 
 
@@ -181,11 +168,11 @@ deriving instance MonadIO (TypecheckerT IO)
 
 
 instance Monad m => HasClassEnv (TypecheckerT m) where
-  getClassEnv = ask
+  getClassEnv = asks classEnv
 
 
 instance Monad m => HasTypeEnv (TypecheckerT m) where
-  getTypeEnv = gets tcTypeEnv
+  getTypeEnv = asks typeEnv
 
 
 instance Monad m => Substitutor (TypecheckerT m) where
@@ -193,8 +180,8 @@ instance Monad m => Substitutor (TypecheckerT m) where
   setSubst s = modify $ \tc -> tc{tcSubst = s}
 
 
-instance Monad m => IdSupply (TypeInferT m) where
-  newId = gets tiSupply >>= \i -> modify (\s -> s{tiSupply = i + 1}) >> pure (i + 1)
+instance Monad m => IdSupply (TypecheckerT m) where
+  newId = gets tcSupply
 
 
 -- |Primitive type definition

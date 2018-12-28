@@ -6,7 +6,6 @@
 
 module Radlang.TypecheckerDebug where
 
-import Data.Bifunctor
 import Data.List as DL
 import qualified Data.Map.Strict as M
 import qualified Data.Set.Monad as S
@@ -24,14 +23,10 @@ import Radlang.Helpers
 dbg :: MonadIO m => String -> m ()
 dbg = liftIO . putStrLn . ("DEBUG: " <>)
 
-typeEnvUnion :: TypeEnv -> TypeEnv -> TypeEnv
-typeEnvUnion (TypeEnv t1) (TypeEnv t2) = TypeEnv (M.union t1 t2)
 
-setTypeEnv :: MonadState TypecheckerState m => TypeEnv -> m ()
-setTypeEnv te = modify $ \s -> s{tcTypeEnv = te}
+withTypeEnv :: Monad m => TypeEnv -> TypecheckerT m a -> TypecheckerT m a
+withTypeEnv te = local $ \s -> s{typeEnv = te}
 
-updateTypeEnv :: (MonadState TypecheckerState m, HasTypeEnv m) => TypeEnv -> m ()
-updateTypeEnv te = setTypeEnv =<< fmap (typeEnvUnion te) getTypeEnv
 
 -- |Gets superclasses of class by name
 super :: HasClassEnv m => Name -> m (Set Name)
@@ -286,7 +281,7 @@ freshInst (Forall ks qt) = do
   ts <- mapM (newVar "_Inst") ks
   pure $ instantiate ts qt
 
-type Infer e t = e -> TypeInferT IO ([Pred], t)
+type Infer e t = e -> TypecheckerT IO ([Pred], t)
 
 inferTypeExpr :: Infer Expr Type
 inferTypeExpr = \case
@@ -295,9 +290,11 @@ inferTypeExpr = \case
     (ps :=> t) <- freshInst sc
     pure (ps, t)
   Lit l -> inferTypeLiteral l
-  Constant (_, sc) -> do
-    (ps :=> t) <- freshInst sc
-    pure (ps, t)
+  Let binds e -> do
+    as <- getTypeEnv
+    (ps, as') <- inferTypeBindingGroup binds
+    (qs, t) <- withTypeEnv (as' <> as) (inferTypeExpr e)
+    pure (ps ++ qs, t)
   Application f a -> do
     (ps, tf) <- inferTypeExpr f
     (qs, ta) <- inferTypeExpr a
@@ -334,7 +331,7 @@ inferTypePattern = \case
 inferTypePatterns :: Infer [Pattern] (TypeEnv, Set Type)
 inferTypePatterns pats = do
   psats <- mapM inferTypePattern pats
-  let typeEnvJoin = foldr typeEnvUnion (TypeEnv M.empty)
+  let typeEnvJoin = foldr mappend (TypeEnv M.empty)
       ps = join $ fmap (\(x,(_,_)) -> x) psats
       as = typeEnvJoin $ fmap (\(_,(x,_)) -> x) psats
       ts = fmap (\(_,(_,x)) -> x) psats
@@ -343,12 +340,13 @@ inferTypePatterns pats = do
 
 inferTypeAlt :: Infer Alt Type
 inferTypeAlt (pats, e) = do
+  as <- getTypeEnv
   (ps, (as', ts)) <- inferTypePatterns pats
-  (qs, t) <- local (first $ typeEnvUnion as') (inferTypeExpr e)
+  (qs, t) <- withTypeEnv (as' <> as) (inferTypeExpr e)
   pure (ps ++ qs, S.foldr fun t ts)
 
 
-inferTypeAlts :: [Alt] -> Type -> TypeInferT IO [Pred]
+inferTypeAlts :: [Alt] -> Type -> TypecheckerT IO [Pred]
 inferTypeAlts alts t = do
   psts <- mapM inferTypeAlt alts
   void $ mapM (unify t) (fmap snd psts)
@@ -407,31 +405,11 @@ defaultSubst :: (HasClassEnv m, MonadIO m)
              => [TypeVar] -> [Pred] -> m Substitution
 defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
-execTypeInfer :: TypeInferT IO a -> TypecheckerT IO a
-execTypeInfer (TypeInfer ti) = do
-  ce <- getClassEnv
-  tstate <- get
-  let istate = TypeInferState
-        { tiSubst = tcSubst tstate
-        , tiSupply = tcSupply tstate
-        }
-      iread = (tcTypeEnv tstate, ce)
-  (x, newst) <- liftIO $ runStateT (runReaderT (runExceptT ti) iread) istate
-  case x of
-    Left e -> throwError e
-    Right res -> do
-      put $ TypecheckerState
-        { tcSupply = tiSupply newst
-        , tcSubst = tiSubst newst
-        , tcTypeEnv = tcTypeEnv tstate
-        }
-      pure res
-
 
 inferTypeExpl :: ExplBinding -> TypecheckerT IO [Pred]
-inferTypeExpl (_, (sc, alts)) = do -- TODO: This n was needed?
+inferTypeExpl (_, (sc, alts)) = do
   (qs :=> t) <- freshInst sc
-  ps <- execTypeInfer $ inferTypeAlts alts t
+  ps <- inferTypeAlts alts t
   s <- getSubst
   as <- getTypeEnv
   let qs' = substitute s qs
@@ -440,7 +418,7 @@ inferTypeExpl (_, (sc, alts)) = do -- TODO: This n was needed?
       gs = (S.toList $ free t') \\ fs
       sc' = quantify gs (qs' :=> t')
   ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
-  (ds, rs) <- execTypeInfer $ split fs gs ps'
+  (ds, rs) <- split fs gs ps'
   if | sc /= sc' -> throwError "Signature is too general"
      | not (null rs) -> throwError "Context is too weak"
      | otherwise -> pure ds
@@ -451,71 +429,65 @@ restricted bs = any simple bs where
   simple (_, alts) = any (null . fst) alts
 
 
-inferTypeImpl :: ImplBindings -> TypecheckerT IO [Pred]
+inferTypeImpl :: Infer ImplBindings TypeEnv
 inferTypeImpl bs = do
   ts <- mapM (const $ newVar "IMPL" KType) bs
   as <- getTypeEnv
   let is = M.keys bs
       scs = fmap toTypePoly ts
       altss = M.elems bs
-  setTypeEnv $ typeEnvUnion (TypeEnv $ M.fromList $ zip is (M.elems scs)) as
-  pss <- sequence (zipWith (\x y -> execTypeInfer $ inferTypeAlts x y) altss (M.elems ts))
+      as' = (TypeEnv $ M.fromList $ zip is (M.elems scs)) <> as
+  pss <- sequence (zipWith (\x y -> withTypeEnv as' $ inferTypeAlts x y) altss (M.elems ts))
   s <- getSubst
   let ps' = substitute s (join pss)
       ts' = substitute s ts
       fs = S.toList $ free (substitute s as)
       vss = fmap (S.toList . free) ts'
       gs = foldr1 union vss \\ fs
-  (ds, rs) <- split fs (if null vss then [] else foldr1 intersect vss) ps' -- FIXME: Is this ok?
+  (ds, rs) <- split fs (if null vss then [] else foldr1 intersect vss) ps'
   if restricted (M.toList bs)
-    then
-    let gs' = filter (`S.member` free rs) gs
-        scs' = M.elems $ fmap (quantify gs' . ([] :=>)) ts'
-    in do
-      updateTypeEnv (TypeEnv $ M.fromList $ zip is scs')
-      pure (ds ++ rs)
-    else
-    let scs' = M.elems $ fmap (quantify gs . (rs :=>)) ts'
-    in do
-      updateTypeEnv (TypeEnv $ M.fromList $ zip is scs')
-      updateTypeEnv (TypeEnv $ M.fromList $ zip is scs')
-      pure ds
+    then let gs' = filter (`S.member` free rs) gs
+             scs' = M.elems $ fmap (quantify gs' . ([] :=>)) ts'
+    in pure (ds ++ rs, TypeEnv $ M.fromList $ zip is scs')
+    else let scs' = M.elems $ fmap (quantify gs . (rs :=>)) ts'
+    in pure (ds, TypeEnv $ M.fromList $ zip is scs')
 
 
-inferTypeBindingGroup :: BindingGroup -> TypecheckerT IO [Pred]
+inferTypeBindingGroup :: Infer BindingGroup TypeEnv
 inferTypeBindingGroup (es, iss) = do
   as <- getTypeEnv
-  let as' = TypeEnv $ foldr (\(v, (sc, _)) m -> M.insert v sc m) M.empty (M.toList es)
-  setTypeEnv $ typeEnvUnion as' as
-  ps <- inferTypeSeq inferTypeImpl iss
-  qss <- mapM inferTypeExpl (M.toList es)
-  pure (ps ++ join qss) -- TODO originally I forgot here `as
+  let as' = -- assumptions made out of explicit bindings
+        TypeEnv $ foldr (\(v, (sc, _)) m -> M.insert v sc m) M.empty (M.toList es)
+  (ps, as'') <- inferTypeSeq (withTypeEnv (as' <> as) . inferTypeImpl) iss
+  qss <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
+  pure (ps ++ join qss, as'' <> as') -- TODO originally I forgot here `as
 
 
-inferTypeSeq :: (bg -> TypecheckerT IO [Pred]) -> [bg] -> TypecheckerT IO [Pred]
+inferTypeSeq :: Infer bg TypeEnv -> Infer [bg] TypeEnv
 inferTypeSeq ti = \case
-  [] -> pure []
+  [] -> pure ([], mempty)
   (bs:bss) -> do
-    ps <- ti bs
-    qs <- inferTypeSeq ti bss
-    pure (ps ++ qs)
+    as <- getTypeEnv
+    (ps, as') <- ti bs
+    (qs, as'') <- withTypeEnv (as' <> as) (inferTypeSeq ti bss)
+    pure (ps ++ qs, as'' <> as')
 
 
-inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO ()
+inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO TypeEnv
 inferTypeBindingGroups bgs = do
-  ps <- inferTypeSeq inferTypeBindingGroup bgs
+  (ps, as') <- inferTypeSeq inferTypeBindingGroup bgs
   s <- getSubst
   rs <- reduce (substitute s ps)
   s' <- defaultSubst [] rs
-  modify $ \st -> st {tcTypeEnv = substitute (s' <> s) (tcTypeEnv st)}
+  pure $ substitute (s' <> s) as'
 
 
 -- |Evaluation of typechecker
-runTypecheckerT :: TypecheckerT IO () -> IO (Either ErrMsg TypeEnv)
+runTypecheckerT :: TypecheckerT IO TypeEnv -> IO (Either ErrMsg TypeEnv)
 runTypecheckerT
-  = flip evalStateT (TypecheckerState 0 mempty stdTypeEnv)
-  . flip runReaderT stdClassEnv
-  . runExceptT . (\(Typechecker t) -> t >> fmap tcTypeEnv get)
+  = flip evalStateT (TypecheckerState 0 mempty)
+  . flip runReaderT (TypecheckerEnv stdClassEnv stdTypeEnv (TypecheckerConfig True))
+  . runExceptT . (\(Typechecker t) -> t >> asks typeEnv)
 
 -- |Toplevel typechecking of expression
 typecheck :: [BindingGroup] -> IO (Either ErrMsg TypeEnv)
