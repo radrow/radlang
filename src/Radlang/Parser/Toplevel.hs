@@ -1,7 +1,10 @@
+{-#LANGUAGE OverloadedLists #-}
+
 module Radlang.Parser.Toplevel where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Identity
 import Control.Monad.State
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -14,7 +17,7 @@ import Radlang.Parser.General
 import Radlang.Parser.Type
 import Radlang.Parser.Expr
 import Radlang.DependencyAnalysis
-import Radlang.TypecheckerDebug
+import Radlang.Typechecker
 
 
 data RawProgramPart
@@ -75,8 +78,107 @@ toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
 
 processProgram :: RawProgram -> Program
 processProgram (RawProgram newtypes typealiases typedecls datadefs classdefs impldefs) =
-  Program (toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs)
-  typealiases newtypes classdefs impldefs
+  Program
+  { prgBindings = toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs
+  , prgTypespace = undefined
+  , prgClassEnv = buildClassEnv classdefs impldefs
+  , prgTypeEnv = undefined
+  }
+
+
+
+-- |Inserts new class to env
+updateClassEnv :: Name -> Class -> ClassEnvBuilder ()
+updateClassEnv n c = modify $ \ce -> ce {classes = M.insert n c (classes ce)}
+
+
+-- |Empty class environment
+emptyClassEnv :: ClassEnv
+emptyClassEnv = ClassEnv
+  { classes = []
+  , defaults = [] -- TODO: defaults!
+  }
+
+-- |Introduces new class extending given superclasses
+addClass :: Name -> Set Name -> ClassEnvBuilder ()
+addClass n sups = do
+  nDefined <- classDefined n
+  when nDefined (throwError $ "Class already defined: " <> n)
+  notDefs <- mapM (\ss -> not <$> classDefined ss) (S.toList sups)
+  when (not (null notDefs)) $
+    throwError $ "Superclasses not defined: " <> show notDefs
+  updateClassEnv n (Class sups S.empty)
+
+
+-- |Declares new instance with qualification
+addInst :: [Pred] -> Pred -> ClassEnvBuilder ()
+addInst ps p@(IsIn i _) = do
+  iDefined <- classDefined i
+  when (not iDefined) (throwError $ "Class not defined: " <> i)
+  its <- instances i
+  c <- super i
+  let overlaps prd q = catchError (mguPred prd q >> pure True) (const $ pure False)
+      qs = fmap (\(_ :=> q) -> q) its
+  filterM (overlaps p) (S.toList qs) >>= \case
+    [] -> pure ()
+    (IsIn h _):_ -> throwError $ "Instances overlap: " <> i <> " with " <> h
+  updateClassEnv i (Class c $ S.insert (ps :=> p) its)
+
+
+runClassEnvBuilderT :: Monad m
+                    => ClassEnv
+                    -> ClassEnvBuilderT m ()
+                    -> Either ErrMsg (m ClassEnv)
+runClassEnvBuilderT ce (ClassEnvBuilder cb) =
+  flip execStateT (pure ce) . runExceptT $ pure cb
+
+
+runClassEnvBuilder :: ClassEnv -> ClassEnvBuilder () -> Either ErrMsg ClassEnv
+runClassEnvBuilder ce cb = runIdentity <$> runClassEnvBuilderT ce cb
+
+
+matchMethodName :: TypeDecl -> DataDef -> Bool
+matchMethodName (TypeDecl tn _ _) (DataDef dn _ _) = tn == dn
+
+
+buildClassEnv :: [ClassDef] -> [ImplDef] -> Either ErrMsg ClassEnv
+buildClassEnv cses impls = runClassEnvBuilder emptyClassEnv $ do
+  let groupOn :: Ord b => (a -> b) -> [a] -> M.Map b [a]
+      groupOn f =
+        let fld m a = case M.lookup (f a) m of
+              Nothing -> M.insert (f a) [a] m
+              Just as -> M.insert (f a) (a:as) m
+        in foldl fld M.empty
+
+      instmap = groupOn (\(ImplDef cname _ _) -> cname) impls
+
+  forM_ cses $ \c@(ClassDef cname _ supers _) -> do
+    cls <- flip evalStateT (Class supers S.empty) $ do
+      forM_ (maybe [] id $ M.lookup cname instmap) $ \i -> do
+        checkInstanceFoundation i c
+    updateClassEnv cname cls
+
+
+
+
+-- |Check whether instance does not define methods outside interface DAG
+checkInstanceFoundation :: ImplDef -> ClassDef -> ClassEnvBuilder ()
+checkInstanceFoundation (ImplDef _ _ ddf) c =
+  all (isMethodIn c) ddf
+
+  -- forM cses $ \c@(ClassDef cname _ cmethods supers) -> do
+  --   let cmethodSet = S.fromList $ fmap (\(TypeDecl n _) -> n) cmethods
+  --       cls = flip runStateT (Class)
+  --   forM_ (maybe [] id $ M.lookup cname instmap) $ \inst@(ImplDef iname _ imethods) -> do
+  --     let imethodSet = S.fromList $ fmap (\(DataDef n _ _) -> n) imethods
+  --     when (imethodSet /= cmethodSet) $
+  --       throwError $ "Methods mismatch: should be " <> show (S.toList cmethodSet)
+  --       <> ", but is " <> show (S.toList imethodSet)
+
+      
+
+
+
 
 
 program :: Parser Program

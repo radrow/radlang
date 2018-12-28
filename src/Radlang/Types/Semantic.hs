@@ -7,7 +7,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import  Data.Map.Strict(Map)
-import Data.Set.Monad
+import Data.Set.Monad as S
 
 import Radlang.Types.Typesystem
 import Radlang.Types.General
@@ -38,8 +38,7 @@ data Expr
   | Lit Literal
   | Constant (Name, TypePoly)
   | Application Expr Expr
-  | Let [(Name, Maybe Type, Expr)] Expr
-  | Lambda Name Expr
+  | Let BindingGroup Expr
   deriving (Eq, Show, Ord)
 
 
@@ -49,7 +48,6 @@ data Pattern
   | PWildcard
   | PAs Name Pattern
   | PLit Literal
-  | PNPlusK Name Integer
   | PConstructor Name [Pattern]
   deriving (Eq, Show, Ord)
 
@@ -122,29 +120,49 @@ type BindingGroup = (ExplBindings, [ImplBindings])
 
 data Program = Program
   { prgBindings :: [BindingGroup]
-  , prgTypespace :: [TypeAlias]
-  , prgNewTypes :: [NewType]
-  , prgClassDefs :: [ClassDef]
-  , prgImplDefs :: [ImplDef]
+  , prgTypespace :: Typespace
+  , prgClassEnv :: ClassEnv
+  , prgTypeEnv :: TypeEnv
   } deriving (Eq, Show)
 
-data NewType = NewType Name [Name] [ConstructorDef]
+data NewType = NewType
+  { ntName :: Name
+  , ntArgs :: [Name]
+  , ntContrs :: [ConstructorDef]}
   deriving (Eq, Ord, Show)
 
-data ConstructorDef = ConstructorDef Name [Type]
+data ConstructorDef = ConstructorDef
+  { condefName :: Name
+  , condefArgs :: [Type]}
   deriving (Eq, Ord, Show)
 
-data TypeAlias = TypeAlias Name Type
+data TypeAlias = TypeAlias
+  {taliasName :: Name
+  , taliasTarget :: Type}
   deriving (Eq, Ord, Show)
 
-data TypeDecl = TypeDecl Name (Qual Type)
+data TypeDecl = TypeDecl
+  { tdeclName :: Name
+  , tdeclType :: (Qual Type)}
   deriving (Eq, Ord, Show)
 
-data DataDef = DataDef Name [Pattern] Expr
+data DataDef = DataDef
+  { datadefName :: Name
+  , datadefArgs :: [Pattern]
+  , datadefVal :: Expr}
   deriving (Eq, Show)
 
-data ClassDef = ClassDef Name Name [TypeDecl]
+data ClassDef = ClassDef
+  {classdefName :: Name
+  , classdefArg :: Name
+  , classdefSuper :: (Set Name)
+  , classdefMethods :: [TypeDecl]}
   deriving (Eq, Show)
 
-data ImplDef = ImplDef Name Type [DataDef]
+
+data ImplDef = ImplDef
+  { impldefClass :: Name
+  , impldefType :: Type
+  , impldefQual :: [Pred]
+  , impldefMethods :: [DataDef]}
   deriving (Eq, Show)

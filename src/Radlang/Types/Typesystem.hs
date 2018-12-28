@@ -94,6 +94,11 @@ class (MonadError ErrMsg m, MonadPlus m) => IdSupply m where
 ---- DEFINITIONS ----
 
 
+-- |Typespace used as kindchecker's state
+newtype Typespace = Typespace (M.Map Name Type)
+  deriving (Eq, Show)
+
+
 -- |Main configuration datatype for typechecker
 newtype TypecheckerConfig = TypecheckerConfig
   { monomorphismRestriction :: Bool

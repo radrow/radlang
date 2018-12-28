@@ -1,6 +1,6 @@
 module Radlang.Test where
 
-import Radlang.TypecheckerDebug
+import Radlang.Typechecker
 import Radlang.Types
 import Data.Map.Strict as M
 import Text.Megaparsec
