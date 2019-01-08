@@ -18,8 +18,8 @@ import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import  Data.Map.Strict(Map)
-import qualified Data.Set.Monad as S
-import Data.Set.Monad(Set)
+import qualified Data.Set as S
+import Data.Set(Set)
 
 import Radlang.Types.General
 
@@ -36,7 +36,7 @@ class Ord t => IsType t where -- Ord is needed because use of Set
 
 
 instance IsType t => IsType (Set t) where
-  free s = s >>= free
+  free s = S.unions $ S.map free s
   substitute s = S.map (substitute s)
 
 
@@ -148,7 +148,7 @@ instance IsType TypeEnv where
 
 -- |Computation that builds class environment
 newtype ClassEnvBuilderT m a =
-  ClassEnvBuilder (ExceptT ErrMsg (StateT ClassEnv m) a)
+  ClassEnvBuilder (StateT ClassEnv (ExceptT ErrMsg m) a)
   deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
            , MonadError ErrMsg, MonadState ClassEnv)
 type ClassEnvBuilder = ClassEnvBuilderT Identity

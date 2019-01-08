@@ -163,6 +163,5 @@ data ClassDef = ClassDef
 data ImplDef = ImplDef
   { impldefClass :: Name
   , impldefType :: Type
-  , impldefQual :: [Pred]
   , impldefMethods :: [DataDef]}
   deriving (Eq, Show)

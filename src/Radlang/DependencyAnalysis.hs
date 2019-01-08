@@ -47,3 +47,11 @@ groupBindings im =
   let entries = fmap (\(n, alts) -> (n, fmap snd alts)) (M.toList im)
       toposorted = sccOfExprs entries
   in fmap (\ns -> M.restrictKeys im (DS.fromList ns)) toposorted
+
+classHierarchySort :: [ClassDef] -> [ClassDef]
+classHierarchySort cds =
+  let cdi = zip cds [0::Int ..]
+      connect c = [i | (other, i) <- cdi, S.member (classdefName other) (classdefSuper c)]
+      (gr, fromVer, _) = graphFromEdges (fmap (\(c, i) -> (c, i, connect c)) cdi)
+      topos = topSort gr
+  in reverse $ fmap ((\(c, _, _) -> c) . fromVer) topos

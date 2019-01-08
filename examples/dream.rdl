@@ -1,17 +1,33 @@
-type alias String := List Char
-newtype X ~A := X | Y Int | Z ~A
+type alias String := List Char;;
+newtype Option ~A := Nothing | Some ~A;;
 
-interface TClass ~A {
-  f : ~A -> ~A
-} default Int
-
-impl TClass Int {
-  f x := plus x 1
+interface Semigroup ~A {
+  plus : ~A -> ~A -> ~A;;
 }
+;;
 
-id : ~A -> ~A
-id x := x
+interface Monoid ~A implies Semigroup { -- implication separated by comma
+  zero : ~A;;
+}
+;;
 
+impl Int for Monoid {
+-- asdasd
+  plus := plusInt;;
+  zero := 0;;  -- note how one can define whole family of instances at once
+};;
+
+
+impl Int for Monoid {
+-- plus (Some a) (Some b) := Some (op a b);;
+-- plus _ _ := None;;
+  zero := Some zero;;
+};;
+
+id : ~A -> ~A;;
+id x := x;;
+
+{-
 k :=
   let x := 3
     | y : List Char
@@ -20,4 +36,5 @@ k :=
     | w := plus@(2 3 4 5)  -- plus 2 (plus 3 (plus 4 5))
     | w := @plus(2 3 4 5)  -- plus (plus (plus 2 3) 4) 5
   in [1,2,3]
-
+;;
+-}

@@ -1,1 +1,13 @@
-e := eq ;;
+a := 3;;
+b := a;;
+
+interface Semigroup ~A {
+  plus : ~A -> ~A -> ~A;;
+}
+;;
+
+
+interface Monoid ~A implies Semigroup {
+  zero : ~A;;
+}
+;;

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d11a2b8766f8e1f04e950d48ce06e3c9ed9d5c9e5e7ff88df34a8bd885dcef42
+-- hash: cd7476e0c002c6ba229b5a50ec4a712026fcabd827093f8b3b7c4a90022e9e2e
 
 name:           radlang
 version:        1.0.1
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       Radlang
+      Radlang.ClassEnvBuild
       Radlang.DependencyAnalysis
       Radlang.Evaluator
       Radlang.Helpers
@@ -36,15 +37,16 @@ library
       Radlang.Parser.General
       Radlang.Parser.Toplevel
       Radlang.Parser.Type
+      Radlang.QQ
       Radlang.Stdlib
       Radlang.Test
       Radlang.Typechecker
-      Radlang.TypecheckerDebug
       Radlang.Typedefs
       Radlang.Types
       Radlang.Types.General
       Radlang.Types.Semantic
       Radlang.Types.Typesystem
+      Radlang.Typesystem.Typesystem
   other-modules:
       Paths_radlang
   hs-source-dirs:
@@ -54,11 +56,14 @@ library
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
-    , containers
+    , containers >=0.6.0.1
     , megaparsec >=6.5
     , mtl
     , parser-combinators
+    , raw-strings-qq
     , set-monad >=0.3.0.0
+    , syb
+    , template-haskell
     , transformers
   default-language: Haskell2010
 
@@ -72,12 +77,15 @@ executable rdl
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
-    , containers
+    , containers >=0.6.0.1
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
+    , raw-strings-qq
     , set-monad >=0.3.0.0
+    , syb
+    , template-haskell
     , transformers
   default-language: Haskell2010
 
@@ -91,12 +99,15 @@ executable rdli
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
-    , containers
+    , containers >=0.6.0.1
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
+    , raw-strings-qq
     , set-monad >=0.3.0.0
+    , syb
+    , template-haskell
     , transformers
   default-language: Haskell2010
 
@@ -112,11 +123,14 @@ test-suite radlang-test
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
-    , containers
+    , containers >=0.6.0.1
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
+    , raw-strings-qq
     , set-monad >=0.3.0.0
+    , syb
+    , template-haskell
     , transformers
   default-language: Haskell2010

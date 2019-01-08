@@ -9,16 +9,7 @@ import qualified Data.Set.Monad as S
 import Data.Set.Monad(Set)
 import Control.Applicative
 import Control.Monad.State.Strict
-import Control.Monad.Reader
 import Control.Monad.Except
-import qualified Data.List.NonEmpty as NP
-import Data.List.NonEmpty(NonEmpty)
-import Control.Monad.State.Strict
-import Control.Monad.Identity
-import Control.Monad.Except
-import qualified Data.Set.Monad as S
-import Data.Set.Monad(Set)
-import qualified Data.Map.Strict as M
 
 import Radlang.Types
 

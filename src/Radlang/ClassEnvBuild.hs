@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-#LANGUAGE OverloadedLists#-}
 
-module ClassEnvBuild where
+module Radlang.ClassEnvBuild where
 
 import qualified Data.List.NonEmpty as NP
 import Data.List.NonEmpty(NonEmpty)
@@ -13,7 +13,10 @@ import Data.Set.Monad(Set)
 import qualified Data.Map.Strict as M
 
 import Radlang.Types
+import Radlang.DependencyAnalysis
 import Radlang.Typesystem.Typesystem
+
+import Debug.Trace
 
 -- |Inserts new class to env
 updateClassEnv :: Name -> Class -> ClassEnvBuilder ()
@@ -32,7 +35,7 @@ addClass :: Name -> Set Name -> ClassEnvBuilder ()
 addClass n sups = do
   nDefined <- classDefined n
   when nDefined (throwError $ "Class already defined: " <> n)
-  notDefs <- mapM (\ss -> not <$> classDefined ss) (S.toList sups)
+  notDefs <- filterM (\ss -> not <$> classDefined ss) (S.toList sups)
   when (not (null notDefs)) $
     throwError $ "Superclasses not defined: " <> show notDefs
   updateClassEnv n (Class sups S.empty)
@@ -56,13 +59,12 @@ addInst ps p@(IsIn i _) = do
 runClassEnvBuilderT :: Monad m
                     => ClassEnv
                     -> ClassEnvBuilderT m ()
-                    -> Either ErrMsg (m ClassEnv)
-runClassEnvBuilderT ce (ClassEnvBuilder cb) =
-  flip execStateT (pure ce) . runExceptT $ pure cb
+                    -> m (Either ErrMsg ClassEnv)
+runClassEnvBuilderT ce (ClassEnvBuilder cb) = runExceptT $ execStateT cb ce
 
 
 runClassEnvBuilder :: ClassEnv -> ClassEnvBuilder () -> Either ErrMsg ClassEnv
-runClassEnvBuilder ce cb = runIdentity <$> runClassEnvBuilderT ce cb
+runClassEnvBuilder ce cb = runIdentity $ runClassEnvBuilderT ce cb
 
 
 onPresent :: MonadError ErrMsg m => Maybe e -> (e -> m ()) -> m ()
@@ -73,7 +75,8 @@ onPresentM cond handle = cond >>= void . traverse handle
 
 
 buildClassEnv :: [ClassDef] -> [ImplDef] -> Either ErrMsg ClassEnv
-buildClassEnv cses impls = runClassEnvBuilder emptyClassEnv $ do
+buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
+  let cses = classHierarchySort cses'
   let groupOn :: Ord b => (a -> b) -> [a] -> M.Map b [a]
       groupOn f =
         let fld m a = case M.lookup (f a) m of
@@ -95,17 +98,19 @@ buildClassEnv cses impls = runClassEnvBuilder emptyClassEnv $ do
   forM_ cses $ \c -> do
     forM_ (maybe [] id $ M.lookup (classdefName c) instmap) $ \i -> do
       onPresentM (checkFoundation i c) $ \m ->
-        throwError $ "Methods " <> show m
-        <> " do not belong to any superinterface of" <> classdefName c
+        throwError $ "In implementation of " <> show (impldefType i)
+        <> ": methods " <> show m
+        <> " do not belong to any superinterface of " <> classdefName c
 
       onPresent (checkCompletness c instmap) $ \m ->
         throwError $ "Methods " <> show m <> " are missing for " <> classdefName c
-      addInst (impldefQual i) $ IsIn  (classdefName c) (impldefType i)
+      let (quals :=> t) = impldefType i
+      addInst quals $ IsIn  (classdefName c) t
 
 
 -- |Find any cycle in dependency graph
 isCyclic :: [ClassDef] -> Maybe [NonEmpty Name]
-isCyclic = undefined
+isCyclic = const Nothing -- TODO
 
 
 -- |Find all methods in instance definition that are not included in interface DAG
@@ -113,15 +118,14 @@ checkFoundation :: ( HasClassEnv m
                    , MonadError ErrMsg m)
                 => ImplDef -> ClassDef -> m (Maybe (NonEmpty Name))
 checkFoundation im cd
-  = NP.nonEmpty <$> filterM (fmap not . methodInClass (classdefName cd)) (fmap datadefName $ impldefMethods im)
+  = NP.nonEmpty <$> filterM (fmap not . methodInClass cd) (fmap datadefName $ impldefMethods im)
 
 
 -- |Check whether given name is valid method of interface DAG
-methodInClass :: HasClassEnv m => Name -> Name -> m Bool
-methodInClass classname mname = do
-  sups <- deepSuper classname
-  pure $ S.member mname sups
-
+methodInClass :: HasClassEnv m => ClassDef -> Name -> m Bool
+methodInClass c mname =
+  let check = any ((==mname) . tdeclName)
+  in pure $ check $ classdefMethods c  -- TODO: Deep search
 
 -- |Find all missing methods for interface
 checkCompletness :: ClassDef -> M.Map Name [ImplDef] -> Maybe (NonEmpty Name)

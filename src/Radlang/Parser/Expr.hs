@@ -21,16 +21,16 @@ processAST = \case
   ASTLit l -> Lit l
   ASTApplication fun args ->
     foldl1 Application (processAST <$> cons fun args)
-  ASTLet assgs inWhat ->
-    let postassg (name, args, ttype, val) = case args of
-          [] -> (name, ttype, processAST val)
-          (h:t) -> (name, ttype, processAST $
-                     ASTLambda (h:|t) val
-                   )
-    in Let (toList $ postassg <$> assgs) (processAST inWhat)
-  ASTLambda (a:|rest) val -> case rest of
-    [] -> Lambda a (processAST val)
-    h:t -> Lambda a (processAST $ ASTLambda (h:|t) val)
+  -- ASTLet assgs inWhat ->
+    -- let postassg (name, args, ttype, val) = case args of
+    --       [] -> (name, ttype, processAST val)
+    --       (h:t) -> (name, ttype, processAST $
+    --                  ASTLambda (h:|t) val
+    --                )
+    -- in Let (toList $ postassg <$> assgs) (processAST inWhat)
+  -- ASTLambda (a:|rest) val -> case rest of
+  --   [] -> Lambda a (processAST val)
+  --   h:t -> Lambda a (processAST $ ASTLambda (h:|t) val)
   _ -> error "AST processing not implemented"
   -- ASTIf ((c,t):|rest) els -> case rest of
   --   [] -> If (processAST c) (processAST t) (processAST els)
@@ -46,12 +46,12 @@ expr = processAST <$> ast
 
 -- |Main AST parser
 ast :: Parser AST
-ast = astComplex <|> astSimple
+ast = try astComplex <|> astSimple
 
 
--- |Simple expression that usually behave like a single body
+-- |Simple expressions that never require parenthess around them
 astSimple :: Parser AST
-astSimple = msum $ fmap try
+astSimple = msum
   [ mzero
   , valE
   , constantE
@@ -62,7 +62,7 @@ astSimple = msum $ fmap try
 -- |More complex expressions that are too big to be allowed in some places without
 -- parenthesses, i.e. arguments for functions.
 astComplex :: Parser AST
-astComplex = msum $ fmap try
+astComplex = msum
   [ mzero
   , lambdaE
   , applicationE
@@ -72,7 +72,7 @@ astComplex = msum $ fmap try
 
 
 valE :: Parser AST
-valE = ASTVal <$> valName
+valE = ASTVal <$> (valName <|> constructorName)
 
 
 lambdaE :: Parser AST

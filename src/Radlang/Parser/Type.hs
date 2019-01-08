@@ -32,7 +32,7 @@ type_ :: Parser Type
 type_ = processRawType <$> typeRaw
 
 qual :: Parser a -> Parser (Qual a)
-qual aPars = do
+qual aPars = paren (qual aPars) <|> do
   preds <- sepBy (try predicate) (operator ",")
   when (not (Prelude.null preds)) $ operator ":-"
   a <- aPars
