@@ -1,16 +1,16 @@
--- |Types related to program definition and evaluation
+-- |Types related to internal program definition and evaluation
 
 module Radlang.Types.Semantic where
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
-import  Data.Map.Strict(Map)
-import Data.Set as S
+import           Data.Map.Strict            (Map)
+import           Data.Set                   as S
 
-import Radlang.Types.Typesystem
-import Radlang.Types.General
-import Radlang.Types.Syntax
+import           Radlang.Types.General
+import           Radlang.Types.Syntax
+import           Radlang.Types.Typesystem
 
 
 -- |Map of value names into ids
@@ -33,7 +33,6 @@ data Expr
   | Application Expr Expr
   | Let BindingGroup Expr
   deriving (Eq, Show, Ord)
-
 
 
 -- |Single part of function definition – for example `f a 3 _ = some_expr`
@@ -92,27 +91,33 @@ type ImplBindings = Map Name [Alt]
 type BindingGroup = (ExplBindings, [ImplBindings])
 
 
+-- |Full program representation
 data Program = Program
   { prgBindings :: [BindingGroup]
   , prgClassEnv :: ClassEnv
-  , prgTypeEnv :: TypeEnv
+  , prgTypeEnv  :: TypeEnv
   } deriving (Eq, Show)
 
 
+-- |Declaration that binding has certain type
 data TypeDecl = TypeDecl
   { tdeclName :: Name
   , tdeclType :: (Qual Type)}
   deriving (Eq, Ord, Show)
 
+
+-- |Class definition
 data ClassDef = ClassDef
-  { classdefName :: Name
-  , classdefArg :: Name
-  , classdefSuper :: (Set Name)
+  { classdefName    :: Name
+  , classdefArg     :: Name
+  , classdefSuper   :: (Set Name)
   , classdefMethods :: [TypeDecl]}
   deriving (Eq, Show)
 
+
+-- |Binding value to name
 data DataDef = DataDef
   { datadefName :: Name
   , datadefArgs :: [Pattern]
-  , datadefVal :: Expr}
+  , datadefVal  :: Expr}
   deriving (Eq, Show)

@@ -6,6 +6,8 @@ import Data.Set
 import Radlang.Types.General
 import Radlang.Types.Typesystem(Kind)
 
+
+-- |Raw representation of type in syntax
 data RawType
   = RawTypeWobbly Name
   | RawTypeRigid Name
@@ -14,6 +16,7 @@ data RawType
   deriving (Eq, Show, Ord)
 
 
+-- |All objects that RawProgram may consist of – helps parsing
 data RawProgramPart
   = RPNewType NewType
   | RPTypeDecl RawTypeDecl
@@ -23,6 +26,7 @@ data RawProgramPart
   deriving (Eq, Show)
 
 
+-- |AST of program
 data RawProgram = RawProgram
   { rawprgNewTypes :: [NewType]
   , rawprgTypeDecls :: [RawTypeDecl]
@@ -31,7 +35,6 @@ data RawProgram = RawProgram
   , rawprgImplDefs :: [ImplDef]
   }
   deriving (Eq, Show)
-
 
 
 -- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
@@ -45,7 +48,7 @@ data RawExpr
   deriving(Eq, Show)
 
 
--- |Literal like "" or 2138 or 0.42
+-- |Literal like "lol" or 2138 or 0.42
 data Literal
   = LitInt Integer
   | LitString String
@@ -62,39 +65,51 @@ data Pattern
   deriving (Eq, Show, Ord)
 
 
+-- |AST version of predicate that type belongs to a class
 data RawPred = RawPred
  { rpClass :: Name
  , rpType :: RawType
  } deriving (Eq, Ord, Show)
 
 
+-- |AST version of qualification of `a` with list of predicates
 data RawQual a = RawQual
   { rqPreds :: [RawPred]
   , rqContent :: a
   } deriving (Eq, Ord, Show)
 
+
+-- |`newtype` definition
 data NewType = NewType
   { ntName :: Name
   , ntArgs :: [(Name, Kind)]
   , ntContrs :: [ConstructorDef]}
   deriving (Eq, Ord, Show)
 
+
+-- |Definition of constructor
 data ConstructorDef = ConstructorDef
   { condefName :: Name
   , condefArgs :: [RawType]}
   deriving (Eq, Ord, Show)
 
+
+-- |AST version of binding type declaration
 data RawTypeDecl = RawTypeDecl
   { rawtdeclName :: Name
   , rawtdeclType :: (RawQual RawType)}
   deriving (Eq, Ord, Show)
 
+
+-- |AST version of binding value
 data RawDataDef = RawDataDef
   { rawdatadefName :: Name
   , rawdatadefArgs :: [Pattern]
   , rawdatadefVal :: RawExpr}
   deriving (Eq, Show)
 
+
+-- |AST version of typeclass definition
 data RawClassDef = RawClassDef
   { rawclassdefName :: Name
   , rawclassdefArg :: Name
@@ -103,6 +118,8 @@ data RawClassDef = RawClassDef
   , rawclassdefMethods :: [RawTypeDecl]}
   deriving (Eq, Show)
 
+
+-- |Implementation of interface
 data ImplDef = ImplDef
   { impldefClass :: Name
   , impldefType :: RawQual RawType
