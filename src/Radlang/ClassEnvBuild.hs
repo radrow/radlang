@@ -91,7 +91,7 @@ buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
     throwError $ "Found interface cycle: " <> show cyc
 
   -- Build superclass environment
-  forM_ cses $ \(ClassDef cname _ _ supers _) -> do
+  forM_ cses $ \(ClassDef cname _ supers _) -> do
     addClass cname supers
 
   -- Add instances
@@ -104,8 +104,8 @@ buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
 
       onPresent (checkCompletness c instmap) $ \m ->
         throwError $ "Methods " <> show m <> " are missing for " <> classdefName c
-      let (RawQual quals t) = impldefType i
-      addInst quals $ RawPred (classdefName c) t
+      -- let (RawQual quals t) = impldefType i
+      -- addInst quals $ IsIn (classdefName c) t
 
 
 -- |Find any cycle in dependency graph
@@ -118,7 +118,7 @@ checkFoundation :: ( HasClassEnv m
                    , MonadError ErrMsg m)
                 => ImplDef -> ClassDef -> m (Maybe (NonEmpty Name))
 checkFoundation im cd
-  = NP.nonEmpty <$> filterM (fmap not . methodInClass cd) (fmap datadefName $ impldefMethods im)
+  = NP.nonEmpty <$> filterM (fmap not . methodInClass cd) (fmap rawdatadefName $ impldefMethods im)
 
 
 -- |Check whether given name is valid method of interface DAG

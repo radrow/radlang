@@ -14,7 +14,7 @@ import           Prelude                hiding (lex)
 import           Radlang.Parser.General
 import           Radlang.Types hiding (kind)
 import Radlang.Typedefs
-import Radlang.Kindchecker
+import Radlang.Types.Kindcheck
 
 
 -- processRawType :: Monad m => RawType -> KindcheckerT m Type

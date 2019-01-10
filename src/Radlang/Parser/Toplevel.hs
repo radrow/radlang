@@ -91,13 +91,13 @@ typeDecl = try $ do
   t <- qual type_
   pure $ RawTypeDecl name t
 
-dataDef :: Parser DataDef
+dataDef :: Parser RawDataDef
 dataDef = try $ do
   name <- valName
   pats <- many pattern
   operator ":="
   def <- expr
-  pure $ DataDef name pats def
+  pure $ RawDataDef name pats def
 
 pattern :: Parser Pattern
 pattern = msum $ fmap try
@@ -134,7 +134,7 @@ escapedChar = do
     bad -> fail $ "Cannot escape char '" <> [bad] <> "'"
 
 
-classDef :: Parser ClassDef
+classDef :: Parser RawClassDef
 classDef = do
   word "interface"
   name <- className
@@ -144,7 +144,7 @@ classDef = do
     s <- optional $ word "implies" *> (DLNE.toList <$> sepBy1 className (operator ","))
     pure $ maybe S.empty S.fromList s
   methods <- brac $ many $ typeDecl <* (operator ";;")
-  pure $ ClassDef name arg knd sups methods
+  pure $ RawClassDef name arg knd sups methods
 
 
 implDef :: Parser ImplDef

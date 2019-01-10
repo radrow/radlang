@@ -74,7 +74,8 @@ newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
 
 interface Monad (~A : Type -> Type) {};;
 
-x : ~B is Monad :- Option (~C ~A);;
+x : ~M is Monad :- ~M Void;;
+x := x;;
 |]
 
 ntt :: RawProgram
@@ -85,8 +86,8 @@ dec :: RawProgram
 dec = [rawrdl|x : ~A ~A;;|]
 
 
-rawclasses :: [ClassDef]
-rawclasses = rawprgClassDefs classProgram
+-- rawclasses :: [ClassDef]
+-- rawclasses = rawprgClassDefs classProgram
 rawimpls :: [ImplDef]
 rawimpls = rawprgImplDefs classProgram
 

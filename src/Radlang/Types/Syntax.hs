@@ -17,8 +17,8 @@ data RawType
 data RawProgramPart
   = RPNewType NewType
   | RPTypeDecl RawTypeDecl
-  | RPDataDef DataDef
-  | RPClassDef ClassDef
+  | RPDataDef RawDataDef
+  | RPClassDef RawClassDef
   | RPImplDef ImplDef
   deriving (Eq, Show)
 
@@ -26,8 +26,8 @@ data RawProgramPart
 data RawProgram = RawProgram
   { rawprgNewTypes :: [NewType]
   , rawprgTypeDecls :: [RawTypeDecl]
-  , rawprgDataDefs :: [DataDef]
-  , rawprgClassDefs :: [ClassDef]
+  , rawprgDataDefs :: [RawDataDef]
+  , rawprgClassDefs :: [RawClassDef]
   , rawprgImplDefs :: [ImplDef]
   }
   deriving (Eq, Show)
@@ -89,23 +89,22 @@ data RawTypeDecl = RawTypeDecl
   , rawtdeclType :: (RawQual RawType)}
   deriving (Eq, Ord, Show)
 
-data DataDef = DataDef
-  { datadefName :: Name
-  , datadefArgs :: [Pattern]
-  , datadefVal :: RawExpr}
+data RawDataDef = RawDataDef
+  { rawdatadefName :: Name
+  , rawdatadefArgs :: [Pattern]
+  , rawdatadefVal :: RawExpr}
   deriving (Eq, Show)
 
-data ClassDef = ClassDef
-  { classdefName :: Name
-  , classdefArg :: Name
-  , classdefKind :: Kind
-  , classdefSuper :: (Set Name)
-  , classdefMethods :: [RawTypeDecl]}
+data RawClassDef = RawClassDef
+  { rawclassdefName :: Name
+  , rawclassdefArg :: Name
+  , rawclassdefKind :: Kind
+  , rawclassdefSuper :: (Set Name)
+  , rawclassdefMethods :: [RawTypeDecl]}
   deriving (Eq, Show)
-
 
 data ImplDef = ImplDef
   { impldefClass :: Name
   , impldefType :: RawQual RawType
-  , impldefMethods :: [DataDef]}
+  , impldefMethods :: [RawDataDef]}
   deriving (Eq, Show)

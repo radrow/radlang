@@ -25,7 +25,6 @@ type Dataspace = (Map DataId Data, Int)
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
 
-
 -- |Desugared expression tree ready for evaluation
 data Expr
   = Val Name
@@ -95,7 +94,6 @@ type BindingGroup = (ExplBindings, [ImplBindings])
 
 data Program = Program
   { prgBindings :: [BindingGroup]
-  , prgTypespace :: Typespace
   , prgClassEnv :: ClassEnv
   , prgTypeEnv :: TypeEnv
   } deriving (Eq, Show)
@@ -105,3 +103,16 @@ data TypeDecl = TypeDecl
   { tdeclName :: Name
   , tdeclType :: (Qual Type)}
   deriving (Eq, Ord, Show)
+
+data ClassDef = ClassDef
+  { classdefName :: Name
+  , classdefArg :: Name
+  , classdefSuper :: (Set Name)
+  , classdefMethods :: [TypeDecl]}
+  deriving (Eq, Show)
+
+data DataDef = DataDef
+  { datadefName :: Name
+  , datadefArgs :: [Pattern]
+  , datadefVal :: Expr}
+  deriving (Eq, Show)

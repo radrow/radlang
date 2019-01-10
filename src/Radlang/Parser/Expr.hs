@@ -15,31 +15,6 @@ import           Radlang.Parser.Type
 import           Radlang.Types
 
 
-processRawExpr :: RawExpr -> Expr
-processRawExpr = \case
-  RawExprVal v -> Val v
-  RawExprLit l -> Lit l
-  RawExprApplication fun args ->
-    foldl1 Application (processRawExpr <$> cons fun args)
-  -- RawExprLet assgs inWhat ->
-    -- let postassg (name, args, ttype, val) = case args of
-    --       [] -> (name, ttype, processRawExpr val)
-    --       (h:t) -> (name, ttype, processRawExpr $
-    --                  RawExprLambda (h:|t) val
-    --                )
-    -- in Let (toList $ postassg <$> assgs) (processRawExpr inWhat)
-  -- RawExprLambda (a:|rest) val -> case rest of
-  --   [] -> Lambda a (processRawExpr val)
-  --   h:t -> Lambda a (processRawExpr $ RawExprLambda (h:|t) val)
-  _ -> error "RawExpr processing not implemented"
-  -- RawExprIf ((c,t):|rest) els -> case rest of
-  --   [] -> If (processRawExpr c) (processRawExpr t) (processRawExpr els)
-  --   hd:tl -> If
-  --     (processRawExpr c)
-  --     (processRawExpr t)
-  --     (processRawExpr $ RawExprIf (hd:|tl) els)
-
-
 -- |Main RawExpr parser
 expr :: Parser RawExpr
 expr = try exprComplex <|> exprSimple

@@ -22,17 +22,17 @@ toplevelBindings ks = pure . Prelude.foldl ins (M.empty, [M.empty]) where
         i = M.delete n imps
         in (e, [i])
       (Just _, _) -> error "Typedecl duplicate"
-    Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
-      (Nothing, Nothing) -> let
-        i = M.insert n [(args, body)] imps
-        in (exs, [i])
-      (Just (t, alts), Nothing) -> let
-        e = M.insert n (t, (args, body):alts) exs
-        in (e, [imps])
-      (Nothing, Just alts) -> let
-        i = M.insert n ((args, body):alts) imps
-        in (exs, [i])
-      _ -> error "Impossible happened: binding both explicit and implicit"
+    -- Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
+    --   (Nothing, Nothing) -> let
+    --     i = M.insert n [(args, body)] imps
+    --     in (exs, [i])
+    --   (Just (t, alts), Nothing) -> let
+    --     e = M.insert n (t, (args, body):alts) exs
+    --     in (e, [imps])
+    --   (Nothing, Just alts) -> let
+    --     i = M.insert n ((args, body):alts) imps
+    --     in (exs, [i])
+    --   _ -> error "Impossible happened: binding both explicit and implicit"
   ins _ _ = error "toplevelBindings process error: imps not a singleton"
 
 
