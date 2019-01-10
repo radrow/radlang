@@ -15,54 +15,50 @@ import           Radlang.Parser.Type
 import           Radlang.Types
 
 
-processAST :: AST -> Expr
-processAST = \case
-  ASTVal v -> Val v
-  ASTLit l -> Lit l
-  ASTApplication fun args ->
-    foldl1 Application (processAST <$> cons fun args)
-  -- ASTLet assgs inWhat ->
+processRawExpr :: RawExpr -> Expr
+processRawExpr = \case
+  RawExprVal v -> Val v
+  RawExprLit l -> Lit l
+  RawExprApplication fun args ->
+    foldl1 Application (processRawExpr <$> cons fun args)
+  -- RawExprLet assgs inWhat ->
     -- let postassg (name, args, ttype, val) = case args of
-    --       [] -> (name, ttype, processAST val)
-    --       (h:t) -> (name, ttype, processAST $
-    --                  ASTLambda (h:|t) val
+    --       [] -> (name, ttype, processRawExpr val)
+    --       (h:t) -> (name, ttype, processRawExpr $
+    --                  RawExprLambda (h:|t) val
     --                )
-    -- in Let (toList $ postassg <$> assgs) (processAST inWhat)
-  -- ASTLambda (a:|rest) val -> case rest of
-  --   [] -> Lambda a (processAST val)
-  --   h:t -> Lambda a (processAST $ ASTLambda (h:|t) val)
-  _ -> error "AST processing not implemented"
-  -- ASTIf ((c,t):|rest) els -> case rest of
-  --   [] -> If (processAST c) (processAST t) (processAST els)
+    -- in Let (toList $ postassg <$> assgs) (processRawExpr inWhat)
+  -- RawExprLambda (a:|rest) val -> case rest of
+  --   [] -> Lambda a (processRawExpr val)
+  --   h:t -> Lambda a (processRawExpr $ RawExprLambda (h:|t) val)
+  _ -> error "RawExpr processing not implemented"
+  -- RawExprIf ((c,t):|rest) els -> case rest of
+  --   [] -> If (processRawExpr c) (processRawExpr t) (processRawExpr els)
   --   hd:tl -> If
-  --     (processAST c)
-  --     (processAST t)
-  --     (processAST $ ASTIf (hd:|tl) els)
+  --     (processRawExpr c)
+  --     (processRawExpr t)
+  --     (processRawExpr $ RawExprIf (hd:|tl) els)
 
 
-expr :: Parser Expr
-expr = processAST <$> ast
-
-
--- |Main AST parser
-ast :: Parser AST
-ast = try astComplex <|> astSimple
+-- |Main RawExpr parser
+expr :: Parser RawExpr
+expr = try exprComplex <|> exprSimple
 
 
 -- |Simple expressions that never require parenthess around them
-astSimple :: Parser AST
-astSimple = msum
+exprSimple :: Parser RawExpr
+exprSimple = msum
   [ mzero
   , valE
   , constantE
-  , paren ast
+  , paren expr
   ]
 
 
 -- |More complex expressions that are too big to be allowed in some places without
 -- parenthesses, i.e. arguments for functions.
-astComplex :: Parser AST
-astComplex = msum
+exprComplex :: Parser RawExpr
+exprComplex = msum
   [ mzero
   , lambdaE
   , applicationE
@@ -71,36 +67,36 @@ astComplex = msum
   ]
 
 
-valE :: Parser AST
-valE = ASTVal <$> (valName <|> constructorName)
+valE :: Parser RawExpr
+valE = RawExprVal <$> (valName <|> constructorName)
 
 
-lambdaE :: Parser AST
+lambdaE :: Parser RawExpr
 lambdaE = do
   operator "\\"
   arg <- some funArg
   operator "->"
-  ex <- ast
-  pure $ ASTLambda arg ex
+  ex <- expr
+  pure $ RawExprLambda arg ex
 
 
-applicationE :: Parser AST
+applicationE :: Parser RawExpr
 applicationE = do
-  fun <- astSimple
-  chain <- some astSimple
-  pure $ ASTApplication fun chain
+  fun <- exprSimple
+  chain <- some exprSimple
+  pure $ RawExprApplication fun chain
 
 
-letE :: Parser AST
+letE :: Parser RawExpr
 letE = do
   word "let"
   assgs <- sepBy1 assignment (operator "|")
   word "in"
-  inWhat <- ast
-  pure $ ASTLet assgs inWhat
+  inWhat <- expr
+  pure $ RawExprLet assgs inWhat
 
 
-assignment :: Parser (Name, [Name], Maybe Type, AST)
+assignment :: Parser (Name, [Name], Maybe RawType, RawExpr)
 assignment = do
   name <- valName
   args <- many valName
@@ -108,25 +104,25 @@ assignment = do
     operator ":"
     type_
   operator ":="
-  value <- ast
+  value <- expr
   pure (name, args, typeAnn, value)
 
 
-ifE :: Parser AST
+ifE :: Parser RawExpr
 ifE = do
   ifthens <- some $ do
     word "if"
-    c <- ast
+    c <- expr
     word "then"
-    t <- ast
+    t <- expr
     pure (c, t)
   word "else"
-  e <- ast
-  pure $ ASTIf ifthens e
+  e <- expr
+  pure $ RawExprIf ifthens e
 
 
-constantE :: Parser AST
-constantE = fmap ASTLit $ msum $ fmap try
+constantE :: Parser RawExpr
+constantE = fmap RawExprLit $ msum $ fmap try
   [ mzero
   , constInt
   , constString
