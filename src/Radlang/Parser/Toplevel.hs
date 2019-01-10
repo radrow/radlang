@@ -29,32 +29,6 @@ groupImplicits p =
     }
 
 
--- toplevelBindings :: [Either TypeDecl DataDef] -> [BindingGroup]
--- toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
---   ins :: BindingGroup -> Either TypeDecl DataDef -> BindingGroup
---   ins (exs, [imps]) tl = case tl of
---     Left (TypeDecl n qt) -> case (M.lookup n exs, M.lookup n imps) of
---       (Nothing, Nothing) ->
---         (M.insert n (quantify (S.toList $ free qt) qt, []) exs, [imps])
---       (Nothing, Just alts) -> let
---         e = M.insert n (quantify (S.toList $ free qt) qt, alts) exs
---         i = M.delete n imps
---         in (e, [i])
---       (Just _, _) -> error "Typedecl duplicate"
---     Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
---       (Nothing, Nothing) -> let
---         i = M.insert n [(args, body)] imps
---         in (exs, [i])
---       (Just (t, alts), Nothing) -> let
---         e = M.insert n (t, (args, body):alts) exs
---         in (e, [imps])
---       (Nothing, Just alts) -> let
---         i = M.insert n ((args, body):alts) imps
---         in (exs, [i])
---       _ -> error "Impossible happened: binding both explicit and implicit"
---   ins _ _ = error "toplevelBindings process error: imps not a singleton"
-
-
 -- processProgram :: RawProgram -> Either ErrMsg Program
 -- processProgram (RawProgram newtypes typealiases typedecls datadefs classdefs impldefs) = do
 --   ce <- buildClassEnv classdefs impldefs
@@ -110,12 +84,12 @@ constructorDef = do
   pure $ ConstructorDef name params
 
 
-typeDecl :: Parser TypeDecl
+typeDecl :: Parser RawTypeDecl
 typeDecl = try $ do
   name <- valName
   operator ":"
   t <- qual type_
-  pure $ TypeDecl name t
+  pure $ RawTypeDecl name t
 
 dataDef :: Parser DataDef
 dataDef = try $ do

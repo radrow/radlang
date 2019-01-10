@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
 
-module Radlang.Kindchecker2 where
+module Radlang.Kindchecker where
 
 import Data.List.NonEmpty
 import qualified Data.Map.Strict as M
@@ -27,22 +27,23 @@ type KindAssumptions = Kindspace
 -- |Transformer responsible for typechecking expressions and error handling
 type Kindchecker = ExceptT String (ReaderT Kindspace (State KindcheckerState))
 
-
+newtype KName = KName {kstr :: Name}
+  deriving (Eq, Show, Ord)
 -- |Primitive type definition
 data KindVar
-  = KindVar Name
+  = KindVar KName
   | KindVarType
   | KindVarFunc KindVar KindVar
   deriving (Eq, Ord)
 
 -- |KindSubstitution of polymorphic types
-newtype KindSubstitution = KSubst { getSubstMap :: M.Map Name KindVar }
+newtype KindSubstitution = KSubst { getSubstMap :: M.Map KName KindVar }
   deriving (Eq, Show, Ord)
 
 -- |Kinds that may be considered as free types carriers
 class Ord t => IsKind t where -- Ord is needed because use of Set
   -- |Free type variables in t
-  free :: t -> S.Set Name
+  free :: t -> S.Set KName
   -- |Application of substitution
   substitute :: KindSubstitution -> t -> t
 
@@ -80,7 +81,7 @@ instance Monoid KindSubstitution where
 
 instance Show KindVar where
   show = \case
-    KindVar a -> a
+    KindVar a -> kstr a
     KindVarType -> "Type"
     KindVarFunc a v ->
       let sa = case a of
@@ -95,6 +96,11 @@ type KindInfer a = a -> Kindchecker KindAssumptions
 -- |Lookup type in typespace
 lookupKind :: Name -> Kindchecker (Maybe KindVar)
 lookupKind n = M.lookup n . getKindspaceMap <$> getKindspace
+
+kindOf :: Name -> Kindchecker KindVar
+kindOf n = lookupKind n >>= \case
+  Nothing -> throwError $ "No such type variable: " <> n
+  Just k -> pure k
 
 -- |Returns typespace
 getKindspace :: Kindchecker Kindspace
@@ -127,16 +133,16 @@ newVar :: String -> Kindchecker KindVar
 newVar prefix = do
   c <- gets tsSupply
   modify $ \s -> s{ tsSupply = c + 1 }
-  pure $ KindVar $ prefix <> show c
+  pure $ KindVar $ KName $ prefix <> show c
 
 
--- |Creates substitution with type assigned
-bindVar :: Name -> KindVar -> Kindchecker KindSubstitution
+-- |Creates substitution with kind assigned
+bindVar :: KName -> KindVar -> Kindchecker KindSubstitution
 bindVar n t = case t of
   KindVar v | v == n -> pure mempty
   _ -> if S.member n (free t)
           -- Occur check
-       then throwError $ "Cannot create infinite kind: " <> n <> " := " <> show t
+       then throwError $ "Cannot create infinite kind: " <> kstr n <> " := " <> show t
        else pure $ KSubst $ M.singleton n t
 
 -- |Most general unifier
@@ -159,9 +165,9 @@ toKindVar = \case
 -- |Kind inference along with check
 inferKind :: RawType -> Kindchecker (KindSubstitution, KindVar)
 inferKind = \case
-  RawTypeWobbly n -> do
-    k <- newVar "_WK"
-    pure (KSubst $ M.singleton n k, k)
+  RawTypeWobbly n -> lookupKind n >>= \case
+    Just kr -> pure (mempty, kr)
+    Nothing -> fail $ "This should never happen: wobbly variable undefined: " <> n
   RawTypeRigid tr -> lookupKind tr >>= \case
     Just kr -> pure (mempty, kr)
     Nothing -> throwError $ "Undefined variable " <> tr
@@ -177,21 +183,26 @@ inferKind = \case
   RawTypeFunc tf ta -> inferKind $
     RawTypeApp (RawTypeRigid "Func") [tf, ta]
 
+inferInstantiated :: RawType -> Kindchecker (Kindspace, KindVar)
+inferInstantiated rt = do
+  as <- instantiateKinds rt
+  (s, k) <- withKindspace as $ inferKind rt
+  pure (substitute s as, substitute s k)
 
-assumeSubst :: KindSubstitution -> Kindchecker a -> Kindchecker a
-assumeSubst s k = getKindspace >>= \ks ->
-  withKindspace (Kindspace $ M.union (getSubstMap s) (getKindspaceMap ks)) k
+-- assumeSubst :: KindSubstitution -> Kindchecker a -> Kindchecker a
+-- assumeSubst s k = getKindspace >>= \ks ->
+--   withKindspace (Kindspace $ M.union (getSubstMap s) (getKindspaceMap ks)) k
 
-kindcheckPred :: M.Map Name Kind -> RawPred -> Kindchecker KindSubstitution
+kindcheckPred :: M.Map Name Kind -> RawPred -> Kindchecker Kindspace
 kindcheckPred cls pr =
   let cn = rpClass pr
       t = rpType pr
   in case M.lookup cn cls of
     Nothing -> throwError $ "No such class: " <> cn
     Just kc -> do
-      (subpr, kpr) <- inferKind t
-      m <- mgu (toKindVar $ kc) (substitute subpr kpr)
-      pure $ KSubst .  fmap (substitute m) . getSubstMap $ subpr
+      (as, kpr) <- inferInstantiated t
+      m <- mgu (toKindVar $ kc) kpr
+      pure $ substitute m as
 
 mergeKinds :: KindVar -> KindVar -> Kindchecker KindVar
 mergeKinds k1 k2 = case (k1, k2) of
@@ -211,51 +222,70 @@ mergeSubstitutions s1 s2 = do
         Just vm -> mergeKinds vm v >>= \kins -> pure (M.insert k kins m)
   KSubst <$> foldM mergeInsert greater (M.toList lesser)
 
-kindcheckQualRawType :: M.Map Name Kind -> RawQual RawType -> Kindchecker (KindSubstitution, KindVar)
+mergeKindspaces :: Kindspace -> Kindspace -> Kindchecker Kindspace
+mergeKindspaces k1 k2 = do
+  let [lesser, greater] = sortBy (\a b -> compare (M.size a) (M.size b))
+        [getKindspaceMap k1, getKindspaceMap k2]
+      mergeInsert m (k, v) = case M.lookup k m of
+        Nothing -> pure $ M.insert k v m
+        Just vm -> mergeKinds vm v >>= \kins -> pure (M.insert k kins m)
+  Kindspace <$> foldM mergeInsert greater (M.toList lesser)
+
+
+kindcheckQualRawType :: M.Map Name Kind -> RawQual RawType -> Kindchecker (Kindspace, KindVar)
 kindcheckQualRawType cls rq = do
-  let folder :: KindSubstitution -> RawPred -> Kindchecker KindSubstitution
-      folder ks rp = kindcheckPred cls rp >>= mergeSubstitutions ks
-  predsub <- foldM folder mempty (rqPreds rq)
-  let insted = (instantiateKinds predsub $ rqContent rq)
-  assumeSubst predsub $ inferKind insted
+  ks <- getKindspace
+  let folder :: Kindspace -> RawPred -> Kindchecker Kindspace
+      folder kss rp = withKindspace kss (kindcheckPred cls rp)
+  predks <- foldM folder ks (rqPreds rq)
+  withKindspace predks (inferInstantiated (rqContent rq))
 
 testKindchecker :: Kindspace -> Kindchecker a -> Either ErrMsg a
 testKindchecker ks kc =
   evalState (runReaderT (runExceptT kc) ks)  (KindcheckerState 0)
 
-finalizeKind :: KindVar -> Kindchecker KindVar
-finalizeKind k = (flip substitute k) <$> mgu (toKindVar KType) k
+finalizeKind :: KindVar -> Kindchecker (KindSubstitution, KindVar)
+finalizeKind k = do
+  s <- mgu (toKindVar KType) k
+  pure (s, substitute s k)
 
 toKind :: KindVar -> Kindchecker Kind
 toKind = \case
-  KindVar n -> throwError $ "Cannot freeze kind variable (" <> n <> ")"
+  KindVar _ -> pure KType -- TODO: Can one expliot it?
   KindVarType  -> pure KType
   KindVarFunc f a -> liftM2 KFunc (toKind f) (toKind a)
 
-kindcheckConstructor :: KindSubstitution -> ConstructorDef -> Kindchecker ()
-kindcheckConstructor typeas c = do
+kindcheckConstructor :: ConstructorDef -> Kindchecker ()
+kindcheckConstructor c = do
   forM_ (condefArgs c) $ \tr -> do
-    (s, ktr) <- assumeSubst typeas $ inferKind $ instantiateKinds typeas tr
-    finalizeKind (substitute s ktr)
+    (_, ktr) <- inferInstantiated tr
+    finalizeKind ktr
 
-instantiateKinds :: KindSubstitution -> RawType -> RawType
-instantiateKinds ks@(KSubst ksm) kv = case kv of
+
+-- |For every wobbly type not present in kindspace assign kind variable for it
+instantiateKinds :: RawType -> Kindchecker Kindspace
+instantiateKinds rt = getKindspace >>= \(ks@(Kindspace ksm)) -> case rt of
   RawTypeWobbly n -> case M.lookup n ksm of
-    Nothing -> kv
-    Just _ -> RawTypeRigid n
-  RawTypeRigid _ -> kv
-  RawTypeApp f args -> RawTypeApp (instantiateKinds ks f) (instantiateKinds ks <$> args)
-  RawTypeFunc f a -> RawTypeFunc (instantiateKinds ks f) (instantiateKinds ks a)
+    Nothing -> do
+      kvar <- newVar $ "_Deferred_" <> n
+      pure (insertKind n kvar ks)
+    Just _ -> pure (ks :: Kindspace)
+  RawTypeRigid _ -> pure ks
+  RawTypeApp f args -> do
+    asf <- instantiateKinds f
+    foldM (\a arg -> withKindspace a (instantiateKinds arg)) asf args
+  RawTypeFunc tf ta -> instantiateKinds $
+    RawTypeApp (RawTypeRigid "Func") [tf, ta]
 
 kindcheckNewType :: NewType -> Kindchecker ()
 kindcheckNewType nt = do
+  as <- getKindspace
   forM_ (ntContrs nt) $ \tr -> do
-    ntsub <- foldM (\a (tn, k) -> case M.lookup tn (getSubstMap a) of
-                       Nothing -> pure $ KSubst $ M.insert tn (toKindVar k) (getSubstMap a)
-                       Just _ -> throwError $ "Duplicated type argument: " <> tn
-                      ) (KSubst M.empty) (ntArgs nt)
-    kindcheckConstructor ntsub tr
-
+    ntks <- foldM (\a (tn, k) -> case M.lookup tn (getKindspaceMap a) of
+                      Nothing -> pure $ insertKind tn (toKindVar k) a
+                      Just _ -> throwError $ "Duplicated type argument: " <> tn
+                  ) as (ntArgs nt)
+    withKindspace ntks $ kindcheckConstructor tr
 
 
 -- |Gets kind by binding
@@ -264,10 +294,12 @@ kindlookNewType nt =
   pure $ Kindspace $ M.singleton (ntName nt)
     (toKindVar $ foldr KFunc KType (fmap snd $ ntArgs nt))
 
-kindcheckTypeDecl :: M.Map Name Kind -> TypeDecl -> Kindchecker ()
-kindcheckTypeDecl cls td = do
-  (s, k) <- kindcheckQualRawType cls (tdeclType td)
-  void $ finalizeKind (substitute s k)
+kindcheckRawTypeDecl :: M.Map Name Kind -> RawTypeDecl -> Kindchecker Kindspace
+kindcheckRawTypeDecl cls td = do
+  (ks, k) <- kindcheckQualRawType cls (rawtdeclType td)
+  (ss, _) <- withKindspace ks $ finalizeKind k
+  let out = substitute ss ks
+  pure out
 
 kindcheckRawProgram :: KindInfer RawProgram
 kindcheckRawProgram prg = do -- TODO Instances!
@@ -277,17 +309,58 @@ kindcheckRawProgram prg = do -- TODO Instances!
     forM_ (rawprgNewTypes prg) kindcheckNewType
 
     let classAssmps = M.fromList $ fmap (\cd -> (classdefName cd, classdefKind cd)) (rawprgClassDefs prg)
-    forM_ (rawprgTypeDecls prg) (kindcheckTypeDecl classAssmps)
+    forM_ (rawprgTypeDecls prg) (kindcheckRawTypeDecl classAssmps)
   pure newAs
 
 
+processType :: RawType -> Kindchecker Type
+processType = \case
+  RawTypeWobbly n -> TypeVarWobbly . TypeVar n <$> (toKind =<< kindOf n)
+  RawTypeRigid n -> TypeVarRigid . TypeVar n <$> (toKind =<< kindOf n)
+  RawTypeApp f args -> do
+    ft <- processType f
+    as <- forM args processType
+    foldM (\ff aa -> pure $ TypeApp ff aa) ft as
+  RawTypeFunc tf ta -> processType $ RawTypeApp (RawTypeRigid "Func") [tf, ta]
 
--- -- |Evaluation of typechecker
--- runKindchecker :: Kindchecker a -> Either String a
--- runKindchecker = flip evalState (KindcheckerState 0)
---   . flip runReaderT (Kindspace M.empty)
---   . runExceptT
+processPred :: RawPred -> Kindchecker Pred
+processPred rp = do
+  t <- processType (rpType rp)
+  pure $ IsIn (rpClass rp) t
 
--- -- |Toplevel typechecking of expression
--- typecheck :: Expr -> Either ErrMsg Kind
--- typecheck e = uncurry substitute <$> runKindchecker (withStdlib $ inferKind e)
+processQualType :: RawQual RawType -> Kindchecker (Qual Type)
+processQualType rq = do
+  preds <- traverse processPred (rqPreds rq)
+  t <- processType (rqContent rq)
+  pure $ preds :=> t
+
+
+processTypeDecl :: RawTypeDecl -> Kindchecker TypeDecl
+processTypeDecl rtd = TypeDecl (rawtdeclName rtd) <$> processQualType (rawtdeclType rtd)
+
+
+processProgram :: RawProgram -> Kindchecker Program
+processProgram prg = do -- TODO Instances!
+  as <- getKindspace
+  newAs <- foldM (\a nt -> (unionKindspaces a) <$> kindlookNewType nt) as (rawprgNewTypes prg)
+
+  forM_ (rawprgNewTypes prg) (withKindspace newAs . kindcheckNewType)
+
+  tdecls <- withKindspace newAs $ do
+
+    let classAssmps =
+          M.fromList $ fmap (\cd -> (classdefName cd, classdefKind cd)) (rawprgClassDefs prg)
+    forM (rawprgTypeDecls prg) $ \td -> do
+      tdas <- kindcheckRawTypeDecl classAssmps td
+      withKindspace tdas $ processTypeDecl td
+  throwError $ show tdecls
+
+-- processProgram rp = do
+--   ce <- buildClassEnv classdefs impldefs
+--   pure $ Program
+--     { prgBindings = toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs
+--     , prgTypespace = undefined
+--     , prgClassEnv = ce
+--     , prgTypeEnv = undefined
+--     }
+

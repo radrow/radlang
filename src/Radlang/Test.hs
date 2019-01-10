@@ -5,21 +5,13 @@
 
 module Radlang.Test where
 
-import Data.Either
 -- import Radlang.Typechecker
 import Radlang.Types
-import Data.Map.Strict as M
-import Text.Megaparsec
-import Control.Monad
-import Text.RawString.QQ
-import Language.Haskell.TH.Quote
 
-import qualified Language.Haskell.TH as TH
 
-import Radlang.Parser
-import Radlang.Parser.General
-import Radlang.ClassEnvBuild
-import Radlang.DependencyAnalysis
+-- import Radlang.ClassEnvBuild
+import Radlang.QQ
+import Radlang.Kindchecker
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -30,11 +22,6 @@ import Radlang.DependencyAnalysis
 --   f <- readFile "examples/toplevel.rdl"
 --   testt f
 
-testpars :: Show a => Parser a -> String -> IO ()
-testpars p f = case parse (p <* eof) "XD" f of
-  Left a -> putStrLn $ parseErrorPretty a
-  Right x -> print x
-
 
 -- printTypeEnv :: TypeEnv -> String
 -- printTypeEnv (TypeEnv te) =
@@ -43,26 +30,14 @@ testpars p f = case parse (p <* eof) "XD" f of
 --   in
 --   unlines $ fmap (\(v, t) -> v <> " : " <> show t) l
 
-ast :: QuasiQuoter
-ast = QuasiQuoter
-  { quoteExp = \str ->  do
-      loc <- TH.location
-      let pos =  (TH.loc_filename loc,
-                   fst (TH.loc_start loc),
-                   snd (TH.loc_start loc))
-          prs :: Monad m => String -> m RawProgram
-          prs = either (fail . parseErrorPretty) pure . parse rawProgram ""
-      expr <- prs str
-      dataToExpQ (const Nothing) expr
-  }
 
-classProgram :: [Char]
-classProgram = [r|interface Semigroup ~A {
+classProgram :: RawProgram
+classProgram = [rawrdl|interface Semigroup (~A : Type) {
   plus : ~A -> ~A -> ~A;;
 }
 ;;
 
-interface Monoid ~A implies Semigroup { -- implication separated by comma
+interface Monoid (~A : Type) implies Semigroup { -- implication separated by comma
   zero : ~A;;
 }
 ;;
@@ -85,11 +60,35 @@ impl (~A is Monoid :- Some ~A) for Monoid {
 };;
 |]
 
+newtypeProgram :: RawProgram
+newtypeProgram = [rawrdl|newtype Option (~A : Type) := None | Some ~A;;
+
+newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
+newtype Func (~A : Type) (~B : Type) := Func ~A ~B;;
+
+newtype Void := Void;;
+
+newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
+  State (~S -> ~M (Pair ~S ~A))
+;;
+
+interface Monad (~A : Type -> Type) {};;
+
+x : ~B is Monad :- Option (~C ~A);;
+|]
+
+ntt :: RawProgram
+ntt = [rawrdl|newtype Dup (~A : Type) (~B : Type -> Type) := A (~B ~A);;
+|]
+
+dec :: RawProgram
+dec = [rawrdl|x : ~A ~A;;|]
+
 
 rawclasses :: [ClassDef]
-rawclasses = rawprgClassDefs . either (error . parseErrorPretty) id $ parse rawProgram "" classProgram
+rawclasses = rawprgClassDefs classProgram
 rawimpls :: [ImplDef]
-rawimpls = rawprgImplDefs . fromRight undefined $ parse rawProgram "" classProgram
+rawimpls = rawprgImplDefs classProgram
 
-classenv :: Either ErrMsg ClassEnv
-classenv = buildClassEnv rawclasses rawimpls
+-- classenv :: Either ErrMsg ClassEnv
+-- classenv = buildClassEnv rawclasses rawimpls

@@ -3,8 +3,7 @@ module Radlang.DependencyAnalysis where
 
 import Data.Graph
 import Data.Map.Strict as M
-import Data.Set.Monad as S
-import Data.Set as DS
+import Data.Set as S
 
 import Radlang.Types
 
@@ -46,7 +45,7 @@ groupBindings :: ImplBindings -> [ImplBindings]
 groupBindings im =
   let entries = fmap (\(n, alts) -> (n, fmap snd alts)) (M.toList im)
       toposorted = sccOfExprs entries
-  in fmap (\ns -> M.restrictKeys im (DS.fromList ns)) toposorted
+  in fmap (\ns -> M.restrictKeys im (S.fromList ns)) toposorted
 
 classHierarchySort :: [ClassDef] -> [ClassDef]
 classHierarchySort cds =

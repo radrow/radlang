@@ -2,15 +2,15 @@
 
 module Radlang.Types.Semantic where
 
-import Data.List.NonEmpty
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import  Data.Map.Strict(Map)
-import Data.Set.Monad as S
+import Data.Set as S
 
 import Radlang.Types.Typesystem
 import Radlang.Types.General
+import Radlang.Types.Syntax
 
 
 -- |Map of value names into ids
@@ -25,12 +25,6 @@ type Dataspace = (Map DataId Data, Int)
 type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 
 
--- |Literal like "" or 2138 or 0.42
-data Literal
-  = LitInt Integer
-  | LitString String
-  deriving (Eq, Show, Ord)
-
 
 -- |Desugared expression tree ready for evaluation
 data Expr
@@ -42,30 +36,11 @@ data Expr
   deriving (Eq, Show, Ord)
 
 
--- |Possible pattern variations for pattern matching
-data Pattern
-  = PVar Name
-  | PWildcard
-  | PAs Name Pattern
-  | PLit Literal
-  | PConstructor Name [Pattern]
-  deriving (Eq, Show, Ord)
-
 
 -- |Single part of function definition – for example `f a 3 _ = some_expr`
 newtype Alternative = Alt (Set Pattern, Expr)
   deriving (Eq, Show, Ord)
 
-
--- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
-data AST
-  = ASTVal Name
-  | ASTLit Literal
-  | ASTApplication AST (NonEmpty AST)
-  | ASTLet (NonEmpty (Name, [Name], Maybe Type, AST)) AST
-  | ASTLambda (NonEmpty Name) AST
-  | ASTIf (NonEmpty (AST, AST)) AST
-  deriving(Eq, Show)
 
 
 -- |Value stored in the dataspace. May be evaluated or not
@@ -125,43 +100,8 @@ data Program = Program
   , prgTypeEnv :: TypeEnv
   } deriving (Eq, Show)
 
-data NewType = NewType
-  { ntName :: Name
-  , ntArgs :: [Name]
-  , ntContrs :: [ConstructorDef]}
-  deriving (Eq, Ord, Show)
-
-data ConstructorDef = ConstructorDef
-  { condefName :: Name
-  , condefArgs :: [Type]}
-  deriving (Eq, Ord, Show)
-
-data TypeAlias = TypeAlias
-  {taliasName :: Name
-  , taliasTarget :: Type}
-  deriving (Eq, Ord, Show)
 
 data TypeDecl = TypeDecl
   { tdeclName :: Name
   , tdeclType :: (Qual Type)}
   deriving (Eq, Ord, Show)
-
-data DataDef = DataDef
-  { datadefName :: Name
-  , datadefArgs :: [Pattern]
-  , datadefVal :: Expr}
-  deriving (Eq, Show)
-
-data ClassDef = ClassDef
-  {classdefName :: Name
-  , classdefArg :: Name
-  , classdefSuper :: (Set Name)
-  , classdefMethods :: [TypeDecl]}
-  deriving (Eq, Show)
-
-
-data ImplDef = ImplDef
-  { impldefClass :: Name
-  , impldefType :: Type
-  , impldefMethods :: [DataDef]}
-  deriving (Eq, Show)

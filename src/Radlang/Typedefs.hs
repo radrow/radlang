@@ -1,6 +1,6 @@
 module Radlang.Typedefs where
 
-import Data.Set.Monad as S
+import Data.Set as S
 import Data.Map.Strict as M
 
 import Radlang.Helpers

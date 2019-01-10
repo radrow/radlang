@@ -8,8 +8,8 @@ import Data.List.NonEmpty(NonEmpty)
 import Control.Monad.State.Strict
 import Control.Monad.Identity
 import Control.Monad.Except
-import qualified Data.Set.Monad as S
-import Data.Set.Monad(Set)
+import qualified Data.Set as S
+import Data.Set(Set)
 import qualified Data.Map.Strict as M
 
 import Radlang.Types
@@ -49,7 +49,7 @@ addInst ps p@(IsIn i _) = do
   its <- instances i
   c <- super i
   let overlaps prd q = catchError (mguPred prd q >> pure True) (const $ pure False)
-      qs = fmap (\(_ :=> q) -> q) its
+      qs = S.map (\(_ :=> q) -> q) its
   filterM (overlaps p) (S.toList qs) >>= \case
     [] -> pure ()
     (IsIn h _):_ -> throwError $ "Instances overlap: " <> i <> " with " <> h
@@ -91,7 +91,7 @@ buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
     throwError $ "Found interface cycle: " <> show cyc
 
   -- Build superclass environment
-  forM_ cses $ \(ClassDef cname _ supers _) -> do
+  forM_ cses $ \(ClassDef cname _ _ supers _) -> do
     addClass cname supers
 
   -- Add instances
@@ -104,8 +104,8 @@ buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
 
       onPresent (checkCompletness c instmap) $ \m ->
         throwError $ "Methods " <> show m <> " are missing for " <> classdefName c
-      let (quals :=> t) = impldefType i
-      addInst quals $ IsIn  (classdefName c) t
+      let (RawQual quals t) = impldefType i
+      addInst quals $ RawPred (classdefName c) t
 
 
 -- |Find any cycle in dependency graph

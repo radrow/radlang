@@ -5,8 +5,8 @@ module Radlang.Typesystem.Typesystem where
 
 import Data.List as DL
 import qualified Data.Map.Strict as M
-import qualified Data.Set.Monad as S
-import Data.Set.Monad(Set)
+import qualified Data.Set as S
+import Data.Set(Set)
 import Control.Applicative
 import Control.Monad.State.Strict
 import Control.Monad.Except

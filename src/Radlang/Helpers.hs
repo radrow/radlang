@@ -2,8 +2,6 @@
 
 module Radlang.Helpers where
 
-import qualified Data.Set.Monad as S
-
 import Radlang.Types
 
 

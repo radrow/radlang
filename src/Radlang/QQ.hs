@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Radlang.QQ where
 
+import Data.List.NonEmpty as DLNE
 import Data.Generics
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
@@ -18,16 +19,19 @@ import Radlang.Types hiding (Data)
 
 
 deriving instance Data RawProgram
-deriving instance Data TypeAlias
 deriving instance Data NewType
 deriving instance Data ConstructorDef
+deriving instance Data RawType
 deriving instance Data ImplDef
 deriving instance Data DataDef
 deriving instance Data TypeDecl
+deriving instance Data RawTypeDecl
 deriving instance Data TypePoly
 deriving instance Data ClassDef
 deriving instance Data Pred
+deriving instance Data RawPred
 deriving instance Data Expr
+deriving instance Data RawExpr
 deriving instance Data RawProgramPart
 deriving instance Data Type
 deriving instance Data TypeVar
@@ -35,6 +39,7 @@ deriving instance Data Kind
 deriving instance Data Pattern
 deriving instance Data Literal
 
+deriving instance (Data a) => Data (RawQual a)
 deriving instance (Data a) => Data (Qual a)
 
 
@@ -46,7 +51,10 @@ parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, line, col) s =
   let parser = rawProgram <* eof
   in case parse parser file s of
-    Left e -> fail $ show e
+    Left e -> fail $ let
+      x :: String
+      x = concat (fmap parseErrorPretty $ bundleErrors e)
+      in fmap (\c -> if c == '\n' then ' ' else c) x
     Right p -> pure p
 
 
@@ -59,3 +67,4 @@ quoteRawrdlExp s = do
             )
   e <- parseRawrdl pos s
   dataToExpQ (const Nothing) e
+
