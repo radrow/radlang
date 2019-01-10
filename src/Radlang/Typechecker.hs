@@ -273,7 +273,9 @@ runTypecheckerT ce te tc
 -- |Toplevel typechecking of program
 typecheck :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypeEnv)
 typecheck tc p = runTypecheckerT
-  (prgClassEnv p) (prgTypeEnv p) tc (inferTypeBindingGroups $ prgBindings p)
+  (prgClassEnv p)
+  stdTypeEnv -- (prgTypeEnv p)
+  tc (inferTypeBindingGroups $ prgBindings p)
 
 stdTypeEnv :: TypeEnv
 stdTypeEnv = TypeEnv $ M.fromList
@@ -281,9 +283,9 @@ stdTypeEnv = TypeEnv $ M.fromList
                                           fun (tWobbly "~E")
                                           (fun (tWobbly "~E") tBool)
                                          )
- -- , "true" <~ Forall [] ([] :=> tBool)
- -- , "false" <~ Forall [] ([] :=> tBool)
+  , "true" <~ Forall [] ([] :=> tBool)
+  , "false" <~ Forall [] ([] :=> tBool)
 
 
- -- , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+  , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
  ]

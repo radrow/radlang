@@ -13,6 +13,7 @@ import Data.Set(Set)
 import qualified Data.Map.Strict as M
 
 import Radlang.Types
+import Radlang.Typedefs
 import Radlang.DependencyAnalysis
 import Radlang.Typesystem.Typesystem
 
@@ -75,7 +76,7 @@ onPresentM cond handle = cond >>= void . traverse handle
 
 
 buildClassEnv :: [ClassDef] -> [ImplDef] -> Either ErrMsg ClassEnv
-buildClassEnv cses' impls = runClassEnvBuilder emptyClassEnv $ do
+buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
   let cses = classHierarchySort cses'
   let groupOn :: Ord b => (a -> b) -> [a] -> M.Map b [a]
       groupOn f =

@@ -74,8 +74,7 @@ newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
 
 interface Monad (~A : Type -> Type) {};;
 
-x : ~M is Monad :- ~M Void;;
-x := x;;
+x := eq 3 3;;
 |]
 
 ntt :: RawProgram

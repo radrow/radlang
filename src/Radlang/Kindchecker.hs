@@ -11,12 +11,12 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 
-import Radlang.Parser.Expr
 import Radlang.ClassEnvBuild
 import Radlang.Types hiding (free, substitute, TypePoly, getSubstMap)
 import qualified Radlang.Types as RT
 import Radlang.Typesystem.Typesystem hiding (mgu, bindVar)
 import Radlang.Types.Kindcheck
+import Radlang.Typechecker(typecheck)
 
 -- |Lookup type in typespace
 lookupKind :: Name -> Kindchecker (Maybe KindVar)
@@ -37,6 +37,7 @@ getClassKinds = asks snd
 -- |Runs Kindchecker with another typespace
 withKindspace :: Kindspace -> Kindchecker a -> Kindchecker a
 withKindspace ts = local (\(_, c) -> (ts, c))
+withClassKinds :: MonadReader (a1, b) m => b -> m a2 -> m a2
 withClassKinds cs = local (\(k, _) -> (k, cs))
 
 insertKind :: Name -> KindVar -> Kindspace -> Kindspace
@@ -169,8 +170,8 @@ kindcheckQualRawType rq = do
   predks <- foldM folder ks (rqPreds rq)
   withKindspace predks (inferInstantiated (rqContent rq))
 
-testKindchecker :: Kindspace -> Kindchecker a -> Either ErrMsg a
-testKindchecker ks kc =
+runKindchecker :: Kindspace -> Kindchecker a -> Either ErrMsg a
+runKindchecker ks kc =
   evalState (runReaderT (runExceptT kc) (ks, ClassKinds M.empty))  (KindcheckerState 0)
 
 finalizeKind :: KindVar -> Kindchecker (KindSubstitution, KindVar)
@@ -230,6 +231,7 @@ kindcheckRawTypeDecl td = do
   let out = substitute ss ks
   pure out
 
+buildClassKinds :: [RawClassDef] -> ClassKinds
 buildClassKinds cls = ClassKinds $
   M.fromList $ fmap (\cd -> (rawclassdefName cd, rawclassdefKind cd)) cls
 
@@ -299,15 +301,15 @@ processProgram prg = withClassKinds (buildClassKinds $ rawprgClassDefs prg) $ do
   let ddefs = fmap processDataDef (rawprgDataDefs prg)
 
   pure $ Program
-    { prgBindings = toplevelBindings newAs $ fmap Left tdecls ++ fmap Right ddefs
+    { prgBindings = toplevelBindings $ fmap Left tdecls ++ fmap Right ddefs
     , prgClassEnv = ceny
     , prgTypeEnv = TypeEnv $ M.empty
     }
 
 
 
-toplevelBindings :: Kindspace -> [Either TypeDecl DataDef] -> [BindingGroup]
-toplevelBindings ks = pure . Prelude.foldl ins (M.empty, [M.empty]) where
+toplevelBindings :: [Either TypeDecl DataDef] -> [BindingGroup]
+toplevelBindings = pure . Prelude.foldl ins (M.empty, [M.empty]) where
   ins :: BindingGroup -> Either TypeDecl DataDef -> BindingGroup
   ins (exs, [imps]) tl = case tl of
     Left (TypeDecl n qt) -> case (M.lookup n exs, M.lookup n imps) of
@@ -332,6 +334,7 @@ toplevelBindings ks = pure . Prelude.foldl ins (M.empty, [M.empty]) where
   ins _ _ = error "toplevelBindings process error: imps not a singleton"
 
 
+processDataDef :: RawDataDef -> DataDef
 processDataDef dd = DataDef
   { datadefName = rawdatadefName dd
   , datadefArgs = rawdatadefArgs dd
@@ -361,3 +364,7 @@ processRawExpr = \case
   --     (processRawExpr c)
   --     (processRawExpr t)
   --     (processRawExpr $ RawExprIf (hd:|tl) els)
+
+getprg p = (either error id $ runKindchecker (Kindspace M.empty) $ processProgram p)
+
+tc p = print =<< typecheck (TypecheckerConfig False) (getprg p)
