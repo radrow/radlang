@@ -4,29 +4,13 @@
 module Radlang.Parser.Type where
 
 import           Control.Monad.Combinators.NonEmpty
-import           Data.List.NonEmpty                 (NonEmpty((:|)))
 import           Control.Monad
-import           Control.Monad.Except
 import           Text.Megaparsec hiding (some)
 
 import           Prelude                hiding (lex)
 
 import           Radlang.Parser.General
 import           Radlang.Types hiding (kind)
-import Radlang.Typedefs
-import Radlang.Types.Kindcheck
-
-
--- processRawType :: Monad m => RawType -> KindcheckerT m Type
--- processRawType tr = getAssumptions >>= \kas -> case tr of
---   RawTypeWobbly n -> pure $ TypeVarWobbly $ TypeVar n KType
---   RawTypeRigid n -> case lookupKind n kas of
---     Just k -> pure $ TypeVarRigid $ TypeVar n k
---     Nothing -> throwError $ "Unknown rigid type " <> n
---   RawTypeApp tfun (arg1 :| restargs) -> do
---     ttfun <- processRawType tfun
---     foldM (\f a -> TypeApp f <$> (processRawType a)) ttfun (arg1:restargs)
---   RawTypeFunc tfun arg -> liftM2 fun (processRawType tfun) (processRawType arg)
 
 
 qual :: Parser a -> Parser (RawQual a)
@@ -66,7 +50,7 @@ typeSimple = msum
 
 typeFunc :: Parser RawType
 typeFunc = do
-  f <- try $ typeSimple <* operator "->"
+  f <- try $ (typeApp <|> typeSimple) <* operator "->"
   arg <- type_
   pure $ RawTypeFunc f arg
 

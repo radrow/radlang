@@ -5,8 +5,7 @@ module Radlang.Desugar where
 import Control.Monad
 import Control.Monad.Except
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import Data.List.NonEmpty(NonEmpty((:|)), cons)
+import Data.List.NonEmpty(cons)
 
 import Radlang.Typesystem.Typesystem
 import Radlang.Types
@@ -15,14 +14,6 @@ import Radlang.Kindchecker
 import Radlang.ClassEnvBuild
 import Radlang.DependencyAnalysis
 
-
--- constructorEnv :: Type -> [ConstructorDef] -> TypeEnv -> TypeEnv
--- constructorEnv final cs te =
---   let constructor (TypeEnv te) c = do
---         types <- traverse processType condefArgs
---         pure $ TypeEnv $ M.insert (condefName c) (Prelude.foldr fun final types) te
---   in foldM constructor te cs
---        final <- foldM (\f an -> TypeApp f (TypeVarWobbly $ TypeVar f)) -- kinds
 
 dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
 dataspaceInsert d (Dataspace ds next) = (Dataspace (M.insert next d ds) (next+1), next)
@@ -36,8 +27,7 @@ constructorBindings final c =
 newTypeBindings :: Dataspace -> NewType -> (TypeEnv, Namespace, Dataspace)
 newTypeBindings dats nt =
   let constrs = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
-                               in (condefName cd, quantify (S.toList $ free t)
-                                    ([] :=> t), d))
+                               in (condefName cd, quantifyAll ([] :=> t), d))
              $ (ntContrs nt)
 
       tenv = foldl (\te (n, t, _) -> TypeEnv $ M.insert n t (types te))
@@ -50,6 +40,16 @@ newTypeBindings dats nt =
         (Namespace M.empty) $ zip constrs ids
   in (tenv, nspace, dspace)
 
+classBindings :: ClassDef -> TypeEnv
+classBindings cd =
+  let clspred = IsIn (classdefName cd) (TypeVarWobbly $ TypeVar (classdefArg cd) (classdefKind cd) )
+
+      methodproc :: TypeEnv -> TypeDecl -> TypeEnv
+      methodproc te td =
+        let (prds :=> t) = tdeclType td
+        in TypeEnv $ M.insert (tdeclName td) (quantifyAll $ (clspred : prds) :=> t) (types te)
+
+  in foldl methodproc (TypeEnv M.empty) (classdefMethods cd)
 
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
@@ -71,12 +71,13 @@ processProgram prg = do -- TODO Instances!
         tdas <- kindcheckRawTypeDecl td
         withKindspace (unionKindspaces tdas newAs) $ processTypeDecl td
 
-    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv) =<<
-      (flip buildClassEnv [] <$> traverse processClassDef (rawprgClassDefs prg))
+    cdefs <- traverse processClassDef (rawprgClassDefs prg)
+    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
+      (buildClassEnv cdefs [])
 
     newtypes <- traverse processNewType (rawprgNewTypes prg)
     let ddefs = fmap processDataDef (rawprgDataDefs prg)
-        (ntTEnv, ntNs, ntDs) =
+        (ntTEnv, _, _) =
           let folder (t, n, d) (nt, nn, nd) =
                 ( (TypeEnv $ M.union (types t) (types nt))
                 , (Namespace $ M.union (namespaceMap n) (namespaceMap nn))
@@ -86,10 +87,13 @@ processProgram prg = do -- TODO Instances!
           in foldl folder (TypeEnv M.empty, Namespace M.empty, Dataspace M.empty 0)
              $ fmap (newTypeBindings (Dataspace M.empty 0)) newtypes
 
+        classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
+          ntTEnv $ fmap classBindings cdefs
+
     pure $ Program
       { prgBindings = toplevelBindings $ fmap Left tdecls ++ fmap Right ddefs
       , prgClassEnv = ceny
-      , prgTypeEnv = ntTEnv
+      , prgTypeEnv = classbnds
       }
 
 
@@ -102,9 +106,9 @@ toplevelBindings = pure . groupImplicit . Prelude.foldl ins (M.empty, [M.empty])
   ins (exs, [imps]) tl = case tl of
     Left (TypeDecl n qt) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) ->
-        (M.insert n (quantify (S.toList $ free qt) qt, []) exs, [imps])
+        (M.insert n (quantifyAll qt, []) exs, [imps])
       (Nothing, Just alts) -> let
-        e = M.insert n (quantify (S.toList $ free qt) qt, alts) exs
+        e = M.insert n (quantifyAll qt, alts) exs
         i = M.delete n imps
         in (e, [i])
       (Just _, _) -> error "Typedecl duplicate"
@@ -199,6 +203,7 @@ processClassDef rcd = do
   pure $ ClassDef
     { classdefName = rawclassdefName rcd
     , classdefArg = rawclassdefArg rcd
+    , classdefKind = rawclassdefKind rcd
     , classdefSuper = rawclassdefSuper rcd
     , classdefMethods = mts
     }

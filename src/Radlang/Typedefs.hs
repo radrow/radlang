@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedLists #-}
+
 module Radlang.Typedefs where
 
 import Data.Set as S

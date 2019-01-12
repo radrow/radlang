@@ -112,6 +112,7 @@ data TypeDecl = TypeDecl
 data ClassDef = ClassDef
   { classdefName    :: Name
   , classdefArg     :: Name
+  , classdefKind    :: Kind
   , classdefSuper   :: (Set Name)
   , classdefMethods :: [TypeDecl]}
   deriving (Eq, Show)

@@ -91,7 +91,7 @@ buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
     throwError $ "Found interface cycle: " <> show cyc
 
   -- Build superclass environment
-  forM_ cses $ \(ClassDef cname _ supers _) -> do
+  forM_ cses $ \(ClassDef cname _ _ supers _) -> do
     addClass cname supers
 
   -- Add instances

@@ -202,12 +202,17 @@ reduce ps = toHNFs ps >>= simplify
 
 
 -- |Create scheme of generic type by its arguments
-quantify :: [TypeVar] -> Qual Type -> TypePoly
+quantify :: Set TypeVar -> Qual Type -> TypePoly
 quantify vs qt = Forall ks (substitute s qt) where
   vs' = [v | v <- S.toList $ free qt, v `elem` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
   s = Subst $ M.fromList $ zip ns (fmap TypeGeneric [0..])
+
+
+-- |Quantifies type by all of its free variables
+quantifyAll :: Qual Type -> TypePoly
+quantifyAll qt = quantify (free qt) qt
 
 
 -- |Turn plain type into scheme

@@ -191,11 +191,11 @@ inferTypeExpl (_, (sc, alts)) = do
   as <- getTypeEnv
   let qs' = substitute s qs
       t'= substitute s t
-      fs = S.toList $ free $ substitute s as
-      gs = (S.toList $ free t') \\ fs
+      fs = free $ substitute s as
+      gs = free t' S.\\ fs
       sc' = quantify gs (qs' :=> t')
   ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
-  (ds, rs) <- split fs gs ps'
+  (ds, rs) <- split (S.toList fs) (S.toList gs) ps' --TODO: `split` to set
   if | sc /= sc' -> throwError "Signature is too general"
      | not (null rs) -> throwError "Context is too weak"
      | otherwise -> pure ds
@@ -224,9 +224,9 @@ inferTypeImpl bs = do
   (ds, rs) <- split fs (if null vss then [] else foldr1 intersect vss) ps'
   if restricted (M.toList bs)
     then let gs' = filter (`S.member` free rs) gs
-             scs' = M.elems $ fmap (quantify gs' . ([] :=>)) ts'
+             scs' = M.elems $ fmap (quantify (S.fromList gs') . ([] :=>)) ts'
     in pure (ds ++ rs, TypeEnv $ M.fromList $ zip is scs')
-    else let scs' = M.elems $ fmap (quantify gs . (rs :=>)) ts'
+    else let scs' = M.elems $ fmap (quantify (S.fromList gs) . (rs :=>)) ts'
     in pure (ds, TypeEnv $ M.fromList $ zip is scs')
 
 

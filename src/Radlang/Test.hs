@@ -69,12 +69,18 @@ newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
    State (~S -> ~M (Pair ~S ~A))
 ;;
 
-interface Monad (~A : Type -> Type) {};;
+interface Monad (~M : Type -> Type) {
+  pure : ~A -> ~M ~A;;
+  bind : ~M ~A -> (~A -> ~M ~B) -> ~M ~B;;
+};;
 
 -- a : Option Int;;
 a := Some (plusInt 3 2);;
 
 l := Cons 2 (Cons 4 Nil);;
+
+-- m : ~M is Monad :- Int -> ~M Int;;
+m x := bind (m x) pure;;
 
 |]
 
