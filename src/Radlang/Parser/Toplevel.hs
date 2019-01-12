@@ -2,14 +2,10 @@ module Radlang.Parser.Toplevel where
 
 import Data.List.NonEmpty as DLNE
 import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Identity
-import Control.Monad.State
 import           Control.Monad.Combinators.NonEmpty
 import Text.Megaparsec hiding (sepBy1, some)
 import Text.Megaparsec.Char
 
-import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 import Radlang.Types hiding(kind)
@@ -17,7 +13,6 @@ import Radlang.Parser.General
 import Radlang.Parser.Type
 import Radlang.Parser.Expr
 import Radlang.DependencyAnalysis
-import Radlang.Typesystem.Typesystem
 -- import Radlang.ClassEnvBuild
 
 groupImplicits :: Program -> Program
@@ -64,7 +59,7 @@ rawProgramPart = msum
   , RPImplDef <$> implDef
   ]
 
-newType :: Parser NewType
+newType :: Parser RawNewType
 newType = do
   word "newtype"
   name <- typeName
@@ -75,13 +70,13 @@ newType = do
     pure (tn, k)
   operator ":="
   constructors <- sepBy constructorDef (operator "|")
-  pure $ NewType name typeParams constructors
+  pure $ RawNewType name typeParams constructors
 
-constructorDef :: Parser ConstructorDef
+constructorDef :: Parser RawConstructorDef
 constructorDef = do
   name <- constructorName
   params <- many typeSimple
-  pure $ ConstructorDef name params
+  pure $ RawConstructorDef name params
 
 
 typeDecl :: Parser RawTypeDecl
@@ -147,11 +142,11 @@ classDef = do
   pure $ RawClassDef name arg knd sups methods
 
 
-implDef :: Parser ImplDef
+implDef :: Parser RawImplDef
 implDef = do
   word "impl"
   arg <- qual type_
   word "for"
   cname <- className
   methods <- brac $ many (dataDef <* (operator ";;"))
-  pure $ ImplDef cname arg methods
+  pure $ RawImplDef cname arg methods

@@ -18,21 +18,21 @@ data RawType
 
 -- |All objects that RawProgram may consist of – helps parsing
 data RawProgramPart
-  = RPNewType NewType
+  = RPNewType RawNewType
   | RPTypeDecl RawTypeDecl
   | RPDataDef RawDataDef
   | RPClassDef RawClassDef
-  | RPImplDef ImplDef
+  | RPImplDef RawImplDef
   deriving (Eq, Show)
 
 
 -- |AST of program
 data RawProgram = RawProgram
-  { rawprgNewTypes :: [NewType]
+  { rawprgNewTypes :: [RawNewType]
   , rawprgTypeDecls :: [RawTypeDecl]
   , rawprgDataDefs :: [RawDataDef]
   , rawprgClassDefs :: [RawClassDef]
-  , rawprgImplDefs :: [ImplDef]
+  , rawprgImplDefs :: [RawImplDef]
   }
   deriving (Eq, Show)
 
@@ -80,17 +80,17 @@ data RawQual a = RawQual
 
 
 -- |`newtype` definition
-data NewType = NewType
-  { ntName :: Name
-  , ntArgs :: [(Name, Kind)]
-  , ntContrs :: [ConstructorDef]}
+data RawNewType = RawNewType
+  { rawntName :: Name
+  , rawntArgs :: [(Name, Kind)]
+  , rawntContrs :: [RawConstructorDef]}
   deriving (Eq, Ord, Show)
 
 
 -- |Definition of constructor
-data ConstructorDef = ConstructorDef
-  { condefName :: Name
-  , condefArgs :: [RawType]}
+data RawConstructorDef = RawConstructorDef
+  { rawcondefName :: Name
+  , rawcondefArgs :: [RawType]}
   deriving (Eq, Ord, Show)
 
 
@@ -120,8 +120,8 @@ data RawClassDef = RawClassDef
 
 
 -- |Implementation of interface
-data ImplDef = ImplDef
-  { impldefClass :: Name
-  , impldefType :: RawQual RawType
-  , impldefMethods :: [RawDataDef]}
+data RawImplDef = RawImplDef
+  { rawimpldefClass :: Name
+  , rawimpldefType :: RawQual RawType
+  , rawimpldefMethods :: [RawDataDef]}
   deriving (Eq, Show)

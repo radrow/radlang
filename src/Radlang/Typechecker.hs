@@ -237,7 +237,7 @@ inferTypeBindingGroup (es, iss) = do
         TypeEnv $ foldr (\(v, (sc, _)) m -> M.insert v sc m) M.empty (M.toList es)
   (ps, as'') <- inferTypeSeq (withTypeEnv (as' <> as) . inferTypeImpl) iss
   qss <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
-  pure (ps ++ join qss, as'' <> as') -- TODO originally I forgot here `as
+  pure (ps ++ join qss, as'' <> as')
 
 
 inferTypeSeq :: Infer bg TypeEnv -> Infer [bg] TypeEnv
@@ -268,24 +268,11 @@ runTypecheckerT :: ClassEnv
 runTypecheckerT ce te tc
   = flip evalStateT (TypecheckerState 0 mempty)
   . flip runReaderT (TypecheckerEnv ce te tc)
-  . runExceptT . (\(Typechecker t) -> t >> asks typeEnv)
+  . runExceptT . (\(Typechecker t) -> t)
 
 -- |Toplevel typechecking of program
 typecheck :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypeEnv)
 typecheck tc p = runTypecheckerT
   (prgClassEnv p)
-  stdTypeEnv -- (prgTypeEnv p)
+  (TypeEnv $ M.union (types stdTypeEnv) (types $ prgTypeEnv p)) -- (prgTypeEnv p)
   tc (inferTypeBindingGroups $ prgBindings p)
-
-stdTypeEnv :: TypeEnv
-stdTypeEnv = TypeEnv $ M.fromList
- [ "eq" <~ quantify [TypeVar "~E" KType] ([IsIn "Eq" $ tWobbly "~E"] :=>
-                                          fun (tWobbly "~E")
-                                          (fun (tWobbly "~E") tBool)
-                                         )
-  , "true" <~ Forall [] ([] :=> tBool)
-  , "false" <~ Forall [] ([] :=> tBool)
-
-
-  , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
- ]

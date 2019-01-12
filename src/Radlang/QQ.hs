@@ -15,14 +15,21 @@ import Data.Map.Strict as M
 
 import Radlang.Parser
 import Radlang.Types hiding (Data)
-
+import Radlang.Desugar
 
 
 deriving instance Data RawProgram
+deriving instance Data Program
+deriving instance Data TypeEnv
+deriving instance Data ClassEnv
+deriving instance Data Class
 deriving instance Data NewType
+deriving instance Data RawNewType
 deriving instance Data ConstructorDef
+deriving instance Data RawConstructorDef
 deriving instance Data RawType
 deriving instance Data ImplDef
+deriving instance Data RawImplDef
 deriving instance Data DataDef
 deriving instance Data RawDataDef
 deriving instance Data TypeDecl
@@ -49,6 +56,10 @@ rawrdl :: QuasiQuoter
 rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 
 
+rdl :: QuasiQuoter
+rdl = QuasiQuoter { quoteExp = quoteRdlExp }
+
+
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, line, col) s =
   let parser = rawProgram <* eof
@@ -68,5 +79,27 @@ quoteRawrdlExp s = do
             , snd (TH.loc_start loc)
             )
   e <- parseRawrdl pos s
+  dataToExpQ (const Nothing) e
+
+
+parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
+parseRdl (file, line, col) s =
+  let parser = rawProgram <* eof
+  in case parse parser file s of
+    Left e -> fail $ let
+      x :: String
+      x = concat (fmap parseErrorPretty $ bundleErrors e)
+      in fmap (\c -> if c == '\n' then ' ' else c) x
+    Right p -> either fail pure $ buildProgram p
+
+
+quoteRdlExp :: String -> TH.ExpQ
+quoteRdlExp s = do
+  loc <- TH.location
+  let pos = ( TH.loc_filename loc
+            , fst (TH.loc_start loc)
+            , snd (TH.loc_start loc)
+            )
+  e <- parseRdl pos s
   dataToExpQ (const Nothing) e
 

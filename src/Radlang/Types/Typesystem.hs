@@ -181,7 +181,7 @@ instance Monad m => Substitutor (TypecheckerT m) where
 
 
 instance Monad m => IdSupply (TypecheckerT m) where
-  newId = gets tcSupply
+  newId = gets tcSupply <* modify (\ts -> ts{tcSupply = tcSupply ts + 1})
 
 
 -- |Primitive type definition
@@ -205,8 +205,8 @@ instance HasKind Type where
 
 instance Show Type where
   show = \case
-    TypeVarWobbly (TypeVar a k) -> "(" <> a <> " : " <> show k <> ")"
-    TypeVarRigid (TypeVar a k) -> "(" <> a <> " : " <> show k <> ")"
+    TypeVarWobbly (TypeVar a _) -> a
+    TypeVarRigid (TypeVar a _) -> a
     TypeApp (TypeApp (TypeVarRigid (TypeVar "Func" _)) arg)
       val -> let aa = case arg of
                    TypeVarRigid _ -> show arg

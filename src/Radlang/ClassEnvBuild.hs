@@ -17,7 +17,6 @@ import Radlang.Typedefs
 import Radlang.DependencyAnalysis
 import Radlang.Typesystem.Typesystem
 
-import Debug.Trace
 
 -- |Inserts new class to env
 updateClassEnv :: Name -> Class -> ClassEnvBuilder ()
@@ -75,7 +74,7 @@ onPresentM :: MonadError ErrMsg m => m (Maybe e) -> (e -> m ()) -> m ()
 onPresentM cond handle = cond >>= void . traverse handle
 
 
-buildClassEnv :: [ClassDef] -> [ImplDef] -> Either ErrMsg ClassEnv
+buildClassEnv :: [ClassDef] -> [RawImplDef] -> Either ErrMsg ClassEnv
 buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
   let cses = classHierarchySort cses'
   let groupOn :: Ord b => (a -> b) -> [a] -> M.Map b [a]
@@ -86,7 +85,7 @@ buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
         in foldl fld M.empty
 
       -- Map from interface name to all of its instances
-      instmap = groupOn impldefClass impls
+      instmap = groupOn rawimpldefClass impls
 
   onPresent (isCyclic cses) $ \cyc ->
     throwError $ "Found interface cycle: " <> show cyc
@@ -99,7 +98,7 @@ buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
   forM_ cses $ \c -> do
     forM_ (maybe [] id $ M.lookup (classdefName c) instmap) $ \i -> do
       onPresentM (checkFoundation i c) $ \m ->
-        throwError $ "In implementation of " <> show (impldefType i)
+        throwError $ "In implementation of " <> show (rawimpldefType i)
         <> ": methods " <> show m
         <> " do not belong to any superinterface of " <> classdefName c
 
@@ -117,9 +116,9 @@ isCyclic = const Nothing -- TODO
 -- |Find all methods in instance definition that are not included in interface DAG
 checkFoundation :: ( HasClassEnv m
                    , MonadError ErrMsg m)
-                => ImplDef -> ClassDef -> m (Maybe (NonEmpty Name))
+                => RawImplDef -> ClassDef -> m (Maybe (NonEmpty Name))
 checkFoundation im cd
-  = NP.nonEmpty <$> filterM (fmap not . methodInClass cd) (fmap rawdatadefName $ impldefMethods im)
+  = NP.nonEmpty <$> filterM (fmap not . methodInClass cd) (fmap rawdatadefName $ rawimpldefMethods im)
 
 
 -- |Check whether given name is valid method of interface DAG
@@ -129,6 +128,6 @@ methodInClass c mname =
   in pure $ check $ classdefMethods c  -- TODO: Deep search
 
 -- |Find all missing methods for interface
-checkCompletness :: ClassDef -> M.Map Name [ImplDef] -> Maybe (NonEmpty Name)
+checkCompletness :: ClassDef -> M.Map Name [RawImplDef] -> Maybe (NonEmpty Name)
 checkCompletness _ _ =
   Nothing -- TODO: Not necessary, but nice to have

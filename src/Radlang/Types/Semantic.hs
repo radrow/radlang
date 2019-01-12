@@ -14,11 +14,13 @@ import           Radlang.Types.Typesystem
 
 
 -- |Map of value names into ids
-type Namespace = Map Name DataId
+newtype Namespace = Namespace {namespaceMap :: Map Name DataId}
 
 
 -- |Map of ids into real data
-type Dataspace = (Map DataId Data, Int)
+data Dataspace = Dataspace {dataspaceMap :: Map DataId Data
+                           , nextId :: DataId
+                           }
 
 
 -- |Transformer responsible for expression evaluation and error handling
@@ -121,3 +123,25 @@ data DataDef = DataDef
   , datadefArgs :: [Pattern]
   , datadefVal  :: Expr}
   deriving (Eq, Show)
+
+
+-- |Implementation of interface
+data ImplDef = ImplDef
+  { impldefClass :: Name
+  , impldefType :: Qual Type
+  , impldefMethods :: [DataDef]}
+  deriving (Eq, Show)
+
+-- |`newtype` definition
+data NewType = NewType
+  { ntName :: Name
+  , ntType :: Type
+  , ntContrs :: [ConstructorDef]}
+  deriving (Eq, Ord, Show)
+
+
+-- |Definition of constructor
+data ConstructorDef = ConstructorDef
+  { condefName :: Name
+  , condefArgs :: [Type]}
+  deriving (Eq, Ord, Show)

@@ -5,13 +5,9 @@
 
 module Radlang.Test where
 
--- import Radlang.Typechecker
+import Radlang.Typechecker
 import Radlang.Types
-
-
--- import Radlang.ClassEnvBuild
 import Radlang.QQ
-import Radlang.Kindchecker
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -60,35 +56,27 @@ impl (~A is Monoid :- Some ~A) for Monoid {
 };;
 |]
 
-newtypeProgram :: RawProgram
-newtypeProgram = [rawrdl|newtype Option (~A : Type) := None | Some ~A;;
+sample :: Program
+sample = [rdl|newtype Option (~A : Type) := None | Some ~A;;
 
+newtype Bool := True | False;;
 newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
-newtype Func (~A : Type) (~B : Type) := Func ~A ~B;;
+newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
 
 newtype Void := Void;;
 
 newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
-  State (~S -> ~M (Pair ~S ~A))
+   State (~S -> ~M (Pair ~S ~A))
 ;;
 
 interface Monad (~A : Type -> Type) {};;
 
-x := eq 3 3;;
+-- a : Option Int;;
+a := Some (plusInt 3 2);;
+
+l := Cons 2 (Cons 4 Nil);;
+
 |]
 
-ntt :: RawProgram
-ntt = [rawrdl|newtype Dup (~A : Type) (~B : Type -> Type) := A (~B ~A);;
-|]
-
-dec :: RawProgram
-dec = [rawrdl|x : ~A ~A;;|]
-
-
--- rawclasses :: [ClassDef]
--- rawclasses = rawprgClassDefs classProgram
-rawimpls :: [ImplDef]
-rawimpls = rawprgImplDefs classProgram
-
--- classenv :: Either ErrMsg ClassEnv
--- classenv = buildClassEnv rawclasses rawimpls
+tt :: IO (Either ErrMsg TypeEnv)
+tt = typecheck (TypecheckerConfig True) sample

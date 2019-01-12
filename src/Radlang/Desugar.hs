@@ -4,20 +4,56 @@ module Radlang.Desugar where
 
 import Control.Monad
 import Control.Monad.Except
-import Data.Map.Strict as M
-import Data.Set as S
-import Data.List.NonEmpty
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Data.List.NonEmpty(NonEmpty((:|)), cons)
 
 import Radlang.Typesystem.Typesystem
 import Radlang.Types
+import Radlang.Typedefs
 import Radlang.Kindchecker
 import Radlang.ClassEnvBuild
 import Radlang.DependencyAnalysis
 
 
+-- constructorEnv :: Type -> [ConstructorDef] -> TypeEnv -> TypeEnv
+-- constructorEnv final cs te =
+--   let constructor (TypeEnv te) c = do
+--         types <- traverse processType condefArgs
+--         pure $ TypeEnv $ M.insert (condefName c) (Prelude.foldr fun final types) te
+--   in foldM constructor te cs
+--        final <- foldM (\f an -> TypeApp f (TypeVarWobbly $ TypeVar f)) -- kinds
+
+dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
+dataspaceInsert d (Dataspace ds next) = (Dataspace (M.insert next d ds) (next+1), next)
+
+constructorBindings :: Type -> ConstructorDef -> (Type, Data)
+constructorBindings final c =
+  let t = foldr fun final (condefArgs c)
+      d = error "constructor def not implemented"
+  in (t, d)
+
+newTypeBindings :: Dataspace -> NewType -> (TypeEnv, Namespace, Dataspace)
+newTypeBindings dats nt =
+  let constrs = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
+                               in (condefName cd, quantify (S.toList $ free t)
+                                    ([] :=> t), d))
+             $ (ntContrs nt)
+
+      tenv = foldl (\te (n, t, _) -> TypeEnv $ M.insert n t (types te))
+        (TypeEnv M.empty) constrs
+
+      (dspace, ids) = foldl (\(ds, prids) (_, _, d) -> let (dds, did) = dataspaceInsert d ds
+                                                     in (dds, did:prids)
+                            ) (dats, []) constrs
+      nspace = foldl (\(Namespace ds) ((n, _, _), i) -> Namespace $ M.insert n i ds)
+        (Namespace M.empty) $ zip constrs ids
+  in (tenv, nspace, dspace)
+
+
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
-buildProgram prg = runKindchecker (Kindspace M.empty) (buildClassKinds $ rawprgClassDefs prg) (processProgram prg)
+buildProgram prg = runKindchecker stdKindspace (buildClassKinds $ rawprgClassDefs prg) (processProgram prg)
 
 
 -- |Kindchecker that builds typesystem and returns well kinded (kind!) program ready for typechecking
@@ -27,23 +63,34 @@ processProgram prg = do -- TODO Instances!
   as <- getKindspace
   newAs <- foldM (\a nt -> (unionKindspaces a) <$> kindlookNewType nt) as (rawprgNewTypes prg)
 
-  forM_ (rawprgNewTypes prg) (withKindspace newAs . kindcheckNewType)
+  withKindspace newAs $ do
+    forM_ (rawprgNewTypes prg) (kindcheckNewType)
 
-  tdecls <- withKindspace newAs $ do
-    forM (rawprgTypeDecls prg) $ \td -> do
-      tdas <- kindcheckRawTypeDecl td
-      withKindspace tdas $ processTypeDecl td
+    tdecls <- do
+      forM (rawprgTypeDecls prg) $ \td -> do
+        tdas <- kindcheckRawTypeDecl td
+        withKindspace (unionKindspaces tdas newAs) $ processTypeDecl td
 
-  ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv) =<<
-    (flip buildClassEnv [] <$> traverse processClassDef (rawprgClassDefs prg))
+    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv) =<<
+      (flip buildClassEnv [] <$> traverse processClassDef (rawprgClassDefs prg))
 
-  let ddefs = fmap processDataDef (rawprgDataDefs prg)
+    newtypes <- traverse processNewType (rawprgNewTypes prg)
+    let ddefs = fmap processDataDef (rawprgDataDefs prg)
+        (ntTEnv, ntNs, ntDs) =
+          let folder (t, n, d) (nt, nn, nd) =
+                ( (TypeEnv $ M.union (types t) (types nt))
+                , (Namespace $ M.union (namespaceMap n) (namespaceMap nn))
+                , (Dataspace (M.union (dataspaceMap d) (dataspaceMap nd)) (max (nextId d) (nextId nd)
+                                                                          ))
+                )
+          in foldl folder (TypeEnv M.empty, Namespace M.empty, Dataspace M.empty 0)
+             $ fmap (newTypeBindings (Dataspace M.empty 0)) newtypes
 
-  pure $ Program
-    { prgBindings = toplevelBindings $ fmap Left tdecls ++ fmap Right ddefs
-    , prgClassEnv = ceny
-    , prgTypeEnv = TypeEnv $ M.empty
-    }
+    pure $ Program
+      { prgBindings = toplevelBindings $ fmap Left tdecls ++ fmap Right ddefs
+      , prgClassEnv = ceny
+      , prgTypeEnv = ntTEnv
+      }
 
 
 -- |Wraps bunch of type and value bindings into a binding group
@@ -89,8 +136,8 @@ processRawExpr :: RawExpr -> Expr
 processRawExpr = \case
   RawExprVal v -> Val v
   RawExprLit l -> Lit l
-  RawExprApplication fun args ->
-    foldl1 Application (processRawExpr <$> cons fun args)
+  RawExprApplication kfun args ->
+    Prelude.foldl1 Application (processRawExpr <$> cons kfun args)
   -- RawExprLet assgs inWhat ->
     -- let postassg (name, args, ttype, val) = case args of
     --       [] -> (name, ttype, processRawExpr val)
@@ -155,3 +202,22 @@ processClassDef rcd = do
     , classdefSuper = rawclassdefSuper rcd
     , classdefMethods = mts
     }
+
+processNewType :: RawNewType -> Kindchecker NewType
+processNewType rnt = do
+  myks <- kindlookNewType rnt
+  prevKs <- getKindspace
+  let ks = foldr (\(n, k) pks -> insertKind n (toKindVar k) pks)
+        (unionKindspaces prevKs myks)
+        (rawntArgs rnt)
+  cs <- withKindspace ks $ traverse processConstrDef (rawntContrs rnt)
+  let myKind = foldr KFunc KType (fmap snd $ rawntArgs rnt)
+      finalType = foldl TypeApp (TypeVarRigid $ TypeVar (rawntName rnt) myKind)
+        $ fmap (\(n, k) -> TypeVarWobbly $ TypeVar n k) (rawntArgs rnt)
+  pure $ NewType (rawntName rnt) finalType cs
+
+
+processConstrDef :: RawConstructorDef -> Kindchecker ConstructorDef
+processConstrDef rcd = do
+  args <- traverse processType (rawcondefArgs rcd)
+  pure $ ConstructorDef (rawcondefName rcd) args

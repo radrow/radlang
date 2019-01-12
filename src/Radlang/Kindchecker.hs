@@ -12,6 +12,8 @@ module Radlang.Kindchecker
   , kindcheckNewType
   , kindcheckRawTypeDecl
   , toKind
+  , toKindVar
+  , insertKind
   , kindOf
   ) where
 
@@ -172,11 +174,13 @@ finalizeKind k = do
 
 
 -- |Check if all constructor arguments have proper kind (Type)
-kindcheckConstructor :: ConstructorDef -> Kindchecker ()
+kindcheckConstructor :: RawConstructorDef -> Kindchecker ()
 kindcheckConstructor c = do
-  forM_ (condefArgs c) $ \tr -> do
+  forM_ (rawcondefArgs c) $ \tr -> do
     (_, ktr) <- inferInstantiated tr
-    finalizeKind ktr
+    kfin <- toKind ktr  -- We leave no place for variables
+    when (kfin /= KType) $ -- Final kind must be Type
+      throwError $ show kfin <> " is not valid contructor argument kind"
 
 
 -- |For every wobbly type not present in kindspace assign kind variable for it
@@ -195,22 +199,22 @@ instantiateKinds rt = getKindspace >>= \(ks@(Kindspace ksm)) -> case rt of
     RawTypeApp (RawTypeRigid "Func") [tf, ta]
 
 -- |Checks whether constructors of `newtype` declaration have proper kinds
-kindcheckNewType :: NewType -> Kindchecker ()
+kindcheckNewType :: RawNewType -> Kindchecker ()
 kindcheckNewType nt = do
   as <- getKindspace
-  forM_ (ntContrs nt) $ \tr -> do
+  forM_ (rawntContrs nt) $ \tr -> do
     ntks <- foldM (\a (tn, k) -> case M.lookup tn (getKindspaceMap a) of
                       Nothing -> pure $ insertKind tn (toKindVar k) a
                       Just _ -> throwError $ "Duplicated type argument: " <> tn
-                  ) as (ntArgs nt)
+                  ) as (rawntArgs nt)
     withKindspace ntks $ kindcheckConstructor tr
 
 
 -- |Gets kind by binding
-kindlookNewType :: NewType -> Kindchecker Kindspace
+kindlookNewType :: RawNewType -> Kindchecker Kindspace
 kindlookNewType nt =
-  pure $ Kindspace $ M.singleton (ntName nt)
-    (toKindVar $ foldr KFunc KType (fmap snd $ ntArgs nt))
+  pure $ Kindspace $ M.singleton (rawntName nt)
+    (toKindVar $ foldr KFunc KType (fmap snd $ rawntArgs nt))
 
 -- |Kindchecks type declaration
 kindcheckRawTypeDecl :: RawTypeDecl -> Kindchecker Kindspace
@@ -221,10 +225,10 @@ kindcheckRawTypeDecl td = do
   pure out
 
 
--- |FreeKindszes `KindVar` into `Kind`. All unresolved variables are assumed to be Type
+-- |FreeKindszes `KindVar` into `Kind`
 toKind :: KindVar -> Kindchecker Kind
 toKind = \case
-  KindVar _ -> pure KType -- TODO: Can one expliot it?
+  KindVar n -> throwError $ "Cannot resolve kind variable " <> kstr n
   KindVarType  -> pure KType
   KindVarFunc f a -> liftM2 KFunc (toKind f) (toKind a)
 
