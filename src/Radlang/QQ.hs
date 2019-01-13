@@ -9,6 +9,7 @@ import Data.Generics
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
 import Text.Megaparsec
+import Text.Megaparsec.Char
 import Data.Data
 import Data.Set.Internal as S
 import Data.Map.Strict as M
@@ -17,7 +18,7 @@ import Radlang.Parser
 import Radlang.Types hiding (Data)
 import Radlang.Desugar
 
-
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
 deriving instance Data Program
 deriving instance Data TypeEnv
@@ -84,7 +85,14 @@ quoteRawrdlExp s = do
 
 parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
 parseRdl (file, line, col) s =
-  let parser = rawProgram <* eof
+  let parser = do
+        let newpos = SourcePos file (mkPos line) (mkPos col)
+        updateParserState $ \st ->
+          st{statePosState = (statePosState st){
+              pstateSourcePos = newpos
+              }}
+        skipMany controlChar
+        rawProgram <* eof
   in case parse parser file s of
     Left e -> fail $ let
       x :: String

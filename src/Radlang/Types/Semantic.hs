@@ -104,7 +104,7 @@ data Program = Program
 -- |Declaration that binding has certain type
 data TypeDecl = TypeDecl
   { tdeclName :: Name
-  , tdeclType :: (Qual Type)}
+  , tdeclType :: Qual Type}
   deriving (Eq, Ord, Show)
 
 

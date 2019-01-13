@@ -10,7 +10,10 @@ module Radlang.Kindchecker
   , kindlookNewType
   , withKindspace
   , kindcheckNewType
+  , kindcheckPred
+  , kindcheckQualType
   , kindcheckRawTypeDecl
+  , kindcheckImpl
   , toKind
   , toKindVar
   , insertKind
@@ -157,8 +160,8 @@ kindcheckPred pr =
 
 
 -- |Kindchecks qualified type. Returns assumed kindspace and inferred kind
-kindcheckQualRawType :: RawQual RawType -> Kindchecker (Kindspace, KindVar)
-kindcheckQualRawType rq = do
+kindcheckQualType :: RawQual RawType -> Kindchecker (Kindspace, KindVar)
+kindcheckQualType rq = do
   ks <- getKindspace
   let folder :: Kindspace -> RawPred -> Kindchecker Kindspace
       folder kss rp = withKindspace kss (kindcheckPred rp)
@@ -219,10 +222,18 @@ kindlookNewType nt =
 -- |Kindchecks type declaration
 kindcheckRawTypeDecl :: RawTypeDecl -> Kindchecker Kindspace
 kindcheckRawTypeDecl td = do
-  (ks, k) <- kindcheckQualRawType (rawtdeclType td)
+  (ks, k) <- kindcheckQualType (rawtdeclType td)
   (ss, _) <- withKindspace ks $ finalizeKind k
   let out = substituteKinds ss ks
   pure out
+
+
+kindcheckImpl :: RawImplDef -> Kindchecker ()
+kindcheckImpl rid = lookupClassKind (rawimpldefClass rid) >>= \case
+  Nothing -> throwError $ "No such class " <> rawimpldefClass rid
+  Just k -> do
+    (_, kinst) <- kindcheckQualType (rawimpldefType rid)
+    void $ mgu (toKindVar k) kinst
 
 
 -- |FreeKindszes `KindVar` into `Kind`

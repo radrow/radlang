@@ -34,37 +34,83 @@ newTypeBindings dats nt =
         (TypeEnv M.empty) constrs
 
       (dspace, ids) = foldl (\(ds, prids) (_, _, d) -> let (dds, did) = dataspaceInsert d ds
-                                                     in (dds, did:prids)
+                                                       in (dds, did:prids)
                             ) (dats, []) constrs
       nspace = foldl (\(Namespace ds) ((n, _, _), i) -> Namespace $ M.insert n i ds)
         (Namespace M.empty) $ zip constrs ids
   in (tenv, nspace, dspace)
 
-classBindings :: ClassDef -> TypeEnv
+classBindings :: ClassDef -> [(Name, Qual Type)]
 classBindings cd =
   let clspred = IsIn (classdefName cd) (TypeVarWobbly $ TypeVar (classdefArg cd) (classdefKind cd) )
 
-      methodproc :: TypeEnv -> TypeDecl -> TypeEnv
-      methodproc te td =
+      methodproc :: TypeDecl -> (Name, Qual Type)
+      methodproc td =
         let (prds :=> t) = tdeclType td
-        in TypeEnv $ M.insert (tdeclName td) (quantifyAll $ (clspred : prds) :=> t) (types te)
+        in (tdeclName td, (clspred : prds) :=> t)
 
-  in foldl methodproc (TypeEnv M.empty) (classdefMethods cd)
+  in fmap methodproc (classdefMethods cd)
+
+replaceTypeVar :: Name -> Type -> Qual Type -> Qual Type
+replaceTypeVar n repl (prd :=> tp) =
+  let newt t = case t of
+        TypeVarWobbly (TypeVar nw _) -> if n == nw then repl else t
+        TypeVarRigid _ -> t
+        TypeApp tf ta -> TypeApp (newt tf) (newt ta)
+        TypeGeneric _ -> t
+      newprd = fmap (\(IsIn c t) -> IsIn c (newt t)) prd
+  in newprd :=> newt tp
+
+implBindings :: ClassDef -> ImplDef -> [Either TypeDecl DataDef]
+implBindings cl idef =
+  let nameMod :: Name -> Name
+      nameMod = (<> show (impldefType idef))
+
+      typeMod :: Qual Type -> Qual Type
+      typeMod qt =
+        let (iprd :=> itp) = impldefType idef  -- get instance predicates and type
+            (rprd :=> rtp) = replaceTypeVar (classdefArg cl) itp qt  -- replace original type with instance
+        in ((iprd ++ rprd) :=> rtp)  -- join predicates from typedecl and impl contraints
+
+      tdeclMod :: TypeDecl -> TypeDecl
+      tdeclMod td = TypeDecl (nameMod $ tdeclName td) (typeMod $ tdeclType td)
+
+      tdecls = fmap tdeclMod (classdefMethods cl)
+      tdefs = fmap (\mt -> mt{datadefName = nameMod $ datadefName mt}) $ impldefMethods idef
+
+  in fmap Left tdecls ++ fmap Right tdefs
+
+processImplDef :: RawImplDef -> Kindchecker ImplDef
+processImplDef rid = do
+  rq <- processQualType (rawimpldefType rid)
+  let mt = fmap processDataDef (rawimpldefMethods rid)
+  pure $ ImplDef (rawimpldefClass rid) rq mt
+
 
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
 buildProgram prg = runKindchecker stdKindspace (buildClassKinds $ rawprgClassDefs prg) (processProgram prg)
 
 
+unionBindings :: ExplBindings -> ExplBindings -> ExplBindings
+unionBindings e1 e2 =
+  let unionIns :: ExplBindings -> Name -> (TypePoly, [Alt]) -> ExplBindings
+      unionIns m k v = case M.lookup k m of
+        Nothing -> M.insert k v m
+        Just (t, alts) -> M.insert k (t, snd v ++ alts) m
+  in foldl (\e (n, d) -> unionIns e n d) e1 (M.toList e2)
+
+
 -- |Kindchecker that builds typesystem and returns well kinded (kind!) program ready for typechecking
 -- and evaluation
 processProgram :: RawProgram -> Kindchecker Program
-processProgram prg = do -- TODO Instances!
+processProgram prg = do
   as <- getKindspace
   newAs <- foldM (\a nt -> (unionKindspaces a) <$> kindlookNewType nt) as (rawprgNewTypes prg)
 
   withKindspace newAs $ do
-    forM_ (rawprgNewTypes prg) (kindcheckNewType)
+    forM_ (rawprgNewTypes prg) kindcheckNewType
+    forM_ (rawprgImplDefs prg) kindcheckImpl
 
     tdecls <- do
       forM (rawprgTypeDecls prg) $ \td -> do
@@ -76,6 +122,9 @@ processProgram prg = do -- TODO Instances!
       (buildClassEnv cdefs [])
 
     newtypes <- traverse processNewType (rawprgNewTypes prg)
+
+    impldefs <- traverse processImplDef (rawprgImplDefs prg)
+
     let ddefs = fmap processDataDef (rawprgDataDefs prg)
         (ntTEnv, _, _) =
           let folder (t, n, d) (nt, nn, nd) =
@@ -87,13 +136,18 @@ processProgram prg = do -- TODO Instances!
           in foldl folder (TypeEnv M.empty, Namespace M.empty, Dataspace M.empty 0)
              $ fmap (newTypeBindings (Dataspace M.empty 0)) newtypes
 
-        classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
-          ntTEnv $ fmap classBindings cdefs
+        -- classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
+        --   ntTEnv $ fmap classBindings cdefs
+        classdefmap = M.fromList $ fmap (\cd -> (classdefName cd, cd)) cdefs
+
+        imps = (uncurry implBindings . \im -> (classdefmap M.! impldefClass im, im)) =<< impldefs
+        cdecls = cdefs >>= \cd -> fmap (uncurry TypeDecl) (classBindings cd)
 
     pure $ Program
-      { prgBindings = toplevelBindings $ fmap Left tdecls ++ fmap Right ddefs
+      { prgBindings = toplevelBindings $
+                      fmap Left tdecls ++ fmap Right ddefs ++ imps ++ fmap Left cdecls
       , prgClassEnv = ceny
-      , prgTypeEnv = classbnds
+      , prgTypeEnv = ntTEnv
       }
 
 
@@ -180,14 +234,18 @@ processType = \case
 
 processPred :: RawPred -> Kindchecker Pred
 processPred rp = do
-  t <- processType (rpType rp)
+  ks <- getKindspace
+  kps <- kindcheckPred rp
+  t <- withKindspace (unionKindspaces kps ks) $ processType (rpType rp)
   pure $ IsIn (rpClass rp) t
 
 
 processQualType :: RawQual RawType -> Kindchecker (Qual Type)
 processQualType rq = do
+  ks <- getKindspace
+  (krs, _) <- kindcheckQualType rq
   preds <- traverse processPred (rqPreds rq)
-  t <- processType (rqContent rq)
+  t <- withKindspace (unionKindspaces krs ks) $ processType (rqContent rq)
   pure $ preds :=> t
 
 
