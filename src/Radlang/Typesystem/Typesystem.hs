@@ -12,20 +12,20 @@ import Control.Monad.State.Strict
 import Control.Monad.Except
 
 import Radlang.Types
-import Debug.Trace
+import Radlang.Error
 
 -- |Gets superclasses of class by name
 super :: HasClassEnv m => Name -> m (Set Name)
 super n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class is _) -> pure is
-  Nothing -> throwError $ "superclass lookup: " <> n <> " not defined"
+  Nothing -> classEnvError $ "superclass lookup: " <> n <> " not defined"
 
 
 deepSuper :: HasClassEnv m => Name -> m (Set Name)
 deepSuper n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class is _) -> do sups <- traverse deepSuper $ S.toList is
                           pure $ foldr S.union is sups
-  Nothing -> throwError $ "deep superclass lookup: " <> n <> " not defined"
+  Nothing -> classEnvError $ "deep superclass lookup: " <> n <> " not defined"
 
 
 sub :: HasClassEnv m => Name -> m (Set Name)
@@ -44,7 +44,7 @@ deepSub n = do
 instances :: HasClassEnv m => Name -> m (Set Inst)
 instances n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class _ its) -> pure its
-  Nothing -> throwError $ "instances lookup: " <> n <> " not defined"
+  Nothing -> classEnvError $ "instances lookup: " <> n <> " not defined"
 
 
 -- |Check whether class is defined
@@ -57,8 +57,8 @@ bindVar :: MonadError ErrMsg m => TypeVar -> Type -> m Substitution
 bindVar tv t = if
     | t == TypeVarWobbly tv -> pure mempty
     | elem tv (free t) ->
-      throwError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
-    | kind tv /= kind t -> throwError $ "Kinds don't match: " <> show (kind tv)
+      typecheckError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
+    | kind tv /= kind t -> kindcheckError $ "Kinds don't match: " <> show (kind tv)
       <> " vs " <> show (kind t)
     | otherwise -> pure $ Subst $ M.singleton (tName tv) t
 
@@ -70,7 +70,7 @@ merge s1 s2 =
   let extract (n, t) = TypeVar n (kind t)
       agree = all (liftA2 (==) (substitute s1 . TypeVarWobbly) (substitute s2 .TypeVarWobbly))
         (fmap extract $ M.toList (getSubstMap s1) `intersect` M.toList (getSubstMap s2))
-  in if agree then pure (s1 <> s2) else throwError "Cannot merge substitutions"
+  in if agree then pure (s1 <> s2) else typecheckError "Cannot merge substitutions"
 
 
 
@@ -86,12 +86,12 @@ mgu t1 t2 = case (t1, t2) of
   (TypeVarRigid a, TypeVarRigid b) ->
     if a == b
     then pure mempty
-    else throwError $ "Cannot unify rigid different type variables: " <> tName a <> " vs " <> tName b
+    else typecheckError $ "Cannot unify rigid different type variables: " <> tName a <> " vs " <> tName b
   (TypeVarRigid (TypeVar a _), b) ->
-    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
   (b, TypeVarRigid (TypeVar a _)) ->
-    throwError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> throwError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
+    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
+  _ -> typecheckError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
 
 
 
@@ -107,26 +107,26 @@ match t1 t2 = case (t1, t2) of
   (TypeVarRigid a, TypeVarRigid b) ->
     if a == b
     then pure mempty
-    else throwError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
+    else typecheckError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
   (TypeVarRigid (TypeVar a _), b) ->
-    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> show b
   (b, TypeVarRigid (TypeVar a _)) ->
-    throwError $ "Cannot merge rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> throwError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
+    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> show b <> " vs " <> a
+  _ -> typecheckError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
 
 
 -- |mgu for predicates
 mguPred :: MonadError ErrMsg m => Pred -> Pred -> m Substitution
 mguPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then mgu t1 t2
-  else throwError $ "Classes don't unify: " <> i1 <> " vs " <> i2
+  else typecheckError $ "Classes don't unify: " <> i1 <> " vs " <> i2
 
 
 -- |match for predicates
 matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m (Maybe Substitution)
 matchPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then catchError (Just <$> match t1 t2) (const $ pure Nothing)
-  else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
+  else typecheckError $ "Classes don't match: " <> i1 <> " vs " <> i2
 
 
 
@@ -149,7 +149,7 @@ predsByInstances p@(IsIn i _) = do
         u <- matchPred h p
         pure $ u >>= \uu -> Just (fmap (substitute uu) ps)
   d <- msum <$> traverse tryInst insts
-  maybe (throwError $ "Could not get valid instance for " <> show p) pure d
+  maybe (typecheckError $ "Could not get valid instance for " <> show p) pure d
 
 
 -- |Check if `p` will hold whenever all of `ps` are satisfied

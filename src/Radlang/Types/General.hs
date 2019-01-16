@@ -4,7 +4,13 @@ module Radlang.Types.General where
 
 
 -- |Type aliasses to clarify purpose and ease refactor
-type ErrMsg = String
+data ErrMsg
+  = ParseError String
+  | KindcheckError String
+  | ClassEnvError String
+  | TypecheckError String
+  | RuntimeError String
+
 type Name = String
 
 -- |Key in Dataspace map

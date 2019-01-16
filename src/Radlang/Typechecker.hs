@@ -17,6 +17,7 @@ import Radlang.Types
 import Radlang.Typedefs
 import Radlang.Typesystem.Typesystem
 import Radlang.Helpers
+import Radlang.Error
 
 
 dbg :: MonadIO m => String -> m ()
@@ -30,7 +31,7 @@ withTypeEnv te = local $ \s -> s{typeEnv = te}
 -- |Find typescheme in type env
 lookupType :: HasTypeEnv m => Name -> m TypePoly
 lookupType n = getTypeEnv >>= \(TypeEnv te) -> case M.lookup n te of
-  Nothing -> throwError $ "Unbound id: " <> n
+  Nothing -> typecheckError $ "Unbound id: " <> n
   Just tp -> pure tp
 
 
@@ -102,17 +103,17 @@ inferTypePattern = \case
     (ps, (tspace, ts)) <- inferTypePatterns pats
     t' <- newVar "_PC" KType
     (qs :=> t) <- freshInst sc
-    unify t (S.foldr fun t' ts)
+    unify t (foldr fun t' ts)
     pure (ps ++ qs, (tspace, t'))
 
-inferTypePatterns :: Infer [Pattern] (TypeEnv, Set Type)
+inferTypePatterns :: Infer [Pattern] (TypeEnv, [Type])
 inferTypePatterns pats = do
   psats <- mapM inferTypePattern pats
   let typeEnvJoin = foldr mappend (TypeEnv M.empty)
       ps = join $ fmap (\(x,(_,_)) -> x) psats
       as = typeEnvJoin $ fmap (\(_,(x,_)) -> x) psats
       ts = fmap (\(_,(_,x)) -> x) psats
-  pure (ps, (as, S.fromList ts))
+  pure (ps, (as, ts))
 
 
 inferTypeAlt :: Infer Alt Type
@@ -120,7 +121,7 @@ inferTypeAlt (pats, e) = do
   as <- getTypeEnv
   (ps, (as', ts)) <- inferTypePatterns pats
   (qs, t) <- withTypeEnv (as' <> as) (inferTypeExpr e)
-  pure (ps ++ qs, S.foldr fun t ts)
+  pure (ps ++ qs, foldr fun t ts)
 
 
 inferTypeAlts :: [Alt] -> Type -> TypecheckerT IO [Pred]
@@ -169,7 +170,7 @@ withDefaults f vs ps = do
   let vps = ambiguities vs ps
   tss <- mapM candidates vps
   case find (null . fst) (zip tss vps) of
-    Just (_, bad) -> throwError $ "Cannot resolve ambiguity: candidates for " <> show bad <> " are empty"
+    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> show bad <> " are empty"
     Nothing -> pure $ f vps (fmap head tss)
 
 defaultedPreds :: (HasClassEnv m,
@@ -196,8 +197,8 @@ inferTypeExpl (_, (sc, alts)) = do
       sc' = quantify gs (qs' :=> t')
   ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
   (ds, rs) <- split fs gs ps'
-  if | sc /= sc' -> throwError "Signature is too general"
-     | not (null rs) -> throwError "Context is too weak"
+  if | sc /= sc' -> typecheckError "Signature is too general"
+     | not (null rs) -> typecheckError "Context is too weak"
      | otherwise -> pure ds
 
 
@@ -252,7 +253,6 @@ inferTypeSeq ti = \case
 
 inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO TypeEnv
 inferTypeBindingGroups bgs = do
-  dbg $ show $ snd $ head bgs
   (ps, as') <- inferTypeSeq inferTypeBindingGroup bgs
   s <- getSubst
   rs <- reduce (substitute s ps)

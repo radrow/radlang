@@ -15,6 +15,7 @@ import qualified Data.Map.Strict as M
 import Radlang.Types
 import Radlang.Typedefs
 import Radlang.DependencyAnalysis
+import Radlang.Error
 import Radlang.Typesystem.Typesystem
 
 
@@ -34,10 +35,10 @@ emptyClassEnv = ClassEnv
 addClass :: Name -> Set Name -> ClassEnvBuilder ()
 addClass n sups = do
   nDefined <- classDefined n
-  when nDefined (throwError $ "Class already defined: " <> n)
+  when nDefined (classEnvError $ "Class already defined: " <> n)
   notDefs <- filterM (\ss -> not <$> classDefined ss) (S.toList sups)
   when (not (null notDefs)) $
-    throwError $ "Superclasses not defined: " <> show notDefs
+    classEnvError $ "Superclasses not defined: " <> show notDefs
   updateClassEnv n (Class sups S.empty)
 
 
@@ -45,14 +46,14 @@ addClass n sups = do
 addInst :: [Pred] -> Pred -> ClassEnvBuilder ()
 addInst ps p@(IsIn i _) = do
   iDefined <- classDefined i
-  when (not iDefined) (throwError $ "Class not defined: " <> i)
+  when (not iDefined) (classEnvError $ "Class not defined: " <> i)
   its <- instances i
   c <- super i
   let overlaps prd q = catchError (mguPred prd q >> pure True) (const $ pure False)
       qs = S.map (\(_ :=> q) -> q) its
   filterM (overlaps p) (S.toList qs) >>= \case
     [] -> pure ()
-    (IsIn h _):_ -> throwError $ "Instances overlap: " <> i <> " with " <> h
+    (IsIn h _):_ -> classEnvError $ "Instances overlap: " <> i <> " with " <> h
   updateClassEnv i (Class c $ S.insert (ps :=> p) its)
 
 
@@ -88,7 +89,7 @@ buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
       instmap = groupOn impldefClass impls
 
   onPresent (isCyclic cses) $ \cyc ->
-    throwError $ "Found interface cycle: " <> show cyc
+    classEnvError $ "Found interface cycle: " <> show cyc
 
   -- Build superclass environment
   forM_ cses $ \(ClassDef cname _ _ supers _) -> do
@@ -98,12 +99,12 @@ buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
   forM_ cses $ \c -> do
     forM_ (maybe [] id $ M.lookup (classdefName c) instmap) $ \i -> do
       onPresentM (checkFoundation i c) $ \m ->
-        throwError $ "In implementation of " <> show (impldefType i)
+        classEnvError $ "In implementation of " <> show (impldefType i)
         <> ": methods " <> show m
         <> " do not belong to any superinterface of " <> classdefName c
 
       onPresent (checkCompletness c instmap) $ \m ->
-        throwError $ "Methods " <> show m <> " are missing for " <> classdefName c
+        classEnvError $ "Methods " <> show m <> " are missing for " <> classdefName c
       let (quals :=> t) = impldefType i
       addInst quals $ IsIn (classdefName c) t
 

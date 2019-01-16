@@ -29,6 +29,7 @@ import qualified Data.Set                   as S
 
 import           Radlang.Types              hiding (TypePoly, free, getSubstMap,
                                              substitute)
+import Radlang.Error
 
 
 -- |Returns typespace
@@ -49,7 +50,7 @@ lookupKind n = M.lookup n . getKindspaceMap <$> getKindspace
 -- |Lookup kind in kindspace handling it's absence
 kindOf :: Name -> Kindchecker KindVar
 kindOf n = lookupKind n >>= \case
-  Nothing -> throwError $ "No such type variable: " <> n
+  Nothing -> kindcheckError $ "No such type variable: " <> n
   Just k -> pure k
 
 
@@ -99,7 +100,7 @@ bindKindVar :: KName -> KindVar -> Kindchecker KindSubstitution
 bindKindVar n t = case t of
   KindVar v | v == n -> pure mempty
   _ -> if S.member n (freeKinds t)
-       then throwError $ "Occur check: Cannot create infinite kind: " <> kstr n <> " := " <> show t
+       then kindcheckError $ "Occur check: Cannot create infinite kind: " <> kstr n <> " := " <> show t
        else pure $ KSubst $ M.singleton n t
 
 
@@ -113,7 +114,7 @@ mgu t1 t2 = case (t1, t2) of
     sa <- mgu a1 a2
     sv <- mgu (substituteKinds sa v1) (substituteKinds sa v2)
     pure $ sa <> sv
-  _ -> throwError $ "Cannot unify kinds: " <> show t1 <> " vs " <> show t2
+  _ -> kindcheckError $ "Cannot unify kinds: " <> show t1 <> " vs " <> show t2
 
 
 -- |Kind inference along with kindcheck. Returns inferred kind and necessary substitutions
@@ -124,7 +125,7 @@ inferKind = \case
     Nothing -> fail $ "This should never happen: wobbly variable undefined: " <> n
   RawTypeRigid tr -> lookupKind tr >>= \case
     Just kr -> pure (mempty, kr)
-    Nothing -> throwError $ "Undefined variable " <> tr
+    Nothing -> kindcheckError $ "Undefined variable " <> tr
   RawTypeApp f (a:|rest) -> do
     (sf, kf) <- inferKind f
     let rollapp :: (KindSubstitution, KindVar) -> RawType -> Kindchecker (KindSubstitution, KindVar)
@@ -152,7 +153,7 @@ kindcheckPred pr =
   let cn = rpClass pr
       t = rpType pr
   in lookupClassKind cn >>= \case
-    Nothing -> throwError $ "No such class: " <> cn
+    Nothing -> kindcheckError $ "No such class: " <> cn
     Just kc -> do
       (as, kpr) <- inferInstantiated t
       m <- mgu (toKindVar $ kc) kpr
@@ -183,7 +184,7 @@ kindcheckConstructor c = do
     (_, ktr) <- inferInstantiated tr
     kfin <- toKind ktr  -- We leave no place for variables
     when (kfin /= KType) $ -- Final kind must be Type
-      throwError $ show kfin <> " is not valid contructor argument kind"
+      kindcheckError $ show kfin <> " is not valid contructor argument kind"
 
 
 -- |For every wobbly type not present in kindspace assign kind variable for it
@@ -208,7 +209,7 @@ kindcheckNewType nt = do
   forM_ (rawntContrs nt) $ \tr -> do
     ntks <- foldM (\a (tn, k) -> case M.lookup tn (getKindspaceMap a) of
                       Nothing -> pure $ insertKind tn (toKindVar k) a
-                      Just _ -> throwError $ "Duplicated type argument: " <> tn
+                      Just _ -> kindcheckError $ "Duplicated type argument: " <> tn
                   ) as (rawntArgs nt)
     withKindspace ntks $ kindcheckConstructor tr
 
@@ -230,7 +231,7 @@ kindcheckRawTypeDecl td = do
 
 kindcheckImpl :: RawImplDef -> Kindchecker ()
 kindcheckImpl rid = lookupClassKind (rawimpldefClass rid) >>= \case
-  Nothing -> throwError $ "No such class " <> rawimpldefClass rid
+  Nothing -> kindcheckError $ "No such class " <> rawimpldefClass rid
   Just k -> do
     (_, kinst) <- kindcheckQualType (rawimpldefType rid)
     void $ mgu (toKindVar k) kinst
@@ -239,7 +240,7 @@ kindcheckImpl rid = lookupClassKind (rawimpldefClass rid) >>= \case
 -- |FreeKindszes `KindVar` into `Kind`
 toKind :: KindVar -> Kindchecker Kind
 toKind = \case
-  KindVar n -> throwError $ "Cannot resolve kind variable " <> kstr n
+  KindVar n -> kindcheckError $ "Cannot resolve kind variable " <> kstr n
   KindVarType  -> pure KType
   KindVarFunc f a -> liftM2 KFunc (toKind f) (toKind a)
 

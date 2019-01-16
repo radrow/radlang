@@ -22,7 +22,7 @@ newtype ClassKinds = ClassKinds { getClassKindsMap :: M.Map Name Kind }
   deriving (Eq, Show, Ord)
 
 -- |Transformer responsible for typechecking expressions and error handling
-type Kindchecker = ExceptT String (ReaderT (Kindspace, ClassKinds) (State KindcheckerState))
+type Kindchecker = ExceptT ErrMsg (ReaderT (Kindspace, ClassKinds) (State KindcheckerState))
 
 newtype KName = KName {kstr :: Name}
   deriving (Eq, Show, Ord)
