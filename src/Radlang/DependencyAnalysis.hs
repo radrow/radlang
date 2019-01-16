@@ -16,26 +16,34 @@ exprDependencies = go S.empty where
     Application f a -> go (go acc a) f
     _ -> error "Dep calc not implemented"
 
+patternFree :: Pattern -> S.Set Name
+patternFree= \case
+  PLit _ -> S.empty
+  PAs n p -> S.insert n (patternFree p)
+  PWildcard -> S.empty
+  PConstructor _ ps -> S.unions $ fmap patternFree ps
+  PVar n -> S.singleton n
 
-exprGroupDependencies :: [Expr] -> S.Set Name
-exprGroupDependencies = S.unions . fmap exprDependencies
+altDeps :: Alt -> S.Set Name
+altDeps (ps, e) = exprDependencies e S.\\ S.unions (fmap patternFree ps)
+
+altsDeps :: [Alt] -> S.Set Name
+altsDeps = S.unions . fmap altDeps
 
 
-allNames :: [(Name, [Expr])] -> S.Set Name
-allNames = S.unions . fmap (\(n, es) -> S.insert n (exprGroupDependencies es))
-
-
-sccOfExprs :: [(Name, [Expr])] -> [[Name]]
-sccOfExprs inp =
-  let names = S.toList $ allNames inp
+sccOfAlts :: [(Name, [Alt])] -> [[Name]]
+sccOfAlts inp =
+  let names = zip (fmap fst inp) [1..]
       nameToKey :: Name -> Int
-      nameToKey = go (zip names [1..]) where
+      nameToKey = go names where
         go [] n = error $ "Indexation failed: " <> n <> " not in " <> show names
-        go ((h, i):t) n = if n == h
+        go ((h,i):t) n = if n == h
                           then i
                           else go t n
       descr :: [(Name, Int, [Int])]
-      descr = fmap (\((n, es), i) -> (n, i, fmap nameToKey (S.toList $ exprGroupDependencies es))) (zip inp [1..])
+      descr = fmap (\((n, es), i) ->
+                      (n, i, fmap nameToKey (Prelude.filter (`elem` fmap fst inp) $ S.toList $ altsDeps es)))
+              (zip inp [1..])
   in stronglyConnComp descr >>= \case
     AcyclicSCC n -> pure [n]
     CyclicSCC n -> pure n
@@ -43,8 +51,8 @@ sccOfExprs inp =
 
 groupBindings :: ImplBindings -> [ImplBindings]
 groupBindings im =
-  let entries = fmap (\(n, alts) -> (n, fmap snd alts)) (M.toList im)
-      toposorted = sccOfExprs entries
+  let entries = M.toList im
+      toposorted = sccOfAlts entries
   in fmap (\ns -> M.restrictKeys im (S.fromList ns)) toposorted
 
 classHierarchySort :: [ClassDef] -> [ClassDef]
