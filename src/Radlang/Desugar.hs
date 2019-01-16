@@ -118,13 +118,13 @@ processProgram prg = do
         withKindspace (unionKindspaces tdas newAs) $ processTypeDecl td
 
     cdefs <- traverse processClassDef (rawprgClassDefs prg)
-    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
-      (buildClassEnv cdefs [])
 
     newtypes <- traverse processNewType (rawprgNewTypes prg)
 
     impldefs <- traverse processImplDef (rawprgImplDefs prg)
 
+    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
+      (buildClassEnv cdefs impldefs)
     let ddefs = fmap processDataDef (rawprgDataDefs prg)
         (ntTEnv, _, _) =
           let folder (t, n, d) (nt, nn, nd) =

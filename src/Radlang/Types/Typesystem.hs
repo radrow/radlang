@@ -30,18 +30,18 @@ import Radlang.Types.General
 -- |Types that may be considered as free types carriers
 class Ord t => IsType t where -- Ord is needed because use of Set
   -- |Free type variables in t
-  free :: t -> Set TypeVar
+  free :: t -> [TypeVar]
   -- |Application of substitution
   substitute :: Substitution -> t -> t
 
 
 instance IsType t => IsType (Set t) where
-  free s = S.unions $ S.map free s
+  free s = join . S.toList $ S.map free s
   substitute s = S.map (substitute s)
 
 
 instance IsType t => IsType [t] where
-  free s = S.unions $ fmap free s
+  free s = free =<< s
   substitute s = fmap (substitute s)
 
 
@@ -124,7 +124,13 @@ data ClassEnv = ClassEnv { classes :: Map Name Class
 
 -- |Map from data names to their most general inferred types
 newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
+
+
+instance Show TypeEnv where
+  show (TypeEnv te) = showTypes (M.toList te) where
+    showTypes [] = ""
+    showTypes ((n, t):tl) = n <> " :\t" <> show t <> "\n" <> showTypes tl
 
 
 instance Semigroup TypeEnv where
@@ -227,9 +233,9 @@ instance Instantiate Type where
 
 instance IsType Type where
   free = \case
-    TypeApp a v -> S.union (free a) (free v)
-    TypeVarWobbly tv -> S.singleton tv
-    _ -> S.empty
+    TypeApp a v -> (free a) ++ (free v)
+    TypeVarWobbly tv -> [tv]
+    _ -> []
   substitute s@(Subst sm) = \case
     TypeApp a v -> TypeApp (substitute s a) (substitute s v)
     TypeVarWobbly (TypeVar n k) -> case M.lookup n sm of
@@ -298,7 +304,7 @@ instance Instantiate t => Instantiate (Qual t) where
 
 
 instance IsType t => IsType (Qual t) where
-  free (ps :=> t) = free ps `S.union` free t
+  free (ps :=> t) = free ps ++ free t
   substitute s (ps :=> t) = substitute s ps :=> substitute s t
 
 

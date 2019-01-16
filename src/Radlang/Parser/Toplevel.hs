@@ -131,7 +131,7 @@ escapedChar = do
 
 classDef :: Parser RawClassDef
 classDef = do
-  word "interface"
+  try $ word "interface"
   name <- className
   (arg, knd) <- paren $ do
     liftM2 (,) (generalTypeName <* operator ":") kind
@@ -144,7 +144,7 @@ classDef = do
 
 implDef :: Parser RawImplDef
 implDef = do
-  word "impl"
+  try $ word "impl"
   arg <- qual type_
   word "for"
   cname <- className

@@ -20,7 +20,7 @@ import Radlang.Helpers
 
 
 dbg :: MonadIO m => String -> m ()
-dbg = liftIO . putStrLn . ("DEBUG: " <>)
+dbg s = liftIO $ putStrLn ("DEBUG: " <> s)
 
 
 withTypeEnv :: Monad m => TypeEnv -> TypecheckerT m a -> TypecheckerT m a
@@ -141,7 +141,7 @@ split fs gs ps = do
 
 
 ambiguities :: [TypeVar] -> [Pred] -> [Ambiguity]
-ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ S.toList (free ps) \\ vs
+ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ free ps \\ vs
 
 
 candidates :: (HasClassEnv m, MonadIO m) => Ambiguity -> m [Type]
@@ -192,10 +192,10 @@ inferTypeExpl (_, (sc, alts)) = do
   let qs' = substitute s qs
       t'= substitute s t
       fs = free $ substitute s as
-      gs = free t' S.\\ fs
+      gs = free t' \\ fs
       sc' = quantify gs (qs' :=> t')
   ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
-  (ds, rs) <- split (S.toList fs) (S.toList gs) ps' --TODO: `split` to set
+  (ds, rs) <- split fs gs ps'
   if | sc /= sc' -> throwError "Signature is too general"
      | not (null rs) -> throwError "Context is too weak"
      | otherwise -> pure ds
@@ -218,15 +218,15 @@ inferTypeImpl bs = do
   s <- getSubst
   let ps' = substitute s (join pss)
       ts' = substitute s ts
-      fs = S.toList $ free (substitute s as)
-      vss = fmap (S.toList . free) ts'
+      fs = free (substitute s as)
+      vss = fmap free ts'
       gs = foldr1 union vss \\ fs
   (ds, rs) <- split fs (if null vss then [] else foldr1 intersect vss) ps'
   if restricted (M.toList bs)
-    then let gs' = filter (`S.member` free rs) gs
-             scs' = M.elems $ fmap (quantify (S.fromList gs') . ([] :=>)) ts'
+    then let gs' = filter (`elem` free rs) gs
+             scs' = M.elems $ fmap (quantify gs' . ([] :=>)) ts'
     in pure (ds ++ rs, TypeEnv $ M.fromList $ zip is scs')
-    else let scs' = M.elems $ fmap (quantify (S.fromList gs) . (rs :=>)) ts'
+    else let scs' = M.elems $ fmap (quantify gs . (rs :=>)) ts'
     in pure (ds, TypeEnv $ M.fromList $ zip is scs')
 
 
@@ -235,7 +235,7 @@ inferTypeBindingGroup (es, iss) = do
   as <- getTypeEnv
   let as' = -- assumptions made out of explicit bindings
         TypeEnv $ foldr (\(v, (sc, _)) m -> M.insert v sc m) M.empty (M.toList es)
-  (ps, as'') <- inferTypeSeq (withTypeEnv (as' <> as) . inferTypeImpl) iss
+  (ps, as'') <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
   qss <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
   pure (ps ++ join qss, as'' <> as')
 
@@ -245,13 +245,14 @@ inferTypeSeq ti = \case
   [] -> pure ([], mempty)
   (bs:bss) -> do
     as <- getTypeEnv
-    (ps, as') <- ti bs
+    (ps, as') <- withTypeEnv as $ ti bs
     (qs, as'') <- withTypeEnv (as' <> as) (inferTypeSeq ti bss)
     pure (ps ++ qs, as'' <> as')
 
 
 inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO TypeEnv
 inferTypeBindingGroups bgs = do
+  dbg $ show $ snd $ head bgs
   (ps, as') <- inferTypeSeq inferTypeBindingGroup bgs
   s <- getSubst
   rs <- reduce (substitute s ps)

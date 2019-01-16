@@ -13,10 +13,12 @@ import Text.Megaparsec.Char
 import Data.Data
 import Data.Set.Internal as S
 import Data.Map.Strict as M
+import System.IO.Unsafe
 
 import Radlang.Parser
 import Radlang.Types hiding (Data)
 import Radlang.Desugar
+import Radlang.Typechecker
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
@@ -82,15 +84,15 @@ quoteRawrdlExp s = do
   e <- parseRawrdl pos s
   dataToExpQ (const Nothing) e
 
-
+{-# NOINLINE parseRdl #-}
 parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
 parseRdl (file, line, col) s =
   let parser = do
-        let newpos = SourcePos file (mkPos line) (mkPos col)
-        updateParserState $ \st ->
-          st{statePosState = (statePosState st){
-              pstateSourcePos = newpos
-              }}
+        -- let newpos = SourcePos file (mkPos line) (mkPos col)
+        -- updateParserState $ \st ->
+        --   st{statePosState = (statePosState st){
+        --       pstateSourcePos = newpos
+        --       }}
         skipMany controlChar
         rawProgram <* eof
   in case parse parser file s of
@@ -98,7 +100,7 @@ parseRdl (file, line, col) s =
       x :: String
       x = concat (fmap parseErrorPretty $ bundleErrors e)
       in fmap (\c -> if c == '\n' then ' ' else c) x
-    Right p -> either fail pure $ buildProgram p
+    Right p -> either fail pure $ buildProgram p >>= \pp -> (unsafePerformIO $ typecheck (TypecheckerConfig True) pp) >> pure pp
 
 
 quoteRdlExp :: String -> TH.ExpQ

@@ -12,6 +12,7 @@ import Control.Monad.State.Strict
 import Control.Monad.Except
 
 import Radlang.Types
+import Debug.Trace
 
 -- |Gets superclasses of class by name
 super :: HasClassEnv m => Name -> m (Set Name)
@@ -55,7 +56,7 @@ classDefined n = M.member n . classes <$> getClassEnv
 bindVar :: MonadError ErrMsg m => TypeVar -> Type -> m Substitution
 bindVar tv t = if
     | t == TypeVarWobbly tv -> pure mempty
-    | S.member tv (free t) ->
+    | elem tv (free t) ->
       throwError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
     | kind tv /= kind t -> throwError $ "Kinds don't match: " <> show (kind tv)
       <> " vs " <> show (kind t)
@@ -122,9 +123,9 @@ mguPred (IsIn i1 t1) (IsIn i2 t2) =
 
 
 -- |match for predicates
-matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m Substitution
+matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m (Maybe Substitution)
 matchPred (IsIn i1 t1) (IsIn i2 t2) =
-  if i1 == i2 then match t1 t2
+  if i1 == i2 then catchError (Just <$> match t1 t2) (const $ pure Nothing)
   else throwError $ "Classes don't match: " <> i1 <> " vs " <> i2
 
 
@@ -146,8 +147,9 @@ predsByInstances p@(IsIn i _) = do
   -- opertation that tries to strictly unify p with instance declaration
   let tryInst (ps :=> h) = do
         u <- matchPred h p
-        pure $ fmap (substitute u) ps
-  msum $ fmap tryInst insts
+        pure $ u >>= \uu -> Just (fmap (substitute uu) ps)
+  d <- msum <$> traverse tryInst insts
+  maybe (throwError $ "Could not get valid instance for " <> show p) pure d
 
 
 -- |Check if `p` will hold whenever all of `ps` are satisfied
@@ -202,9 +204,9 @@ reduce ps = toHNFs ps >>= simplify
 
 
 -- |Create scheme of generic type by its arguments
-quantify :: Set TypeVar -> Qual Type -> TypePoly
+quantify :: [TypeVar] -> Qual Type -> TypePoly
 quantify vs qt = Forall ks (substitute s qt) where
-  vs' = [v | v <- S.toList $ free qt, v `elem` vs]
+  vs' = [v | v <- free qt, v `elem` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
   s = Subst $ M.fromList $ zip ns (fmap TypeGeneric [0..])
