@@ -19,7 +19,7 @@ type Parser = ParsecT Void String Identity
 
 
 forbiddenIds :: [Name]
-forbiddenIds = ["let", "in", "case", "of", "if", "else", "then"]
+forbiddenIds = ["let", "in", "match", "with", "if", "else", "then"]
 
 skipComments :: Parser ()
 skipComments = L.space

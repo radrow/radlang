@@ -1,4 +1,8 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
 -- |Types related to internal program definition and evaluation
+
+{-# LANGUAGE GADTs #-}
 
 module Radlang.Types.Semantic where
 
@@ -31,16 +35,15 @@ type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
 data Expr
   = Val Name
   | Lit Literal
-  | Constant (Name, TypePoly)
   | Application Expr Expr
   | Let BindingGroup Expr
   deriving (Eq, Show, Ord)
 
 
--- |Single part of function definition – for example `f a 3 _ = some_expr`
-newtype Alternative = Alt (Set Pattern, Expr)
-  deriving (Eq, Show, Ord)
-
+data TypedExpr (t :: Type) where
+ TypedVal :: Name -> TypedExpr t
+ TypedLit :: Literal -> TypedExpr t
+ TypedApplication :: TypedExpr (fun a b) -> TypedExpr a -> TypedExpr b
 
 
 -- |Value stored in the dataspace. May be evaluated or not

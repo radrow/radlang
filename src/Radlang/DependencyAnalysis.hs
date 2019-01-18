@@ -14,7 +14,9 @@ exprDependencies = go S.empty where
     Val n -> S.insert n acc
     Lit _ -> acc
     Application f a -> go (go acc a) f
-    _ -> error "Dep calc not implemented"
+    Let (e, i) expr -> exprDependencies expr S.\\ (S.union ims exs) where
+      ims = S.fromList $ M.keys =<< i
+      exs = S.fromList $ M.keys e
 
 patternFree :: Pattern -> S.Set Name
 patternFree= \case

@@ -71,23 +71,23 @@ instance (Instantiate a, Ord a) => Instantiate (Set a) where
 
 
 -- |Computation that has access to class environment
-class (MonadError ErrMsg m, MonadPlus m) => HasClassEnv m where
+class (MonadError ErrMsg m) => HasClassEnv m where
   getClassEnv :: m ClassEnv
 
 
 -- |Computation that has access to type environment
-class (MonadError ErrMsg m, MonadPlus m) => HasTypeEnv m where
+class (MonadError ErrMsg m) => HasTypeEnv m where
   getTypeEnv :: m TypeEnv
 
 
 -- |Computation that carries and modifies `Substitution`
-class (MonadError ErrMsg m, MonadPlus m) => Substitutor m where
+class (MonadError ErrMsg m) => Substitutor m where
   getSubst :: m Substitution
   setSubst :: Substitution -> m ()
 
 
 -- |Computation that has built-in `Int` generator
-class (MonadError ErrMsg m, MonadPlus m) => IdSupply m where
+class (MonadError ErrMsg m) => IdSupply m where
   newId :: m Int
 
 
@@ -150,7 +150,7 @@ instance IsType TypeEnv where
 -- |Computation that builds class environment
 newtype ClassEnvBuilderT m a =
   ClassEnvBuilder (StateT ClassEnv (ExceptT ErrMsg m) a)
-  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
+  deriving ( Functor, Applicative, Monad
            , MonadError ErrMsg, MonadState ClassEnv)
 type ClassEnvBuilder = ClassEnvBuilderT Identity
 
@@ -165,7 +165,7 @@ instance Monad m => HasClassEnv (ClassEnvBuilderT m) where
 -- |Transformer responsible for typechecking whole program and error handling
 newtype TypecheckerT m a =
   Typechecker (ExceptT ErrMsg (ReaderT TypecheckerEnv (StateT TypecheckerState m)) a)
-  deriving ( Functor, Applicative, Monad, Alternative, MonadPlus
+  deriving ( Functor, Applicative, Monad
            , MonadError ErrMsg, MonadReader TypecheckerEnv, MonadState TypecheckerState)
 type Typechecker = TypecheckerT Identity
 

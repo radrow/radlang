@@ -1,11 +1,10 @@
-{-# LANGUAGE OverloadedLists #-}
-
 module Radlang.Desugar where
 
 import Control.Monad
 import Control.Monad.Except
 import qualified Data.Map.Strict as M
-import Data.List.NonEmpty(cons)
+import Data.List.NonEmpty(NonEmpty((:|)), cons, toList)
+import Data.Bitraversable
 
 import Radlang.Typesystem.Typesystem
 import Radlang.Types
@@ -83,7 +82,7 @@ implBindings cl idef =
 processImplDef :: RawImplDef -> Kindchecker ImplDef
 processImplDef rid = do
   rq <- processQualType (rawimpldefType rid)
-  let mt = fmap processDataDef (rawimpldefMethods rid)
+  mt <- traverse processDataDef (rawimpldefMethods rid)
   pure $ ImplDef (rawimpldefClass rid) rq mt
 
 
@@ -125,8 +124,8 @@ processProgram prg = do
 
     ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
       (buildClassEnv cdefs impldefs)
-    let ddefs = fmap processDataDef (rawprgDataDefs prg)
-        (ntTEnv, _, _) =
+    ddefs <- traverse processDataDef (rawprgDataDefs prg)
+    let (ntTEnv, _, _) =
           let folder (t, n, d) (nt, nn, nd) =
                 ( (TypeEnv $ M.union (types t) (types nt))
                 , (Namespace $ M.union (namespaceMap n) (namespaceMap nn))
@@ -144,7 +143,7 @@ processProgram prg = do
         cdecls = cdefs >>= \cd -> fmap (uncurry TypeDecl) (classBindings cd)
 
     pure $ Program
-      { prgBindings = toplevelBindings $
+      { prgBindings = pure . toplevelBindings $
                       fmap Left tdecls ++ fmap Right ddefs ++ imps ++ fmap Left cdecls
       , prgClassEnv = ceny
       , prgTypeEnv = ntTEnv
@@ -152,8 +151,8 @@ processProgram prg = do
 
 
 -- |Wraps bunch of type and value bindings into a binding group
-toplevelBindings :: [Either TypeDecl DataDef] -> [BindingGroup]
-toplevelBindings = pure . groupImplicit . Prelude.foldl ins (M.empty, [M.empty]) where
+toplevelBindings :: [Either TypeDecl DataDef] -> BindingGroup
+toplevelBindings = groupImplicit . Prelude.foldl ins (M.empty, [M.empty]) where
   groupImplicit :: BindingGroup -> BindingGroup
   groupImplicit (e, is) = (e, groupBindings =<< is)
   ins :: BindingGroup -> Either TypeDecl DataDef -> BindingGroup
@@ -181,38 +180,36 @@ toplevelBindings = pure . groupImplicit . Prelude.foldl ins (M.empty, [M.empty])
 
 
 -- |Turns value binding AST into real binding
-processDataDef :: RawDataDef -> DataDef
-processDataDef dd = DataDef
+processDataDef :: RawDataDef -> Kindchecker DataDef
+processDataDef dd = processRawExpr (rawdatadefVal dd) >>= \d -> pure DataDef
   { datadefName = rawdatadefName dd
   , datadefArgs = rawdatadefArgs dd
-  , datadefVal = processRawExpr $ rawdatadefVal dd
+  , datadefVal = d
   }
 
 
 -- |Turns expression AST into Expr
-processRawExpr :: RawExpr -> Expr
+processRawExpr :: RawExpr -> Kindchecker Expr
 processRawExpr = \case
-  RawExprVal v -> Val v
-  RawExprLit l -> Lit l
-  RawExprApplication kfun args ->
-    Prelude.foldl1 Application (processRawExpr <$> cons kfun args)
-  -- RawExprLet assgs inWhat ->
-    -- let postassg (name, args, ttype, val) = case args of
-    --       [] -> (name, ttype, processRawExpr val)
-    --       (h:t) -> (name, ttype, processRawExpr $
-    --                  RawExprLambda (h:|t) val
-    --                )
-    -- in Let (toList $ postassg <$> assgs) (processRawExpr inWhat)
-  -- RawExprLambda (a:|rest) val -> case rest of
-  --   [] -> Lambda a (processRawExpr val)
-  --   h:t -> Lambda a (processRawExpr $ RawExprLambda (h:|t) val)
-  _ -> error "RawExpr processing not implemented"
-  -- RawExprIf ((c,t):|rest) els -> case rest of
-  --   [] -> If (processRawExpr c) (processRawExpr t) (processRawExpr els)
-  --   hd:tl -> If
-  --     (processRawExpr c)
-  --     (processRawExpr t)
-  --     (processRawExpr $ RawExprIf (hd:|tl) els)
+  RawExprVal v -> pure $ Val v
+  RawExprLit l -> pure $ Lit l
+  RawExprApplication kfun args -> do
+    sq <- traverse processRawExpr $ cons kfun args
+    pure $ Prelude.foldl1 Application sq
+  RawExprLet assgs inWhat -> do
+    passgs <- traverse (bitraverse processTypeDecl processDataDef) assgs
+    let bnds = toplevelBindings (toList passgs)
+    ex <- processRawExpr inWhat
+    pure $ Let bnds ex
+  RawExprLambda (a:|rest) val -> processRawExpr $
+    RawExprLet (Right (RawDataDef "_lambda" (a:rest) val) :|[]) (RawExprVal "_lambda")
+  RawExprIf ((c,t):|rest) els -> case rest of
+    [] -> processRawExpr $ RawExprApplication (RawExprVal "if") (c:|[t,els])
+    hd:tl -> processRawExpr $ RawExprApplication (RawExprVal "if")
+      (c :|[t, RawExprIf (hd:|tl) els])
+  RawExprCase cased matches -> processRawExpr $
+    let defs = fmap (\(p, e) -> Right $ RawDataDef "_case" [p] e) matches
+    in RawExprLet defs $ RawExprApplication (RawExprVal "_case") (cased:|[])
 
 
 -- |Extracts kinds of class' arguments
@@ -229,7 +226,7 @@ processType = \case
     ft <- processType f
     as <- forM args processType
     foldM (\ff aa -> pure $ TypeApp ff aa) ft as
-  RawTypeFunc tf ta -> processType $ RawTypeApp (RawTypeRigid "Func") [tf, ta]
+  RawTypeFunc tf ta -> processType $ RawTypeApp (RawTypeRigid "Func") (tf:|[ta])
 
 
 processPred :: RawPred -> Kindchecker Pred

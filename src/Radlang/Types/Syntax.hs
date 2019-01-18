@@ -42,9 +42,10 @@ data RawExpr
   = RawExprVal Name
   | RawExprLit Literal
   | RawExprApplication RawExpr (NonEmpty RawExpr)
-  | RawExprLet (NonEmpty (Name, [Name], Maybe RawType, RawExpr)) RawExpr
-  | RawExprLambda (NonEmpty Name) RawExpr
+  | RawExprLet (NonEmpty (Either RawTypeDecl RawDataDef)) RawExpr
+  | RawExprLambda (NonEmpty Pattern) RawExpr
   | RawExprIf (NonEmpty (RawExpr, RawExpr)) RawExpr
+  | RawExprCase RawExpr (NonEmpty (Pattern, RawExpr))
   deriving(Eq, Show)
 
 

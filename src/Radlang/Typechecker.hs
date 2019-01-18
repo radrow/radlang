@@ -7,8 +7,6 @@ module Radlang.Typechecker where
 
 import Data.List as DL
 import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import Data.Set(Set)
 import Control.Monad.State.Strict
 import Control.Monad.Reader
 import Control.Monad.Except
@@ -16,7 +14,6 @@ import Control.Monad.Except
 import Radlang.Types
 import Radlang.Typedefs
 import Radlang.Typesystem.Typesystem
-import Radlang.Helpers
 import Radlang.Error
 
 

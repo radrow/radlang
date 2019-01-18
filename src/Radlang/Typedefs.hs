@@ -102,7 +102,9 @@ stdTypeEnv = TypeEnv $ M.fromList
                                           fun (tWobbly "~E")
                                           (fun (tWobbly "~E") tBool)
                                          )
-  , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+ , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
+ , "if" <~ quantify [TypeVar "~A" KType]
+   ([] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A"))))
  ]
 
 

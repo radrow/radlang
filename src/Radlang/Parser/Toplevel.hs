@@ -11,32 +11,8 @@ import qualified Data.Set as S
 import Radlang.Types hiding(kind)
 import Radlang.Parser.General
 import Radlang.Parser.Type
-import Radlang.Parser.Expr
-import Radlang.DependencyAnalysis
 -- import Radlang.ClassEnvBuild
 
-groupImplicits :: Program -> Program
-groupImplicits p =
-  p { prgBindings = flip fmap (prgBindings p) $ \case
-        (es, [im]) -> (es, groupBindings im)
-        (es, []) -> (es, [])
-        _ -> error "Implicits already grouped"
-    }
-
-
--- processProgram :: RawProgram -> Either ErrMsg Program
--- processProgram (RawProgram newtypes typealiases typedecls datadefs classdefs impldefs) = do
---   ce <- buildClassEnv classdefs impldefs
---   pure $ Program
---     { prgBindings = toplevelBindings $ fmap Left typedecls ++ fmap Right datadefs
---     , prgTypespace = undefined
---     , prgClassEnv = ce
---     , prgTypeEnv = undefined
---     }
-
-
--- program :: Parser (Either ErrMsg Program)
--- program = processProgram <$> rawProgram
 
 
 rawProgram :: Parser RawProgram
@@ -150,3 +126,108 @@ implDef = do
   cname <- className
   methods <- brac $ many (dataDef <* (operator ";;"))
   pure $ RawImplDef cname arg methods
+
+
+-- |Main RawExpr parser
+expr :: Parser RawExpr
+expr = try exprComplex <|> exprSimple
+
+
+-- |Simple expressions that never require parenthess around them
+exprSimple :: Parser RawExpr
+exprSimple = msum
+  [ mzero
+  , valE
+  , litE
+  , paren expr
+  ]
+
+
+-- |More complex expressions that are too big to be allowed in some places without
+-- parenthesses, i.e. arguments for functions.
+exprComplex :: Parser RawExpr
+exprComplex = msum
+  [ mzero
+  , lambdaE
+  , letE
+  , ifE
+  , caseE
+  , applicationE
+  ]
+
+
+valE :: Parser RawExpr
+valE = RawExprVal <$> (valName <|> constructorName)
+
+
+lambdaE :: Parser RawExpr
+lambdaE = do
+  operator "\\"
+  arg <- some pattern
+  operator "->"
+  ex <- expr
+  pure $ RawExprLambda arg ex
+
+
+applicationE :: Parser RawExpr
+applicationE = do
+  fun <- try exprSimple
+  chain <- some $ try exprSimple
+  pure $ RawExprApplication fun chain
+
+
+letE :: Parser RawExpr
+letE = do
+  word "let"
+  assgs <- sepBy1 assignment (operator "|")
+  word "in"
+  inWhat <- expr
+  pure $ RawExprLet assgs inWhat
+
+
+assignment :: Parser (Either RawTypeDecl RawDataDef)
+assignment =
+  Left <$> typeDecl <|> Right <$> dataDef
+
+
+ifE :: Parser RawExpr
+ifE = do
+  ifthens <- some $ do
+    word "if"
+    c <- expr
+    word "then"
+    t <- expr
+    pure (c, t)
+  word "else"
+  e <- expr
+  pure $ RawExprIf ifthens e
+
+
+litE :: Parser RawExpr
+litE = fmap RawExprLit $ msum $ fmap try
+  [ mzero
+  , constInt
+  , constString
+  ]
+
+
+constInt :: Parser Literal
+constInt = LitInt <$> signed
+
+
+constString :: Parser Literal
+constString = LitString <$> between (symbol "\"") (symbol "\"") (many alphaNumChar)
+
+
+caseE :: Parser RawExpr
+caseE = do
+  word "match"
+  e <- expr
+  word "with"
+  matches <- some $ do
+    operator "|"
+    p <- pattern
+    operator "->"
+    em <- expr
+    pure (p, em)
+  pure $ RawExprCase e matches
