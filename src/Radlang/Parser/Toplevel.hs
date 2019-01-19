@@ -17,7 +17,7 @@ import Radlang.Parser.Type
 
 rawProgram :: Parser RawProgram
 rawProgram = do
-  parts <- many $ rawProgramPart <* (operator ";;")
+  parts <- many $ rawProgramPart <* operator ";;"
   pure $ foldl insertPart (RawProgram [] [] [] [] []) parts where
     insertPart rp = \case
       RPNewType nt -> rp {rawprgNewTypes = nt : rawprgNewTypes rp}
@@ -56,29 +56,34 @@ constructorDef = do
 
 
 typeDecl :: Parser RawTypeDecl
-typeDecl = try $ do
-  name <- valName
-  operator ":"
+typeDecl = do
+  name <- try $ valName <* operator ":"
   t <- qual type_
   pure $ RawTypeDecl name t
 
 dataDef :: Parser RawDataDef
-dataDef = try $ do
-  name <- valName
-  pats <- many pattern
-  operator ":="
+dataDef = do
+  (name, pats) <- try $ liftM2 (,) valName (many patternSimple <* operator ":=")
   def <- expr
   pure $ RawDataDef name pats def
 
 pattern :: Parser Pattern
-pattern = msum $ fmap try
+pattern = patternComplex <|> patternSimple
+
+patternSimple :: Parser Pattern
+patternSimple = msum $
   [ PLit <$> literal
   , pure PWildcard <* operator "_"
-  , PAs <$> valName <*> (char '@' >> brac pattern)
+  , try $ PAs <$> valName <*> (char '@' >> brac pattern)
   , PVar <$> valName
-  --, PNPlusK
-  , PConstructor <$> constructorName <*> many pattern
+  , flip PConstructor [] <$> constructorName
   , paren pattern
+  ]
+
+patternComplex :: Parser Pattern
+patternComplex = msum
+  [ try $ PConstructor <$> constructorName <*> many pattern
+  --, PNPlusK
   ]
 
 literal :: Parser Literal
@@ -152,6 +157,7 @@ exprComplex = msum
   , letE
   , ifE
   , caseE
+  , forE
   , applicationE
   ]
 
@@ -231,3 +237,14 @@ caseE = do
     em <- expr
     pure (p, em)
   pure $ RawExprCase e matches
+
+
+forE :: Parser RawExpr
+forE = do
+  word "for"
+  comphrs <- brac $ sepBy (msum
+    [ try valName >>= \n -> operator "<-" *> expr >>= \e -> pure (ForBind n e)
+    , ForVal <$> expr
+    ]) (operator "|")
+  e <- expr
+  pure $ RawExprFor comphrs e

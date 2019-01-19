@@ -14,16 +14,15 @@ import           Radlang.Types hiding (kind)
 
 
 qual :: Parser a -> Parser (RawQual a)
-qual aPars = paren (qual aPars) <|> do
-  preds <- sepBy (try predicate) (operator ",")
+qual aPars = do
+  preds <- try $ sepBy predicate (operator ",")
   when (not (Prelude.null preds)) $ operator ":-"
   a <- aPars
   pure $ RawQual preds a
 
 predicate :: Parser RawPred
 predicate = do
-  t <- type_
-  word "is"
+  t <- try $ type_ <* word "is"
   cl <- uId
   pure $ RawPred cl t
 

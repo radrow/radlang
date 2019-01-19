@@ -46,7 +46,14 @@ data RawExpr
   | RawExprLambda (NonEmpty Pattern) RawExpr
   | RawExprIf (NonEmpty (RawExpr, RawExpr)) RawExpr
   | RawExprCase RawExpr (NonEmpty (Pattern, RawExpr))
+  | RawExprFor [ForComphr] RawExpr
   deriving(Eq, Show)
+
+
+data ForComphr
+  = ForVal RawExpr
+  | ForBind Name RawExpr
+  deriving (Eq, Show)
 
 
 -- |Literal like "lol" or 2138 or 0.42

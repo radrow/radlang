@@ -3,6 +3,7 @@ module Radlang.Desugar where
 import Control.Monad
 import Control.Monad.Except
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List.NonEmpty(NonEmpty((:|)), cons, toList)
 import Data.Bitraversable
 
@@ -10,6 +11,7 @@ import Radlang.Typesystem.Typesystem
 import Radlang.Types
 import Radlang.Typedefs
 import Radlang.Kindchecker
+import Radlang.Error
 import Radlang.ClassEnvBuild
 import Radlang.DependencyAnalysis
 
@@ -99,6 +101,27 @@ unionBindings e1 e2 =
         Just (t, alts) -> M.insert k (t, snd v ++ alts) m
   in foldl (\e (n, d) -> unionIns e n d) e1 (M.toList e2)
 
+checkUniquePatternVars :: [Pattern] -> Kindchecker ()
+checkUniquePatternVars ps = do
+  let checkedInsert :: Name -> S.Set Name -> Kindchecker (S.Set Name)
+      checkedInsert n s = if S.member n s
+        then typecheckError $ "Pattern var overlap: " <> n
+        else pure (S.insert n s)
+      checkedUnion :: S.Set Name -> S.Set Name -> Kindchecker (S.Set Name)
+      checkedUnion s1 s2 = if not (S.null $ S.intersection s1 s2)
+        then typecheckError $ "Pattern vars overlap: " <> show (S.intersection s1 s2)
+        else pure (S.union s1 s2)
+      checkPattern = \case
+        PLit _ -> pure S.empty
+        PVar n -> pure $ S.singleton n
+        PAs n pat -> checkedInsert n =<< checkPattern pat
+        PWildcard -> pure S.empty
+        PConstructor _ args -> checkPatterns args
+      checkPatterns :: [Pattern] -> Kindchecker (S.Set Name)
+      checkPatterns p = foldM folder S.empty p where
+        folder ns pt = checkPattern pt >>= checkedUnion ns
+  void $ checkPatterns ps
+
 
 -- |Kindchecker that builds typesystem and returns well kinded (kind!) program ready for typechecking
 -- and evaluation
@@ -181,11 +204,13 @@ toplevelBindings = groupImplicit . Prelude.foldl ins (M.empty, [M.empty]) where
 
 -- |Turns value binding AST into real binding
 processDataDef :: RawDataDef -> Kindchecker DataDef
-processDataDef dd = processRawExpr (rawdatadefVal dd) >>= \d -> pure DataDef
-  { datadefName = rawdatadefName dd
-  , datadefArgs = rawdatadefArgs dd
-  , datadefVal = d
-  }
+processDataDef dd = do
+  checkUniquePatternVars (rawdatadefArgs dd)
+  processRawExpr (rawdatadefVal dd) >>= \d -> pure DataDef
+    { datadefName = rawdatadefName dd
+    , datadefArgs = rawdatadefArgs dd
+    , datadefVal = d
+    }
 
 
 -- |Turns expression AST into Expr
@@ -210,6 +235,15 @@ processRawExpr = \case
   RawExprCase cased matches -> processRawExpr $
     let defs = fmap (\(p, e) -> Right $ RawDataDef "_case" [p] e) matches
     in RawExprLet defs $ RawExprApplication (RawExprVal "_case") (cased:|[])
+  RawExprFor (h:t) e -> case h of
+    ForVal v -> do
+      let cont = RawExprLambda (PWildcard:|[]) (RawExprFor t e)
+      processRawExpr $ RawExprApplication (RawExprVal "bind") (v:|[cont])
+    ForBind n v -> do
+      let cont = RawExprLambda (PVar n:|[]) (RawExprFor t e)
+      processRawExpr $ RawExprApplication (RawExprVal "bind") (v:|[cont])
+  RawExprFor [] e -> processRawExpr e
+
 
 
 -- |Extracts kinds of class' arguments

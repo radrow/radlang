@@ -14,6 +14,9 @@ import Control.Monad.Except
 import Radlang.Types
 import Radlang.Error
 
+import Debug.Trace
+
+
 -- |Gets superclasses of class by name
 super :: HasClassEnv m => Name -> m (Set Name)
 super n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
