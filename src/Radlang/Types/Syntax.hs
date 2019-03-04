@@ -60,6 +60,7 @@ data ForComphr
 data Literal
   = LitInt Integer
   | LitString String
+  | LitChar Char
   deriving (Eq, Show, Ord)
 
 

@@ -2,6 +2,7 @@
 module Radlang.Error where
 
 import Control.Monad.Except
+import Control.Monad.Reader
 
 import Radlang.Types
 
@@ -22,8 +23,11 @@ classEnvError :: MonadError ErrMsg m => String -> m a
 classEnvError = throwError . ClassEnvError
 
 
-runtimeError :: MonadError ErrMsg m => String -> m a
-runtimeError = throwError . RuntimeError
+runtimeError :: String -> Evaluator a
+runtimeError s = do
+  st <- asks _envStacktrace
+  est <- asks _envEvalStacktrace
+  throwError $ RuntimeError st est s
 
 
 showErrorType :: ErrMsg -> String
@@ -32,7 +36,7 @@ showErrorType = \case
   KindcheckError _ -> "Kindcheck error"
   ParseError _ -> "Parse error"
   ClassEnvError _ -> "While building class environment"
-  RuntimeError _ -> "Runtime error"
+  RuntimeError _ _ _ -> "Runtime error"
 
 
 showErrorMessage :: ErrMsg -> String
@@ -41,10 +45,13 @@ showErrorMessage = \case
   KindcheckError e -> e
   ParseError e -> e
   ClassEnvError e -> e
-  RuntimeError e -> e
+  RuntimeError st est e ->
+    e <> "\nStacktrace:\n" <> unlines st <> "\nEvaluation stacktrace:\n" <> unlines est
 
 
 showError :: ErrMsg -> String
 showError em = showErrorType em <> ": " <> showErrorMessage em
 
 
+wtf :: String -> a
+wtf = error . ("WTF: "<>)

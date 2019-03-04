@@ -1,14 +1,18 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
--- |Types related to internal program definition and evaluation
-
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GADTs #-}
+
+-- |Types related to internal program definition and evaluation
 
 module Radlang.Types.Semantic where
 
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
+import Control.Lens hiding(Lazy, Strict)
 import           Data.Map.Strict            (Map)
 import           Data.Set                   as S
 
@@ -17,18 +21,8 @@ import           Radlang.Types.Syntax
 import           Radlang.Types.Typesystem
 
 
--- |Map of value names into ids
-newtype Namespace = Namespace {namespaceMap :: Map Name DataId}
-
-
--- |Map of ids into real data
-data Dataspace = Dataspace {dataspaceMap :: Map DataId Data
-                           , nextId :: DataId
-                           }
-
-
--- |Transformer responsible for expression evaluation and error handling
-type Evaluator = ExceptT String (ReaderT Namespace (State Dataspace))
+type Stacktrace = [String]
+type EvalStacktrace = [String]
 
 
 -- |Desugared expression tree ready for evaluation
@@ -40,34 +34,52 @@ data Expr
   deriving (Eq, Show, Ord)
 
 
-data TypedExpr (t :: Type) where
- TypedVal :: Name -> TypedExpr t
- TypedLit :: Literal -> TypedExpr t
- TypedApplication :: TypedExpr (fun a b) -> TypedExpr a -> TypedExpr b
+data TypedExpr where
+ TypedVal :: Type -> Name -> TypedExpr
+ TypedLit :: Type -> Literal -> TypedExpr
+ TypedApplication :: Type -> TypedExpr -> TypedExpr -> TypedExpr
+ TypedLet :: Type -> (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
+  deriving (Eq, Show, Ord)
 
 
 -- |Value stored in the dataspace. May be evaluated or not
-data Data = Lazy Namespace DataId Expr | Strict StrictData
+data Data
+  = Lazy Namespace Stacktrace DataId TypedExpr
+  | Strict StrictData
+  | Ref DataId
+
+
+instance Show Data where
+  show = \case
+    Lazy _ _ i _ -> "<lazy " <> show i <> ">"
+    Strict d -> show d
+    Ref i -> "<ref " <> show i <> ">"
 
 
 -- |Value that is in weak-head-normal-form
 data StrictData
   = DataInt Integer
   | DataBool Bool
-  | DataLambda Namespace Name Expr
-  | DataInternalFunc (Data -> Evaluator Data)
+  | DataChar Char
+  | DataADT Name [Data]
+  -- | DataLambda Namespace Name TypedExpr
+  | DataFunc Name (Data -> Evaluator Data)
 
 instance Show StrictData where
   show = \case
     DataInt i -> show i
     DataBool b -> show b
-    DataLambda _ n e -> "\\" <> n <> " -> " <> show e
-    DataInternalFunc _ -> "internal func"
+    DataChar c -> show c
+    DataADT n args -> n <> ((\a -> " " <> show a) =<< args)
+    -- DataLambda _ n e -> "\\" <> n <> " -> " <> show e
+    DataFunc n _ -> "<func " <> n <> ">"
+
 
 instance Eq StrictData where
-  (DataInt a) == (DataInt b) = a == b
-  (DataBool a) == (DataBool b) = a == b
-  _ == _ = error "Somebody wanted to illegally compare functions" -- we don't compare functions.
+  (==) = error "TODO: == for StrictData"
+  -- (DataInt a) == (DataInt b) = a == b
+  -- (DataBool a) == (DataBool b) = a == b
+  -- _ == _ = error "Somebody wanted to illegally compare functions" -- we don't compare functions.
 
 
 -- |Left and right side of function definition
@@ -102,6 +114,9 @@ data Program = Program
   , prgClassEnv :: ClassEnv
   , prgTypeEnv  :: TypeEnv
   } deriving (Eq, Show)
+
+
+data TypedProgram = TypedProgram (Map Name (Type, [([Pattern], TypedExpr)]))
 
 
 -- |Declaration that binding has certain type
@@ -149,3 +164,31 @@ data ConstructorDef = ConstructorDef
   { condefName :: Name
   , condefArgs :: [Type]}
   deriving (Eq, Ord, Show)
+
+
+type Namespace = Map Name DataId
+
+-- |Map of value names into ids
+data Env = Env { _envNamespace :: Namespace
+               , _envStacktrace :: Stacktrace
+               , _envEvalStacktrace :: EvalStacktrace
+               }
+  deriving (Show)
+
+-- |Map of ids into real data
+data Dataspace = Dataspace { _dsMap :: Map DataId Data
+                           , _dsIdSupply :: DataId
+                           } deriving (Show)
+
+
+-- |Transformer responsible for expression evaluation and error handling
+newtype Evaluator a = Evaluator (ExceptT ErrMsg (ReaderT Env (State Dataspace)) a)
+  deriving ( Functor, Applicative, Monad, MonadReader Env, MonadState Dataspace
+           , MonadError ErrMsg)
+
+
+makeLenses ''Dataspace
+makeLenses ''Env
+instance IdSupply Evaluator where
+  newId = gets _dsIdSupply <* modify (over dsIdSupply (+1))
+

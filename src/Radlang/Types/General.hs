@@ -9,8 +9,8 @@ data ErrMsg
   | KindcheckError String
   | ClassEnvError String
   | TypecheckError String
-  | RuntimeError String
-  deriving (Eq)
+  | RuntimeError [String] [String] String
+  deriving (Eq, Show)
 
 
 type Name = String

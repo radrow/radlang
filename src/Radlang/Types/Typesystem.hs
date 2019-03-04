@@ -11,7 +11,6 @@
 module Radlang.Types.Typesystem where
 
 import Data.Foldable
-import Control.Applicative
 import Control.Monad.Identity
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -88,7 +87,7 @@ class (MonadError ErrMsg m) => Substitutor m where
 
 -- |Computation that has built-in `Int` generator
 class (MonadError ErrMsg m) => IdSupply m where
-  newId :: m Int
+  newId :: m DataId
 
 
 ---- DEFINITIONS ----
@@ -315,6 +314,7 @@ type Inst = Qual Pred
 -- |Type scheme for polymorphic types
 data TypePoly = Forall [Kind] (Qual Type)
   deriving (Eq, Ord)
+
 
 instance Show TypePoly where
   show (Forall [] t) = show t
