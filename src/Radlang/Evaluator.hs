@@ -158,22 +158,20 @@ applyDataSubst (DataSubst sub) = do
 
 eval :: TypedExpr -> Evaluator Data
 eval = \case
-  TypedVal _ n -> dataByName n
-  TypedLit _ l -> case l of
+  TypedVal n -> dataByName n
+  TypedLit l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
       let folder el li = Strict $ DataADT "Cons" [ Strict $ DataChar el, li]
       in pure $ foldr folder (Strict $ DataADT "Nil" []) s
     LitChar c -> pure $ Strict $ DataChar c
-  TypedApplication _ f a -> do
+  TypedApplication f a -> do
     fd <- force =<< eval f
     aId <- newLazy a
     case fd of
-      -- DataLambda ns narg body ->
-      --   withNamespace ns $ withAssign (narg <~ aId) $ eval body
       DataFunc name func -> withStackElems name $ dataById aId >>= func
-      _ -> runtimeError "Call not a function! "
-  TypedLet _ assgs e -> do
+      _ -> wtf "Call not a function!"
+  TypedLet assgs e -> do
     ns <- getNamespace
 
     let aslist = M.toList assgs
@@ -228,13 +226,13 @@ eval = \case
 runEvaluator :: Evaluator a -> Either ErrMsg a
 runEvaluator (Evaluator e)
   = flip evalState (Dataspace M.empty 0)
-  $ flip runReaderT (Env M.empty [] [])
+  $ flip runReaderT (Env M.empty (TypeEnv M.empty) [] [])
   $ runExceptT e
 
 runEvaluatorWithState :: Evaluator a -> (Either ErrMsg a, Dataspace)
 runEvaluatorWithState (Evaluator e)
   = flip runState (Dataspace M.empty 0)
-  $ flip runReaderT (Env M.empty [] [])
+  $ flip runReaderT (Env M.empty (TypeEnv M.empty) [] [])
   $ runExceptT e
 
 run :: TypedExpr -> (Either ErrMsg StrictData, Dataspace)
@@ -242,36 +240,36 @@ run e = runEvaluatorWithState $ eval e >>= force
 t :: Type
 t = TypeVarRigid $ TypeVar "TYPE" KType
 ex :: Integer -> TypedExpr
-ex i = TypedApplication t
-     (TypedLet t
-       (M.singleton "f" (t, [ ([PLit $ LitInt 4], TypedLit t (LitInt 222))
-                            , ([PVar "x"], TypedVal t "x")
+ex i = TypedApplication
+     (TypedLet
+       (M.singleton "f" (t, [ ([PLit $ LitInt 4], TypedLit (LitInt 222))
+                            , ([PVar "x"], TypedVal "x")
                             ]))
-       (TypedVal t "f"))
-     (TypedLit t (LitInt i))
+       (TypedVal "f"))
+     (TypedLit (LitInt i))
 
 ex2 :: TypedExpr
-ex2 = TypedLet t (M.singleton "x" (t, [([], TypedLit t (LitInt 3))])) (TypedVal t "x")
+ex2 = TypedLet (M.singleton "x" (t, [([], TypedLit (LitInt 3))])) (TypedVal "x")
 
 ex3 :: Integer -> Integer -> TypedExpr
-ex3 i j = TypedApplication t (TypedApplication t
-     (TypedLet t
-       (M.singleton "f" (t, [ ([PLit $ LitInt 3, PLit $ LitInt 4], TypedLit t (LitInt 222))
-                            , ([PLit $ LitInt 3, PVar "x"], TypedVal t "x")
+ex3 i j = TypedApplication (TypedApplication
+     (TypedLet
+       (M.singleton "f" (t, [ ([PLit $ LitInt 3, PLit $ LitInt 4], TypedLit (LitInt 222))
+                            , ([PLit $ LitInt 3, PVar "x"], TypedVal "x")
                             ]))
-       (TypedVal t "f"))
-     (TypedLit t (LitInt i))) (TypedLit t (LitInt j))
+       (TypedVal "f"))
+     (TypedLit (LitInt i))) (TypedLit (LitInt j))
 
 lazyjeb :: TypedExpr
 lazyjeb =
-  (TypedLet t
-    (M.fromList
+  (TypedLet  -- let
+    (M.fromList  -- const _ = 2137
       [ ("const", (t, [
-                      ([PWildcard], TypedLit t (LitInt 2137))
+                      ([PWildcard], TypedLit (LitInt 2137))
                       ]))
-      , ("empty", (t, ([])))
-      ]) $ TypedApplication t
-    (TypedVal t "const")
-    (TypedVal t "const")
-    -- (TypedApplication t (TypedVal t "empty") (TypedLit t (LitInt 123)))
+      -- , ("empty", (t, ([]))) -- empty = undefined
+      ]) $ TypedApplication
+    (TypedVal "const") -- in (const 1488)
+    (TypedLit $ LitInt 1488)
+    -- (TypedApplication (TypedVal "empty") (TypedLi(LitIn123)))
   )

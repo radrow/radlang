@@ -37,8 +37,8 @@ newTypeBindings dats nt =
       (dspace, ids) = foldl (\(ds, prids) (_, _, d) -> let (dds, did) = dataspaceInsert d ds
                                                        in (dds, did:prids)
                             ) (dats, []) constrs
-      nspace = foldl (\(Namespace ds) ((n, _, _), i) -> Namespace $ M.insert n i ds)
-        (Namespace M.empty) $ zip constrs ids
+      nspace = foldl (\ds ((n, _, _), i) -> M.insert n i ds)
+        (M.empty) $ zip constrs ids
   in (tenv, nspace, dspace)
 
 classBindings :: ClassDef -> [(Name, Qual Type)]
@@ -149,13 +149,17 @@ processProgram prg = do
       (buildClassEnv cdefs impldefs)
     ddefs <- traverse processDataDef (rawprgDataDefs prg)
     let (ntTEnv, _, _) =
-          let folder (t, n, d) (nt, nn, nd) =
+          let folder :: (TypeEnv, Namespace, Dataspace)
+                     -> (TypeEnv, Namespace, Dataspace)
+                     -> (TypeEnv, Namespace, Dataspace)
+              folder (t, n, d) (nt, nn, nd) =
                 ( (TypeEnv $ M.union (types t) (types nt))
-                , (Namespace $ M.union (namespaceMap n) (namespaceMap nn))
-                , (Dataspace (M.union (dataspaceMap d) (dataspaceMap nd)) (max (nextId d) (nextId nd)
-                                                                          ))
+                , (M.union n nn)
+                , Dataspace {_dsMap = M.union (_dsMap d) (_dsMap nd)
+                            ,_dsIdSupply = max (_dsIdSupply d) (_dsIdSupply nd)
+                            }
                 )
-          in foldl folder (TypeEnv M.empty, Namespace M.empty, Dataspace M.empty 0)
+          in foldl folder (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
              $ fmap (newTypeBindings (Dataspace M.empty 0)) newtypes
 
         -- classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))

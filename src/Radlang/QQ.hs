@@ -23,6 +23,8 @@ import Radlang.Typechecker
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
 deriving instance Data Program
+deriving instance Data TypedProgram
+deriving instance Data TypedExpr
 deriving instance Data TypeEnv
 deriving instance Data ClassEnv
 deriving instance Data Class
@@ -44,6 +46,7 @@ deriving instance Data Pred
 deriving instance Data RawPred
 deriving instance Data Expr
 deriving instance Data RawExpr
+deriving instance Data ForComphr
 deriving instance Data RawProgramPart
 deriving instance Data Type
 deriving instance Data TypeVar
@@ -61,6 +64,10 @@ rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 
 rdl :: QuasiQuoter
 rdl = QuasiQuoter { quoteExp = quoteRdlExp }
+
+
+trdl :: QuasiQuoter
+trdl = QuasiQuoter { quoteExp = quoteTypedRdlExp }
 
 
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
@@ -100,7 +107,15 @@ parseRdl (file, line, col) s =
       x :: String
       x = concat (fmap parseErrorPretty $ bundleErrors e)
       in fmap (\c -> if c == '\n' then ' ' else c) x
-    Right p -> either fail pure $ buildProgram p >>= \pp -> (unsafePerformIO $ typecheck (TypecheckerConfig True) pp) >> pure pp
+    Right p -> either (fail . show) pure $ buildProgram p
+
+
+parseTypedRdl :: Monad m => (String, Int, Int) -> String -> m TypedProgram
+parseTypedRdl loc s = do
+  prg <- parseRdl loc s
+  case (unsafePerformIO $ typecheck (TypecheckerConfig True) prg) of
+    Left e -> fail $ show e
+    Right tprg -> pure tprg
 
 
 quoteRdlExp :: String -> TH.ExpQ
@@ -113,3 +128,13 @@ quoteRdlExp s = do
   e <- parseRdl pos s
   dataToExpQ (const Nothing) e
 
+
+quoteTypedRdlExp :: String -> TH.ExpQ
+quoteTypedRdlExp s = do
+  loc <- TH.location
+  let pos = ( TH.loc_filename loc
+            , fst (TH.loc_start loc)
+            , snd (TH.loc_start loc)
+            )
+  e <- parseTypedRdl pos s
+  dataToExpQ (const Nothing) e

@@ -35,10 +35,10 @@ data Expr
 
 
 data TypedExpr where
- TypedVal :: Type -> Name -> TypedExpr
- TypedLit :: Type -> Literal -> TypedExpr
- TypedApplication :: Type -> TypedExpr -> TypedExpr -> TypedExpr
- TypedLet :: Type -> (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
+ TypedVal :: Name -> TypedExpr
+ TypedLit :: Literal -> TypedExpr
+ TypedApplication :: TypedExpr -> TypedExpr -> TypedExpr
+ TypedLet :: (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
   deriving (Eq, Show, Ord)
 
 
@@ -84,6 +84,7 @@ instance Eq StrictData where
 
 -- |Left and right side of function definition
 type Alt = ([Pattern], Expr)
+type TypedAlt = ([Pattern], TypedExpr)
 
 
 -- |Explicitly typed binding
@@ -102,6 +103,8 @@ type ExplBindings = Map Name (TypePoly, [Alt])
 type ImplBindings = Map Name [Alt]
 
 
+type TypedBindings = Map Name (Type, [TypedAlt])
+
 -- |Collection of bindings splitted into explicitly typed and implicitly typed
 -- grouped as strongly connected components in dependency graph and thopologically
 -- sorted
@@ -116,7 +119,10 @@ data Program = Program
   } deriving (Eq, Show)
 
 
-data TypedProgram = TypedProgram (Map Name (Type, [([Pattern], TypedExpr)]))
+data TypedProgram = TypedProgram
+  { tprgBindings :: TypedBindings
+  , tprgTypeEnv :: TypeEnv
+  } deriving (Eq, Show)
 
 
 -- |Declaration that binding has certain type
@@ -170,6 +176,7 @@ type Namespace = Map Name DataId
 
 -- |Map of value names into ids
 data Env = Env { _envNamespace :: Namespace
+               , _envTypespace :: TypeEnv
                , _envStacktrace :: Stacktrace
                , _envEvalStacktrace :: EvalStacktrace
                }
@@ -189,6 +196,8 @@ newtype Evaluator a = Evaluator (ExceptT ErrMsg (ReaderT Env (State Dataspace)) 
 
 makeLenses ''Dataspace
 makeLenses ''Env
+
+
 instance IdSupply Evaluator where
   newId = gets _dsIdSupply <* modify (over dsIdSupply (+1))
 
