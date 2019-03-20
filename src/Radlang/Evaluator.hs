@@ -53,7 +53,7 @@ withNamespace = local . set envNamespace
 
 
 withStackElem :: String -> Evaluator a -> Evaluator a
-withStackElem s = local $ over envStacktrace (s:)
+withStackElem s = local $ over envDefStacktrace (s:)
 
 
 withEvalStackElem :: String -> Evaluator a -> Evaluator a
@@ -61,15 +61,15 @@ withEvalStackElem s = local $ over envEvalStacktrace (s:)
 
 
 withStackElems :: String -> Evaluator a -> Evaluator a
-withStackElems s = local $ over envStacktrace (s:) . over envEvalStacktrace (s:)
+withStackElems s = local $ over envDefStacktrace (s:) . over envEvalStacktrace (s:)
 
 
-withStacktrace :: Stacktrace -> Evaluator a -> Evaluator a
-withStacktrace st = local $ set envStacktrace st
+withDefStacktrace :: Stacktrace -> Evaluator a -> Evaluator a
+withDefStacktrace st = local $ set envDefStacktrace st
 
 
 getStacktraces :: Evaluator (Stacktrace, EvalStacktrace)
-getStacktraces = liftA2 (,) (asks _envStacktrace) (asks _envEvalStacktrace)
+getStacktraces = liftA2 (,) (asks _envDefStacktrace) (asks _envEvalStacktrace)
 
 
 putData :: DataId -> Data -> Evaluator ()
@@ -80,7 +80,7 @@ getNamespace :: Evaluator Namespace
 getNamespace = asks _envNamespace
 
 
-newLazy :: (Evaluator Data) -> Evaluator DataId
+newLazy :: Evaluator Data -> Evaluator DataId
 newLazy e = do
   i <- newId
   ns <- getNamespace
@@ -90,7 +90,7 @@ newLazy e = do
 
 
 lazyExpr :: TypedExpr -> Evaluator DataId
-lazyExpr e = newLazy (eval e)
+lazyExpr e =newLazy (eval e)
 
 
 newStrict :: StrictData -> Evaluator DataId
@@ -111,7 +111,8 @@ force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Ref i) = force =<< dataById i
 force (Lazy ns st i e) = do
-  forced <- force =<< withStacktrace st (withNamespace ns e)
+  forced <- force =<< withDefStacktrace st
+    (withEvalStackElem ("forcing " <> show i) $ (withNamespace ns e))
   putData i (Strict forced)
   pure forced
 
@@ -121,7 +122,7 @@ deepForce (Strict d) = case d of
   _ -> pure d
 deepForce (Ref i) = deepForce =<< dataById i
 deepForce (Lazy ns st i e) = do
-  forced <- deepForce =<< withStacktrace st (withNamespace ns e)
+  forced <- deepForce =<< withDefStacktrace st (withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -178,7 +179,7 @@ applyDataSubst (DataSubst sub) = do
 
 eval :: TypedExpr -> Evaluator Data
 eval = \case
-  TypedVal n -> dataByName n
+  TypedVal n -> withStackElems ("reading var " <> n) $ dataByName n
   TypedLit l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
@@ -191,7 +192,7 @@ eval = \case
     case fd of
       DataFunc name func -> withStackElems name $ dataById aId >>= func
       _ -> wtf $ "Call not a function! " <> show fd
-  TypedLet assgs e -> do
+  TypedLet assgs e -> withStackElems "let expression" $ do
     ns <- getNamespace
 
     let aslist = M.toList assgs
@@ -202,11 +203,11 @@ eval = \case
     let recNs = foldr (uncurry M.insert)
           ns (zip names ids)
 
-    let domainGuard :: Evaluator a
+        domainGuard :: Evaluator a
         domainGuard = runtimeError "Out of domain"
 
-        bindings :: [([Pattern], TypedExpr, DataSubst)] -> Evaluator Data
-        bindings alts = do
+        bindings :: Int -> Name -> [([Pattern], TypedExpr, DataSubst)] -> Evaluator Data
+        bindings level name alts = do
           let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
 
               asFunction :: Data -> Evaluator Data
@@ -217,24 +218,27 @@ eval = \case
                         pure $ fmap (\sub -> (ps, te, unionSubst sub s)) msub
                       extractor _ = wtf "extractor match fail"
                   in mapMaybe id <$> mapM extractor functions
-                bindings conts
+                bindings (level + 1) name conts
 
           if | null functions && null finalized -> domainGuard
              | null functions -> do
                  let ([], te, ds) = head finalized
                  newns <- applyDataSubst ds
-                 Ref <$> withNamespace newns (lazyExpr te)
-             | otherwise -> pure $ Strict $ DataFunc "patternMatch" asFunction
+                 ii <- withNamespace newns (lazyExpr te)
+                 pure $ Ref ii
+             | otherwise -> getNamespace >>= \myNs ->
+                 pure $ Strict $ DataFunc (name <> "#" <> show level) $ withNamespace myNs . asFunction
 
-    dats <- flip mapM aslist $
-            (\(_, (_, a)) ->
-                (withNamespace recNs $
-                  Ref <$> newLazy (bindings (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a))
-                ))
+    withNamespace recNs $ do
+      dats <- flip mapM aslist $
+              (\(n, (_, a)) -> do
+                  let binding = bindings 0 n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
+                  Ref <$> newLazy binding
+              )
 
-    forM_ (zip ids dats) $ uncurry putData
+      forM_ (zip ids dats) $ uncurry putData
 
-    withNamespace recNs $ eval e
+      withStackElems "let evaluation" $ eval e
 
 
 runEvaluator :: Namespace

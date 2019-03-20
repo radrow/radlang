@@ -25,7 +25,7 @@ classEnvError = throwError . ClassEnvError
 
 runtimeError :: String -> Evaluator a
 runtimeError s = do
-  st <- asks _envStacktrace
+  st <- asks _envDefStacktrace
   est <- asks _envEvalStacktrace
   throwError $ RuntimeError st est s
 
@@ -45,8 +45,10 @@ showErrorMessage = \case
   KindcheckError e -> e
   ParseError e -> e
   ClassEnvError e -> e
-  RuntimeError st est e ->
-    e <> "\nStacktrace:\n" <> unlines st <> "\nEvaluation stacktrace:\n" <> unlines est
+  RuntimeError dst est e ->
+    let enum = fmap (uncurry $ (<>) . (<>". ") . show) . zip [(1::Int)..]
+    in e <> "\nDefinition Stacktrace:\n" <> unlines (enum dst)
+    <> "\nEvaluation stacktrace:\n" <> unlines (enum est)
 
 
 showError :: ErrMsg -> String

@@ -178,7 +178,7 @@ type Namespace = Map Name DataId
 -- |Map of value names into ids
 data Env = Env { _envNamespace :: Namespace
                , _envTypespace :: TypeEnv
-               , _envStacktrace :: Stacktrace
+               , _envDefStacktrace :: Stacktrace
                , _envEvalStacktrace :: EvalStacktrace
                }
   deriving (Show)

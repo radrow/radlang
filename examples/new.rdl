@@ -4,11 +4,16 @@ reverse := fix (\rec acc l -> match l with
  | Nil -> acc
  );;
 
-head (Cons a _) := a;;
+map _ Nil := Nil;;
+map f (Cons h t) := Cons (f h) (map f t);;
 
-main := if g then 1 else 2;;
+fib := let
+  kek : Int
+  | goo (Pair a b) num :=
+     if eqInt num 0
+     then b
+     else goo (Pair b (plusInt a b)) (minusInt num 1)
+  in goo (Pair 0 1)
+;;
 
-g := True;;
-
-dmain := reverse Nil (Cons 1 (Cons 2 Nil));;
-ddmain := head (Cons 3 Nil);;
+main := fib 5;;
