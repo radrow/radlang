@@ -47,6 +47,7 @@ data RawExpr
   | RawExprIf (NonEmpty (RawExpr, RawExpr)) RawExpr
   | RawExprCase RawExpr (NonEmpty (Pattern, RawExpr))
   | RawExprFor [ForComphr] RawExpr
+  | RawExprList [RawExpr]
   deriving(Eq, Show)
 
 

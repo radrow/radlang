@@ -252,6 +252,9 @@ processRawExpr = \case
       let cont = RawExprLambda (PVar n:|[]) (RawExprFor t e)
       processRawExpr $ RawExprApplication (RawExprVal "bind") (v:|[cont])
   RawExprFor [] e -> processRawExpr e
+  RawExprList [] -> pure $ Val "Nil"
+  RawExprList (h:t) ->
+      processRawExpr $ RawExprApplication (RawExprVal "Cons") (h:|[RawExprList t])
 
 
 

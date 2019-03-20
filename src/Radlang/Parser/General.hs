@@ -48,6 +48,9 @@ paren = between (symbol "(") (symbol ")")
 brac :: Parser a -> Parser a
 brac = between (symbol "{") (symbol "}")
 
+sqbrac :: Parser a -> Parser a
+sqbrac = between (symbol "[") (symbol "]")
+
 lId :: Parser Name
 lId = lex $ do
   c <- lowerChar

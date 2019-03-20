@@ -144,6 +144,7 @@ exprSimple = msum
   [ mzero
   , valE
   , litE
+  , listE
   , paren expr
   ]
 
@@ -248,3 +249,6 @@ forE = do
     ]) (operator "|")
   e <- expr
   pure $ RawExprFor comphrs e
+
+listE :: Parser RawExpr
+listE = sqbrac $ RawExprList <$> sepBy expr (symbol ",")
