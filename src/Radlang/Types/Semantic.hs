@@ -44,7 +44,7 @@ data TypedExpr where
 
 -- |Value stored in the dataspace. May be evaluated or not
 data Data
-  = Lazy Namespace Stacktrace DataId TypedExpr
+  = Lazy Namespace Stacktrace DataId (Evaluator Data)
   | Strict StrictData
   | Ref DataId
 
@@ -62,7 +62,6 @@ data StrictData
   | DataBool Bool
   | DataChar Char
   | DataADT Name [Data]
-  -- | DataLambda Namespace Name TypedExpr
   | DataFunc Name (Data -> Evaluator Data)
 
 instance Show StrictData where

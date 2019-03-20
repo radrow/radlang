@@ -18,7 +18,6 @@ import System.IO.Unsafe
 import Radlang.Parser
 import Radlang.Types hiding (Data)
 import Radlang.Desugar
-import Radlang.Typechecker
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
@@ -66,13 +65,10 @@ rdl :: QuasiQuoter
 rdl = QuasiQuoter { quoteExp = quoteRdlExp }
 
 
-trdl :: QuasiQuoter
-trdl = QuasiQuoter { quoteExp = quoteTypedRdlExp }
-
 
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, line, col) s =
-  let parser = rawProgram <* eof
+  let parser = skipMany controlChar *> rawProgram <* eof
   in case parse parser file s of
     Left e -> fail $ let
       x :: String
@@ -110,12 +106,6 @@ parseRdl (file, line, col) s =
     Right p -> either (fail . show) pure $ buildProgram p
 
 
-parseTypedRdl :: Monad m => (String, Int, Int) -> String -> m TypedProgram
-parseTypedRdl loc s = do
-  prg <- parseRdl loc s
-  case (unsafePerformIO $ typecheck (TypecheckerConfig True) prg) of
-    Left e -> fail $ show e
-    Right tprg -> pure tprg
 
 
 quoteRdlExp :: String -> TH.ExpQ
@@ -128,13 +118,3 @@ quoteRdlExp s = do
   e <- parseRdl pos s
   dataToExpQ (const Nothing) e
 
-
-quoteTypedRdlExp :: String -> TH.ExpQ
-quoteTypedRdlExp s = do
-  loc <- TH.location
-  let pos = ( TH.loc_filename loc
-            , fst (TH.loc_start loc)
-            , snd (TH.loc_start loc)
-            )
-  e <- parseTypedRdl pos s
-  dataToExpQ (const Nothing) e

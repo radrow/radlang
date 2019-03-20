@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 -- |This module is responsible for evaluation of Expr tree into Data
@@ -11,6 +12,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Lens hiding (Lazy, Strict, (<~))
 import Data.Maybe
+import Data.List
 import Prelude hiding (lookup)
 import qualified Data.Map.Strict as M
 
@@ -28,7 +30,8 @@ dataById :: DataId -> Evaluator Data
 dataById i = do
   m <- gets _dsMap
   case M.lookup i m of
-    Nothing -> runtimeError $ "dataById: no such id " <> show i
+    Nothing -> runtimeError $ "dataById: no such id " <> show i <>
+      "\nKnown ids are: " <> show (M.keys m)
     Just x -> pure x
 
 
@@ -36,7 +39,8 @@ idByName :: Name -> Evaluator DataId
 idByName n = do
   m <- asks _envNamespace
   case M.lookup n m of
-    Nothing -> runtimeError $ "idByName: no such name " <> show n
+    Nothing -> runtimeError $ "idByName: no such name " <> show n <>
+      "\nKnown ids are: " <> show (M.keys m)
     Just x -> pure x
 
 
@@ -76,13 +80,17 @@ getNamespace :: Evaluator Namespace
 getNamespace = asks _envNamespace
 
 
-newLazy :: TypedExpr -> Evaluator DataId
+newLazy :: (Evaluator Data) -> Evaluator DataId
 newLazy e = do
   i <- newId
   ns <- getNamespace
   (st, _) <- getStacktraces
   putData i $ Lazy ns st i e
   pure i
+
+
+lazyExpr :: TypedExpr -> Evaluator DataId
+lazyExpr e = newLazy (eval e)
 
 
 newStrict :: StrictData -> Evaluator DataId
@@ -103,7 +111,7 @@ force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Ref i) = force =<< dataById i
 force (Lazy ns st i e) = do
-  forced <- force =<< withStacktrace st (withNamespace ns (eval e))
+  forced <- force =<< withStacktrace st (withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -152,8 +160,9 @@ matchDataToPattern pat dat = case pat of
 applyDataSubst :: DataSubst -> Evaluator Namespace
 applyDataSubst (DataSubst sub) = do
   let assgs = M.toList sub
+  ns <- getNamespace
   ids <- traverse (\(_, d) -> newData d) assgs
-  pure $ M.fromList $ zip (fmap fst assgs) ids
+  pure $ M.union (M.fromList $ zip (fmap fst assgs) ids) ns
 
 
 eval :: TypedExpr -> Evaluator Data
@@ -167,7 +176,7 @@ eval = \case
     LitChar c -> pure $ Strict $ DataChar c
   TypedApplication f a -> do
     fd <- force =<< eval f
-    aId <- newLazy a
+    aId <- lazyExpr a
     case fd of
       DataFunc name func -> withStackElems name $ dataById aId >>= func
       _ -> wtf "Call not a function!"
@@ -187,8 +196,7 @@ eval = \case
 
         bindings :: [([Pattern], TypedExpr, DataSubst)] -> Evaluator Data
         bindings alts = do
-          let functions = filter (\(ps, _, _) -> not $ null ps) alts
-              finalized = filter (\(ps, _, _) -> null ps) alts
+          let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
 
               asFunction :: Data -> Evaluator Data
               asFunction d = do
@@ -200,33 +208,32 @@ eval = \case
                   in mapMaybe id <$> mapM extractor functions
                 bindings conts
 
-          if null functions
-            then if null finalized
-            then domainGuard
-            else do let ([], te, ds) = head finalized
-                    newns <- applyDataSubst ds
-                    traceM $ show newns
-                    Ref <$> withNamespace newns (newLazy te)
-            else pure $ Strict $ DataFunc "patternMatch" asFunction
+          if | null functions && null finalized -> domainGuard
+             | null functions -> do
+                 let ([], te, ds) = head finalized
+                 newns <- applyDataSubst ds
+                 Ref <$> withNamespace newns (lazyExpr te)
+             | otherwise -> pure $ Strict $ DataFunc "patternMatch" asFunction
 
-    dats <- flip mapM aslist (\(_, (typ, a)) ->
-                                (withNamespace recNs $
-                                  bindings $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a))
+    dats <- flip mapM aslist $
+            (\(_, (_, a)) ->
+                (withNamespace recNs $
+                  Ref <$> newLazy (bindings (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a))
+                ))
 
     forM_ (zip ids dats) $ uncurry putData
 
     withNamespace recNs $ eval e
 
 
--- evalProgram :: TypedProgram -> Evaluator Data
--- evalProgram tp =
-
-
-
-runEvaluator :: Evaluator a -> Either ErrMsg a
-runEvaluator (Evaluator e)
-  = flip evalState (Dataspace M.empty 0)
-  $ flip runReaderT (Env M.empty (TypeEnv M.empty) [] [])
+runEvaluator :: Namespace
+             -> (M.Map DataId Data)
+             -> TypeEnv
+             -> Evaluator a
+             -> Either ErrMsg a
+runEvaluator ns ds ts (Evaluator e)
+  = flip evalState (Dataspace ds (M.size ds))
+  $ flip runReaderT (Env ns ts [] [])
   $ runExceptT e
 
 runEvaluatorWithState :: Evaluator a -> (Either ErrMsg a, Dataspace)

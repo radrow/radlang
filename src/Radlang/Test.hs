@@ -1,14 +1,22 @@
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE QuasiQuotes #-}
 
+
 module Radlang.Test where
 
+import qualified Language.Haskell.TH as TH
+import Language.Haskell.TH.Quote
 import qualified Data.Map as M
 
 import Radlang.Types
+import Radlang.Intro
+import Radlang.Error
 import Radlang.QQ
+import Radlang.TypedQQ
+import Radlang.Evaluator
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -26,6 +34,7 @@ printTypeEnv (TypeEnv te) =
       l = M.toList te
   in
   unlines $ fmap (\(v, t) -> v <> " : " <> show t) l
+
 
 
 
@@ -73,12 +82,24 @@ printTypeEnv (TypeEnv te) =
 
 -- |]
 
-mini :: Program
-mini = [rdl|x := let f : Int -> Int
-       | f g := 3
-in f 2;;
+mini :: TypedProgram
+mini = [trdl|
+newtype Bool := True | False;;
+iff True a _ := a;;
+iff False _ b := b;;
+
+const a _ := a;;
+main := plusInt 1 2;;
 
 |]
+
+-- runPrg tp = let (res, ds) = run (TypedLet (tprgBindings tp) (TypedVal "main"))
+--   in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)
+runPrg tp =
+  let mock = TypedLet (tprgBindings tp) (TypedVal "main")
+      (ns, ds, _) = primitiveSpace
+      res = runEvaluator ns ds (TypeEnv M.empty) $ eval mock >>= force
+   in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)
 
 -- tt :: IO (Either ErrMsg TypeEnv)
 -- tt = typecheck (TypecheckerConfig True) sample
