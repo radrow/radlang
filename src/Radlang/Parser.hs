@@ -2,7 +2,7 @@
 
 module Radlang.Parser ( module Radlang.Parser.Toplevel
                       , parseProgram
-                      , fullProgram
+                      , parseRDL
                       ) where
 
 import Data.Bifunctor
@@ -13,9 +13,9 @@ import Radlang.Parser.Toplevel
 import Radlang.Parser.General
 import Radlang.Types
 
-fullProgram :: Parser RawProgram
-fullProgram = (skipMany controlChar *> rawProgram <* eof)
+parseProgram :: Parser RawProgram
+parseProgram = (skipMany controlChar *> rawProgram <* eof)
 
-parseProgram :: String -> String -> Either ErrMsg RawProgram
-parseProgram file inp = first (ParseError . concat . fmap parseErrorPretty . bundleErrors) $
-  parse fullProgram file inp
+parseRDL :: String -> String -> Either ErrMsg RawProgram
+parseRDL file inp = first (ParseError . concat . fmap parseErrorPretty . bundleErrors) $
+  parse parseProgram file inp

@@ -115,6 +115,16 @@ force (Lazy ns st i e) = do
   putData i (Strict forced)
   pure forced
 
+deepForce :: Data -> Evaluator StrictData
+deepForce (Strict d) = case d of
+  DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
+  _ -> pure d
+deepForce (Ref i) = deepForce =<< dataById i
+deepForce (Lazy ns st i e) = do
+  forced <- deepForce =<< withStacktrace st (withNamespace ns e)
+  putData i (Strict forced)
+  pure forced
+
 
 newtype DataSubst = DataSubst {dsubMap :: M.Map Name Data}
 unionSubst :: DataSubst -> DataSubst -> DataSubst
@@ -154,7 +164,8 @@ matchDataToPattern pat dat = case pat of
           msubs <- sequence <$> mapM (uncurry matchDataToPattern) (zip pts args)
           pure $ fmap (foldl (\s s1 -> DataSubst $ M.union (dsubMap s) (dsubMap s1)) (DataSubst M.empty)) msubs
         else pure Nothing
-      _ -> runtimeError "Illegal ADT match"
+      _ -> wtf $ "Illegal ADT match:\ndata=" <> show sdat <>
+                             ",\nname=" <> n <> ", args=" <> show pts
 
 
 applyDataSubst :: DataSubst -> Evaluator Namespace
@@ -179,7 +190,7 @@ eval = \case
     aId <- lazyExpr a
     case fd of
       DataFunc name func -> withStackElems name $ dataById aId >>= func
-      _ -> wtf "Call not a function!"
+      _ -> wtf $ "Call not a function! " <> show fd
   TypedLet assgs e -> do
     ns <- getNamespace
 
@@ -241,42 +252,3 @@ runEvaluatorWithState (Evaluator e)
   = flip runState (Dataspace M.empty 0)
   $ flip runReaderT (Env M.empty (TypeEnv M.empty) [] [])
   $ runExceptT e
-
-run :: TypedExpr -> (Either ErrMsg StrictData, Dataspace)
-run e = runEvaluatorWithState $ eval e >>= force
-t :: Type
-t = TypeVarRigid $ TypeVar "TYPE" KType
-ex :: Integer -> TypedExpr
-ex i = TypedApplication
-     (TypedLet
-       (M.singleton "f" (t, [ ([PLit $ LitInt 4], TypedLit (LitInt 222))
-                            , ([PVar "x"], TypedVal "x")
-                            ]))
-       (TypedVal "f"))
-     (TypedLit (LitInt i))
-
-ex2 :: TypedExpr
-ex2 = TypedLet (M.singleton "x" (t, [([], TypedLit (LitInt 3))])) (TypedVal "x")
-
-ex3 :: Integer -> Integer -> TypedExpr
-ex3 i j = TypedApplication (TypedApplication
-     (TypedLet
-       (M.singleton "f" (t, [ ([PLit $ LitInt 3, PLit $ LitInt 4], TypedLit (LitInt 222))
-                            , ([PLit $ LitInt 3, PVar "x"], TypedVal "x")
-                            ]))
-       (TypedVal "f"))
-     (TypedLit (LitInt i))) (TypedLit (LitInt j))
-
-lazyjeb :: TypedExpr
-lazyjeb =
-  (TypedLet  -- let
-    (M.fromList  -- const _ = 2137
-      [ ("const", (t, [
-                      ([PWildcard], TypedLit (LitInt 2137))
-                      ]))
-      -- , ("empty", (t, ([]))) -- empty = undefined
-      ]) $ TypedApplication
-    (TypedVal "const") -- in (const 1488)
-    (TypedLit $ LitInt 1488)
-    -- (TypedApplication (TypedVal "empty") (TypedLi(LitIn123)))
-  )

@@ -322,15 +322,16 @@ runTypecheckerT ce te tc
 typecheckEmpty :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypedProgram)
 typecheckEmpty tc p =
   let (_, _, ts) = primitiveSpace
-  in fmap (fmap $ uncurry $ flip TypedProgram) $ runTypecheckerT
-  (prgClassEnv p)
-  (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
-  tc (inferTypeBindingGroups $ prgBindings p)
+  in fmap (fmap $ \(te, tb) -> TypedProgram tb te (prgDataspace p) (prgNamespace p)) $ runTypecheckerT
+     (prgClassEnv p)
+     (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
+     tc (inferTypeBindingGroups $ prgBindings p)
 
 typecheck :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypedProgram)
 typecheck tc pp =
-  let p = withIntro pp in
-    fmap (fmap $ uncurry $ flip TypedProgram) $ runTypecheckerT
-    (prgClassEnv p)
-    (TypeEnv $ M.union (types stdTypeEnv) (types $ prgTypeEnv p))
-    tc (inferTypeBindingGroups $ prgBindings p)
+  let p = withIntro pp
+      (_, _, ts) = primitiveSpace
+  in fmap (fmap $ \(te, tb) -> TypedProgram tb te (prgDataspace p) (prgNamespace p)) $ runTypecheckerT
+     (prgClassEnv p)
+     (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
+     tc (inferTypeBindingGroups $ prgBindings p)

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cd7476e0c002c6ba229b5a50ec4a712026fcabd827093f8b3b7c4a90022e9e2e
+-- hash: f264e658ffe7da4d1c52b2dcb7769774c839b55924523176aa358c3c7953bcb6
 
 name:           radlang
 version:        1.0.1
@@ -30,21 +30,27 @@ library
       Radlang
       Radlang.ClassEnvBuild
       Radlang.DependencyAnalysis
+      Radlang.Desugar
+      Radlang.Error
       Radlang.Evaluator
       Radlang.Helpers
+      Radlang.Intro
+      Radlang.Kindchecker
       Radlang.Parser
       Radlang.Parser.Expr
       Radlang.Parser.General
       Radlang.Parser.Toplevel
       Radlang.Parser.Type
       Radlang.QQ
-      Radlang.Stdlib
       Radlang.Test
       Radlang.Typechecker
       Radlang.Typedefs
+      Radlang.TypedQQ
       Radlang.Types
       Radlang.Types.General
+      Radlang.Types.Kindcheck
       Radlang.Types.Semantic
+      Radlang.Types.Syntax
       Radlang.Types.Typesystem
       Radlang.Typesystem.Typesystem
   other-modules:
@@ -57,11 +63,12 @@ library
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers >=0.6.0.1
+    , hashtables
+    , lens
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , raw-strings-qq
-    , set-monad >=0.3.0.0
     , syb
     , template-haskell
     , transformers
@@ -78,12 +85,13 @@ executable rdl
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers >=0.6.0.1
+    , hashtables
+    , lens
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
     , raw-strings-qq
-    , set-monad >=0.3.0.0
     , syb
     , template-haskell
     , transformers
@@ -100,12 +108,13 @@ executable rdli
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers >=0.6.0.1
+    , hashtables
+    , lens
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
     , raw-strings-qq
-    , set-monad >=0.3.0.0
     , syb
     , template-haskell
     , transformers
@@ -116,6 +125,7 @@ test-suite radlang-test
   main-is: Main.hs
   other-modules:
       Test
+      TT
       Paths_radlang
   hs-source-dirs:
       test
@@ -124,12 +134,13 @@ test-suite radlang-test
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
     , containers >=0.6.0.1
+    , hashtables
+    , lens
     , megaparsec >=6.5
     , mtl
     , parser-combinators
     , radlang
     , raw-strings-qq
-    , set-monad >=0.3.0.0
     , syb
     , template-haskell
     , transformers

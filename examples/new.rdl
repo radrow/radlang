@@ -1,0 +1,14 @@
+
+reverse := fix (\rec acc l -> match l with
+ | (Cons a b) -> rec (Cons a acc) b
+ | Nil -> acc
+ );;
+
+head (Cons a _) := a;;
+
+main := if g then 1 else 2;;
+
+g := True;;
+
+dmain := reverse Nil (Cons 1 (Cons 2 Nil));;
+ddmain := head (Cons 3 Nil);;

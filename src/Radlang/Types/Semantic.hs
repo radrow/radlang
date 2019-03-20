@@ -59,7 +59,6 @@ instance Show Data where
 -- |Value that is in weak-head-normal-form
 data StrictData
   = DataInt Integer
-  | DataBool Bool
   | DataChar Char
   | DataADT Name [Data]
   | DataFunc Name (Data -> Evaluator Data)
@@ -67,7 +66,6 @@ data StrictData
 instance Show StrictData where
   show = \case
     DataInt i -> show i
-    DataBool b -> show b
     DataChar c -> show c
     DataADT n args -> n <> ((\a -> " " <> show a) =<< args)
     -- DataLambda _ n e -> "\\" <> n <> " -> " <> show e
@@ -115,13 +113,17 @@ data Program = Program
   { prgBindings :: [BindingGroup]
   , prgClassEnv :: ClassEnv
   , prgTypeEnv  :: TypeEnv
-  } deriving (Eq, Show)
+  , prgDataspace  :: Dataspace
+  , prgNamespace  :: Namespace
+  } deriving (Show)
 
 
 data TypedProgram = TypedProgram
   { tprgBindings :: TypedBindings
   , tprgTypeEnv :: TypeEnv
-  } deriving (Eq, Show)
+  , tprgDataspace  :: Dataspace
+  , tprgNamespace  :: Namespace
+  } deriving (Show)
 
 
 -- |Declaration that binding has certain type

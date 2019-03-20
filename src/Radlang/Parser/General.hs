@@ -40,7 +40,7 @@ word :: String -> Parser ()
 word w = try $ string w >> notFollowedBy alphaNumChar >> skipComments
 
 operator :: String -> Parser ()
-operator o = try $ string o >> notFollowedBy (oneOf "=+_-)(*&^%$#@![]{}':;\\\".,<>") >> skipComments
+operator o = try $ string o >> notFollowedBy (oneOf "=+_-*&^%$#@![]{}':;\\\".,<>") >> skipComments
 
 paren :: Parser a -> Parser a
 paren = between (symbol "(") (symbol ")")

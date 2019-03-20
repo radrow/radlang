@@ -9,6 +9,7 @@ import Radlang.Typesystem.Typesystem
 import Radlang.QQ
 import Radlang.Error
 import Radlang.Evaluator
+import Radlang.Desugar
 
 func2 :: Name -> (Data -> Data -> Evaluator Data) -> StrictData
 func2 name f2 = DataFunc name $ \a1 ->
@@ -44,39 +45,40 @@ primitives =
     )
   , ("eqInt"
     , [] :=> fun tInt (fun tInt tBool)
-    , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) -> pure $ Strict $ DataBool (a == b)
+    , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) ->
+        pure $ Strict $ DataADT (if a == b then "True" else "False") []
     )
 
   , ( "if"
     , [] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A")))
-    , DataFunc "if" $ \bb -> force bb >>= \(DataBool b) ->
+    , DataFunc "if" $ \bb -> force bb >>= \(DataADT b []) ->
         pure $ Strict $ DataFunc "if#true" $ \onTrue ->
         pure $ Strict $ DataFunc "if#false" $ \onFalse ->
-        pure $ if b then onTrue else onFalse
+        pure $ if b == "True" then onTrue else onFalse
     )
   ]
 
 
 intro :: Program
-intro = [rdl|
+intro = either (error . showError) id $ buildProgram [rawrdl|
+newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
+newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
+newtype Bool := True | False;;
+newtype Option (~A : Type) := None | Some ~A;;
 
+bot : ~A;;
 id t := t;;
 const c _ := c;;
 minusIntTets test:= id test;;
 minusInt a b := plusInt a (negInt b);;
 fix f := let x := f x in x;;
 
-newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
-newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
-newtype Bool := True | False;;
-newtype Option (~A : Type) := None | Some ~A;;
-
 |]
 
 primitiveSpace :: (Namespace, M.Map DataId Data, TypeEnv)
 primitiveSpace = foldr folder (M.empty, M.empty, TypeEnv M.empty) primitives where
   folder (name, typ, def) (ns, ds, ts) =
-    let nextId = -(M.size ns) -- FIXME ANDRZEJ TO JEBNIE
+    let nextId = -(M.size ns) - 1 -- FIXME ANDRZEJ TO JEBNIE
     in ( M.insert name nextId ns
        , M.insert nextId (Strict def) ds
        , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
@@ -89,9 +91,14 @@ mergeClassEnv c1 c2 = ClassEnv
 
 mergePrograms :: Program -> Program -> Program
 mergePrograms r1 r2 = Program
- { prgBindings = prgBindings r1 ++ prgBindings r2
+ { prgBindings = prgBindings r2 ++ prgBindings r1
  , prgClassEnv = prgClassEnv r1 `mergeClassEnv` prgClassEnv r2
  , prgTypeEnv = TypeEnv $ M.union (types $ prgTypeEnv r1) (types $ prgTypeEnv r2)
+ , prgNamespace = M.union (prgNamespace r1) (prgNamespace r2)
+ , prgDataspace = Dataspace
+   { _dsMap = M.union (_dsMap $ prgDataspace r1) (_dsMap $ prgDataspace r2)
+   , _dsIdSupply = _dsIdSupply (prgDataspace r1) + _dsIdSupply (prgDataspace r2)
+   }
  }
 
 withIntro :: Program -> Program

@@ -1,21 +1,29 @@
 -- |Purely functional programming language inspired by Haskell and OCaml
 
 module Radlang
-    ( parseProgram
-    , module Radlang.Types
-    , module Radlang.Evaluator
-    , module Radlang.TypecheckerDebug
-    , module Radlang.Parser
+    ( runProgram
+    , typecheck
+    , parseRDL
+    , buildProgram
     ) where
 
-import Data.Bifunctor(bimap)
-import Text.Megaparsec as MP(parse, parseErrorPretty, eof)
+import Data.Map as M
 
 import Radlang.Parser
 import Radlang.Evaluator
+import Radlang.Intro
 import Radlang.Types
-import Radlang.TypecheckerDebug
+import Radlang.Typechecker
+import Radlang.Desugar
 
--- |Toplevel parser run with desugaring
-parseProgram :: String -> String -> Either String Program
-parseProgram filename code = bimap parseErrorPretty id $ MP.parse (program <* eof) filename code
+import Debug.Trace
+
+
+runProgram :: TypedProgram -> Either ErrMsg StrictData
+runProgram tp = let mock = TypedLet (tprgBindings tp) (TypedVal "main")
+                    (ns, ds, ts) = primitiveSpace
+                in runEvaluator
+                   (tprgNamespace tp `M.union` ns)
+                   (_dsMap (tprgDataspace tp) `M.union` ds)
+                   ts $ eval mock >>= deepForce
+

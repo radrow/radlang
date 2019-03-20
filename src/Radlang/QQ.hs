@@ -8,21 +8,25 @@ import Data.List.NonEmpty as DLNE
 import Data.Generics
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
-import Text.Megaparsec
+import Text.Megaparsec hiding (State)
 import Text.Megaparsec.Char
 import Data.Data
+import Control.Monad.Except
+import Control.Monad.Identity
+import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Data.Set.Internal as S
 import Data.Map.Strict as M
 import System.IO.Unsafe
 
 import Radlang.Parser
 import Radlang.Types hiding (Data)
+import qualified Radlang.Types as RT(Data)
 import Radlang.Desugar
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
-deriving instance Data Program
-deriving instance Data TypedProgram
+deriving instance Data ErrMsg
 deriving instance Data TypedExpr
 deriving instance Data TypeEnv
 deriving instance Data ClassEnv
@@ -61,9 +65,8 @@ rawrdl :: QuasiQuoter
 rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 
 
-rdl :: QuasiQuoter
-rdl = QuasiQuoter { quoteExp = quoteRdlExp }
-
+-- rdl :: QuasiQuoter
+-- rdl = QuasiQuoter { quoteExp = quoteRdlExp }
 
 
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
@@ -87,34 +90,34 @@ quoteRawrdlExp s = do
   e <- parseRawrdl pos s
   dataToExpQ (const Nothing) e
 
-{-# NOINLINE parseRdl #-}
-parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
-parseRdl (file, line, col) s =
-  let parser = do
-        -- let newpos = SourcePos file (mkPos line) (mkPos col)
-        -- updateParserState $ \st ->
-        --   st{statePosState = (statePosState st){
-        --       pstateSourcePos = newpos
-        --       }}
-        skipMany controlChar
-        rawProgram <* eof
-  in case parse parser file s of
-    Left e -> fail $ let
-      x :: String
-      x = concat (fmap parseErrorPretty $ bundleErrors e)
-      in fmap (\c -> if c == '\n' then ' ' else c) x
-    Right p -> either (fail . show) pure $ buildProgram p
+-- {-# NOINLINE parseRdl #-}
+-- parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
+-- parseRdl (file, line, col) s =
+--   let parser = do
+--         -- let newpos = SourcePos file (mkPos line) (mkPos col)
+--         -- updateParserState $ \st ->
+--         --   st{statePosState = (statePosState st){
+--         --       pstateSourcePos = newpos
+--         --       }}
+--         skipMany controlChar
+--         rawProgram <* eof
+--   in case parse parser file s of
+--     Left e -> fail $ let
+--       x :: String
+--       x = concat (fmap parseErrorPretty $ bundleErrors e)
+--       in fmap (\c -> if c == '\n' then ' ' else c) x
+--     Right p -> either (fail . show) pure $ buildProgram p
 
 
 
 
-quoteRdlExp :: String -> TH.ExpQ
-quoteRdlExp s = do
-  loc <- TH.location
-  let pos = ( TH.loc_filename loc
-            , fst (TH.loc_start loc)
-            , snd (TH.loc_start loc)
-            )
-  e <- parseRdl pos s
-  dataToExpQ (const Nothing) e
+-- quoteRdlExp :: String -> TH.ExpQ
+-- quoteRdlExp s = do
+--   loc <- TH.location
+--   let pos = ( TH.loc_filename loc
+--             , fst (TH.loc_start loc)
+--             , snd (TH.loc_start loc)
+--             )
+--   e <- parseRdl pos s
+--   dataToExpQ (const Nothing) e
 

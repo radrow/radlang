@@ -8,6 +8,8 @@ import System.Exit
 import System.IO
 
 import Radlang
+import Radlang.Error
+import Radlang.Types
 
 data Action
   = Eval
@@ -30,7 +32,7 @@ processLine l = case find (\(s, _) -> isPrefixOf s l) commandMap of
 printResult :: Either ErrMsg String -> IO ()
 printResult = \case
   Right r -> putStrLn r
-  Left e -> hPutStrLn stderr e
+  Left e -> hPutStrLn stderr $ showError e
 
 main :: IO ()
 main = forever $ do pure ()

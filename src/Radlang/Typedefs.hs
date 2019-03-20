@@ -8,7 +8,6 @@ import Data.Map.Strict as M
 import Radlang.Helpers
 import Radlang.Types.General
 import Radlang.Types
-import Radlang.Typesystem.Typesystem
 import Radlang.Kindchecker
 
 tRigid :: Name -> Type
@@ -95,23 +94,9 @@ stdDefaults = M.map (Prelude.map (\tn -> TypeVarRigid $ TypeVar tn KType)) $ M.f
   [ "Num" <~ ["Int"]
   ]
 
-
-stdTypeEnv :: TypeEnv
-stdTypeEnv = TypeEnv $ M.fromList
- [ "eq" <~ quantify [TypeVar "~E" KType] ([IsIn "Eq" $ tWobbly "~E"] :=>
-                                          fun (tWobbly "~E")
-                                          (fun (tWobbly "~E") tBool)
-                                         )
- , "plusInt" <~ Forall [] ([] :=> fun tInt (fun tInt tInt))
- , "if" <~ quantify [TypeVar "~A" KType]
-   ([] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A"))))
- ]
-
-
 stdKindspace :: Kindspace
 stdKindspace = Kindspace $ fmap toKindVar $ M.fromList
-  [ "Bool" <~ KType
-  , "Int" <~ KType
+  [ "Int" <~ KType
   , "Func" <~ KFunc KType (KFunc KType KType)
   ]
 

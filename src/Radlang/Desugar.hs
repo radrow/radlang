@@ -14,32 +14,47 @@ import Radlang.Kindchecker
 import Radlang.Error
 import Radlang.ClassEnvBuild
 import Radlang.DependencyAnalysis
+import Debug.Trace
 
 
 dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
 dataspaceInsert d (Dataspace ds next) = (Dataspace (M.insert next d ds) (next+1), next)
 
+
 constructorBindings :: Type -> ConstructorDef -> (Type, Data)
 constructorBindings final c =
   let t = foldr fun final (condefArgs c)
-      d = error "constructor def not implemented"
-  in (t, d)
+      d = buildC [] (condefArgs c)
 
-newTypeBindings :: Dataspace -> NewType -> (TypeEnv, Namespace, Dataspace)
-newTypeBindings dats nt =
+      buildC :: [Data] -> [Type] -> StrictData
+      buildC acc [] = DataADT (condefName c) $ reverse acc
+      buildC acc (_:rest) = DataFunc (condefName c <> "#" <>
+                                       show (length (condefArgs c) - length rest)) $
+                             \arg -> pure $ Strict $ buildC (arg:acc) rest
+  in (t, Strict d)
+
+
+newTypeBindingsCont :: (TypeEnv, Namespace, Dataspace)
+                    -> NewType
+                    -> (TypeEnv, Namespace, Dataspace)
+newTypeBindingsCont (tsPrev, nsPrev, dsPrev) nt =
   let constrs = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
                                in (condefName cd, quantifyAll ([] :=> t), d))
              $ (ntContrs nt)
 
-      tenv = foldl (\te (n, t, _) -> TypeEnv $ M.insert n t (types te))
-        (TypeEnv M.empty) constrs
+      tenv = foldl (\te (n, t, _) -> TypeEnv $ M.insert n t (types te)) tsPrev constrs
 
       (dspace, ids) = foldl (\(ds, prids) (_, _, d) -> let (dds, did) = dataspaceInsert d ds
                                                        in (dds, did:prids)
-                            ) (dats, []) constrs
+                            ) (dsPrev, []) constrs
       nspace = foldl (\ds ((n, _, _), i) -> M.insert n i ds)
-        (M.empty) $ zip constrs ids
+        nsPrev $ zip constrs (reverse ids)
   in (tenv, nspace, dspace)
+
+
+newTypeBindings :: [NewType] -> (TypeEnv, Namespace, Dataspace)
+newTypeBindings = foldl newTypeBindingsCont (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
+
 
 classBindings :: ClassDef -> [(Name, Qual Type)]
 classBindings cd =
@@ -148,19 +163,7 @@ processProgram prg = do
     ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
       (buildClassEnv cdefs impldefs)
     ddefs <- traverse processDataDef (rawprgDataDefs prg)
-    let (ntTEnv, _, _) =
-          let folder :: (TypeEnv, Namespace, Dataspace)
-                     -> (TypeEnv, Namespace, Dataspace)
-                     -> (TypeEnv, Namespace, Dataspace)
-              folder (t, n, d) (nt, nn, nd) =
-                ( (TypeEnv $ M.union (types t) (types nt))
-                , (M.union n nn)
-                , Dataspace {_dsMap = M.union (_dsMap d) (_dsMap nd)
-                            ,_dsIdSupply = max (_dsIdSupply d) (_dsIdSupply nd)
-                            }
-                )
-          in foldl folder (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
-             $ fmap (newTypeBindings (Dataspace M.empty 0)) newtypes
+    let (ntTEnv, ns, ds) = newTypeBindings newtypes
 
         -- classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
         --   ntTEnv $ fmap classBindings cdefs
@@ -174,6 +177,8 @@ processProgram prg = do
                       fmap Left tdecls ++ fmap Right ddefs ++ imps ++ fmap Left cdecls
       , prgClassEnv = ceny
       , prgTypeEnv = ntTEnv
+      , prgNamespace = ns
+      , prgDataspace = ds
       }
 
 

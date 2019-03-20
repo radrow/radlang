@@ -82,16 +82,16 @@ printTypeEnv (TypeEnv te) =
 
 -- |]
 
-mini :: TypedProgram
-mini = [trdl|
-newtype Bool := True | False;;
-iff True a _ := a;;
-iff False _ b := b;;
+-- mini :: TypedProgram
+-- mini = [trdl|
+-- newtype Bool := True | False;;
+-- iff True a _ := a;;
+-- iff False _ b := b;;
 
-const a _ := a;;
-main := plusInt 1 2;;
+-- const a _ := a;;
+-- main := plusInt 1 2;;
 
-|]
+-- |]
 
 -- runPrg tp = let (res, ds) = run (TypedLet (tprgBindings tp) (TypedVal "main"))
 --   in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)

@@ -1,5 +1,5 @@
 type alias String := List Char;;
-newtype Option ~A := Nothing | Some ~A;;
+newtype Option (~A : Type) := Nothing | Some ~A;;
 
 interface Semigroup ~A {
   plus : ~A -> ~A -> ~A;;
