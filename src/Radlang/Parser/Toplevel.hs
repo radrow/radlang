@@ -121,7 +121,7 @@ literal = msum $ fmap try
 -- |Parse character with respect to common escaping rules
 escapedChar :: Parser Char
 escapedChar = do
-  c <- printChar
+  c <- try (printChar >>= \cc -> when (cc == '"') mzero >> pure cc)
   if c /= '\\'
     then pure c
     else printChar >>= \case
