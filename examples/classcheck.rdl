@@ -1,0 +1,17 @@
+interface Monoid (~M : Type) {
+  zero : ~M;;
+  plus : ~M => ~M => ~M;;
+};;
+
+impl Int for Monoid {
+  zero := 0;;
+  plus := plusInt;;
+}
+
+impl Bool for Monoid {
+  zero := False;;
+  plus True True := True;;
+  plus _ _ := False;;
+}
+
+main := if zero then zero else zero;;
