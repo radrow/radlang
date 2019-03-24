@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
-module Radlang.Intro where
+module Radlang.Intro(primitiveSpace, withIntro) where
 
 import qualified Data.Map as M
 
@@ -51,10 +51,20 @@ primitives =
 
   , ( "if"
     , [] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A")))
-    , DataFunc "if" $ \bb -> force bb >>= \(DataADT b []) ->
+    , DataFunc "if expression" $ \bb -> force bb >>= \(DataADT b []) ->
         pure $ Strict $ DataFunc "if#true" $ \onTrue ->
         pure $ Strict $ DataFunc "if#false" $ \onFalse ->
         pure $ if b == "True" then onTrue else onFalse
+    )
+  , ( "withForced"
+    , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
+    , DataFunc "manual force" $ \a ->
+        force a >> pure (Strict $ DataFunc "return after manual force" pure)
+    )
+  , ( "withDeepForced"
+    , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
+    , DataFunc "manual deep force" $ \a ->
+        deepForce a >> pure (Strict $ DataFunc "return after manual deep force" pure)
     )
   ]
 
