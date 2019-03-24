@@ -1,0 +1,7 @@
+reverse acc Nil := acc;;
+reverse acc (Cons a rest) := reverse (Cons a acc) rest;;
+
+f [2] := 1;;
+
+main := "1"
+;;

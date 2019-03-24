@@ -1,150 +1,284 @@
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- |This module is responsible for evaluation of Expr tree into Data
+module Radlang.Evaluator where
 
-module Radlang.Evaluator(evalProgram, evalPrintProgram, force) where
+import           Control.Applicative
+import           Control.Lens               hiding (Lazy, Strict, (<~))
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State.Strict
+import           Data.List
+import qualified Data.Map.Strict            as M
+import           Data.Maybe
+import           Prelude                    hiding (lookup)
 
-import Data.Bifunctor(first)
-import Control.Applicative
-import Control.Monad.State.Strict
-import Control.Monad.Reader
-import Control.Monad.Except
-import Prelude hiding (lookup)
-import qualified Data.Map.Strict as M
-
-import Radlang.Helpers
-import Radlang.Types
-import Radlang.Stdlib
+import           Radlang.Error
+import           Radlang.Types
 
 
+-- |Get value by name
+dataByName :: Name -> Evaluator Data
+dataByName n = idByName n >>= dataById
+
+
+-- |Get value by store id
+dataById :: DataId -> Evaluator Data
+dataById i = do
+  m <- gets _dsMap
+  case M.lookup i m of
+    Nothing -> runtimeError $ "dataById: no such id " <> show i <>
+      "\nKnown ids are: " <> show (M.keys m)
+    Just x -> pure x
+
+
+-- |Get store id of a variable by name
+idByName :: Name -> Evaluator DataId
+idByName n = do
+  m <- asks _envNamespace
+  case M.lookup n m of
+    Nothing -> runtimeError $ "idByName: no such name " <> show n <>
+      "\nKnown ids are: " <> show (M.keys m)
+    Just x -> pure x
+
+
+-- |Update namespace by a single namespace entry
+withAssign :: (Name, DataId) -> Evaluator a -> Evaluator a
+withAssign (n, d) = local $ over envNamespace (M.insert n d)
+
+
+-- |Modify action to be ran in different namespace
+withNamespace :: Namespace -> Evaluator a -> Evaluator a
+withNamespace = local . set envNamespace
+
+
+-- |Modify action to be ran with updated definition stacktrace
+withStackElem :: String -> Evaluator a -> Evaluator a
+withStackElem s = local $ over envDefStacktrace (s:)
+
+
+-- |Modify action to be ran with updated evaluation stacktrace
+withEvalStackElem :: String -> Evaluator a -> Evaluator a
+withEvalStackElem s = local $ over envEvalStacktrace (s:)
+
+
+-- |Modify action to be ran with updated stacktrace
+withStackElems :: String -> Evaluator a -> Evaluator a
+withStackElems s = local $ over envDefStacktrace (s:) . over envEvalStacktrace (s:)
+
+
+-- |Modify action to be ran with different stacktrace
+withDefStacktrace :: Stacktrace -> Evaluator a -> Evaluator a
+withDefStacktrace st = local $ set envDefStacktrace st
+
+
+-- |Get stacktraces from current environment
+getStacktraces :: Evaluator (Stacktrace, EvalStacktrace)
+getStacktraces = liftA2 (,) (asks _envDefStacktrace) (asks _envEvalStacktrace)
+
+
+-- |Insert data over certain id
+putData :: DataId -> Data -> Evaluator ()
+putData i d = modify $ over dsMap (M.insert i d)
+
+
+-- |Get current namespace
 getNamespace :: Evaluator Namespace
-getNamespace = lift ask
+getNamespace = asks _envNamespace
 
-getDataspace :: Evaluator Dataspace
-getDataspace = lift $ lift get
 
-setDataspace :: Dataspace -> Evaluator ()
-setDataspace d = lift $ lift $ put d
-
--- |Insert multiple assignments to namespace
-inserts :: [(Name, Int)] -> Namespace -> Namespace
-inserts as ns = foldl (flip $ uncurry M.insert) ns as
-
--- |Update namespace with new set of names replacing previous bindings
-update :: Namespace -> Namespace -> Namespace
-update = M.union
-
--- |Try to get data by name
-lookupName :: Name -> Evaluator (Maybe Data)
-lookupName n = do
+-- |Create new lazy thunk from evaluator and return id assigned to it
+newLazy :: Evaluator Data -> Evaluator DataId
+newLazy e = do
+  i <- newId
   ns <- getNamespace
-  ds <- fst <$> getDataspace
-  case M.lookup n ns of
-    Just i -> case M.lookup i ds of
-      Just d -> pure $ Just d
-      Nothing -> throwError $ "Unbound id: " <> show i
-    Nothing -> pure Nothing
-
--- |Allocates new data and returns id
-registerData :: Data -> Evaluator DataId
-registerData d = do
-  (ds, count) <- getDataspace
-  put (M.insert (count + 1) d ds, count + 1)
-  pure $ count + 1
+  (st, _) <- getStacktraces
+  putData i $ Lazy ns st i e
+  pure i
 
 
--- |Allocates new data on given id
-updateDataAt :: Data -> DataId -> Evaluator ()
-updateDataAt d i = do
-  (ds, count) <- getDataspace
-  put (M.insert i d ds, count)
-  pure ()
+-- |Create new lazy thunk from expression and return id assigned to it
+lazyExpr :: TypedExpr -> Evaluator DataId
+lazyExpr e =newLazy (eval e)
 
--- |Evals with overbound variable id
-withAssg :: (Name, Int) -> Evaluator a -> Evaluator a
-withAssg (n, d) = local (M.insert n d)
 
--- |Evals with data bound to name
-withData :: (Name, Data) -> Evaluator a -> Evaluator a
-withData (n, d) e = registerData d >>= \i -> withAssg (n <~ i) e
+-- |Insert strict data into dataspace and return its id
+newStrict :: StrictData -> Evaluator DataId
+newStrict d = do
+  i <- newId
+  putData i $ Strict $ d
+  pure i
 
--- |Evals with updated namespace
-withNs :: Namespace -> Evaluator a -> Evaluator a
-withNs n = local (update n)
 
--- |Evals with stdlib included
-withStdlib :: Evaluator a -> Evaluator a
-withStdlib ev = do
-  ns <- fmap M.fromList $ forM stdlib $ \(name, val ::: _) -> do
-    i <- registerData $ Strict val
-    pure (name <~ i)
-  withNs ns ev
+-- |Insert data into fresh place and return its id
+newData :: Data -> Evaluator DataId
+newData d = do
+  i <- newId
+  putData i d
+  pure i
 
--- |Same as `withAssg`, but evaluation performed
-withAssgExpr :: (Name, Int) -> Expr -> Evaluator Data
-withAssgExpr a e = withAssg a (eval e)
 
--- |Same as `withData`, but evaluation performed
-withDataExpr :: (Name, Data) -> Expr -> Evaluator Data
-withDataExpr a e = withData a (eval e)
-
--- |Same as `withNs`, but evaluation performed
-withNsExpr :: Namespace -> Expr -> Evaluator Data
-withNsExpr n e = local (update n) (eval e)
-
--- |Forces evaluation of lazy data
+-- |Evaluate thunk into weak-head normal form
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
-force (Lazy ns i expr) = do
-  forced <- withNsExpr ns expr >>= force
-  updateDataAt (Strict forced) i
+force (Ref i) = force =<< dataById i
+force (Lazy ns st i e) = do
+  forced <- force =<< withDefStacktrace st
+    (withEvalStackElem ("forcing " <> show i) $ (withNamespace ns e))
+  putData i (Strict forced)
   pure forced
 
--- |Forces deeply data
+
+-- |Perform deep evaluation and remove all thunks from the data
 deepForce :: Data -> Evaluator StrictData
-deepForce = force
+deepForce (Strict d) = case d of
+  DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
+  _              -> pure d
+deepForce (Ref i) = deepForce =<< dataById i
+deepForce (Lazy ns st i e) = do
+  forced <- deepForce =<< withDefStacktrace st (withNamespace ns e)
+  putData i (Strict forced)
+  pure forced
 
--- |Evaluator that returns computed result
-eval :: Expr -> Evaluator Data
-eval expr =
-  case expr of
-    Val a -> lookupName a >>= \case
-      Just x -> pure x
-      Nothing -> throwError $ "Unbound value: " <> a
-    ConstInt d -> pure $ Strict $ DataInt d
-    ConstBool d -> pure $ Strict $ DataBool d
-    Application f arg ->
-      eval f >>= force >>= \case
-        DataLambda ns argname e -> do
-          d <- eval arg
-          withNs ns $ withDataExpr (argname <~ d) e
-        DataInternalFunc func -> eval arg >>= func
-        d -> do
-          throwError $ "Function application not into lambda: " <> show d
-    Let defs eIn -> do
-      (_, dcount) <- getDataspace
-      ns <- getNamespace
-      let n = length defs
-          ids = take n [dcount + 1..]
-          idDefs = map (\((a,b,c), i) -> (a,b,c,i)) (zip defs ids)
-          newNs = foldl
-                  (\prevNs (name, _, _, i) -> M.insert name i prevNs)
-                  ns
-                  idDefs
-      forM_ idDefs $ \(_, _, e, i) -> registerData (Lazy newNs i e)
-      withNsExpr newNs eIn
 
-    Lambda name e -> Strict . (\ns -> DataLambda ns name e) <$> ask
+-- |Data substitution used to resolve pattern matching
+newtype DataSubst = DataSubst {dsubMap :: M.Map Name Data}
 
-    If cond then_ else_ -> do
-      c <- force =<< eval cond
-      case c of
-        DataBool b ->
-          if b then eval then_ else eval else_
-        _ -> throwError $ "Not a valid condition: " <> show c
 
--- |Executes Evaluator on given Expr
-evalProgram :: Expr -> Either ErrMsg StrictData
-evalProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= deepForce)) M.empty) (M.empty, 0)
+-- |Union two data substitutions
+unionSubst :: DataSubst -> DataSubst -> DataSubst
+unionSubst (DataSubst s1) (DataSubst s2) = DataSubst $ M.union s1 s2
 
--- |Executes Evaluator and prints result
-evalPrintProgram :: Expr -> Either ErrMsg String
-evalPrintProgram ex = first ("Runtime Error: "<>) $ evalState (runReaderT (runExceptT $ withStdlib (withStdlib $ eval ex >>= runtimeShow )) M.empty) (M.empty, 0)
+
+-- |Try to match data to pattern and return unifying substitution if possible
+matchDataToPattern :: Pattern -> Data -> Evaluator (Maybe DataSubst)
+matchDataToPattern pat dat = case pat of
+  PVar n -> pure $ Just $ DataSubst $ M.singleton n dat
+  PWildcard -> pure $ Just $ DataSubst M.empty
+  PAs n p -> do
+    pp <- matchDataToPattern p dat
+    pure $ DataSubst . M.insert n dat . dsubMap <$> pp
+  PLit l -> do
+    sdat <- force dat
+    case (l, sdat) of
+      (LitInt li, DataInt di) ->
+        if li == di
+        then pure $ Just $ DataSubst M.empty
+        else pure Nothing
+      (LitChar lc, DataChar dc) ->
+        if lc == dc
+        then pure $ Just $ DataSubst M.empty
+        else pure Nothing
+      (LitString [], DataADT "Nil" []) -> pure $ Just $ DataSubst M.empty
+      (LitString (c:rests), DataADT "Cons" [d, rest]) -> do
+        mc <- matchDataToPattern (PLit $ LitChar c) d
+        rc <- matchDataToPattern (PLit $ LitString rests) rest
+        pure $ mplus mc rc
+      _ -> pure Nothing
+  PConstructor n pts -> do
+    sdat <- force dat
+    case sdat of
+      DataADT nadt args ->
+        if n == nadt && length args == length pts
+        then do
+          msubs <- sequence <$> mapM (uncurry matchDataToPattern) (zip pts args)
+          pure $ fmap (foldl (\s s1 -> DataSubst $ M.union (dsubMap s) (dsubMap s1)) (DataSubst M.empty)) msubs
+        else pure Nothing
+      _ -> wtf $ "Illegal ADT match:\ndata=" <> show sdat <>
+                             ",\nname=" <> n <> ", args=" <> show pts
+
+
+-- |Apply data substitution to current namespace
+applyDataSubst :: DataSubst -> Evaluator Namespace
+applyDataSubst (DataSubst sub) = do
+  let assgs = M.toList sub
+  ns <- getNamespace
+  ids <- traverse (\(_, d) -> newData d) assgs
+  pure $ M.union (M.fromList $ zip (fmap fst assgs) ids) ns
+
+
+-- |Evaluate typed expression
+eval :: TypedExpr -> Evaluator Data
+eval = \case
+  TypedVal n -> withStackElems ("reading var " <> n) $ dataByName n
+  TypedLit l -> case l of
+    LitInt i -> pure $ Strict $ DataInt i
+    LitString s ->
+      let folder el li = Strict $ DataADT "Cons" [ Strict $ DataChar el, li]
+      in pure $ foldr folder (Strict $ DataADT "Nil" []) s
+    LitChar c -> pure $ Strict $ DataChar c
+  TypedApplication f a -> do
+    fd <- force =<< eval f
+    aId <- lazyExpr a
+    case fd of
+      DataFunc name func -> withStackElems name $ dataById aId >>= func
+      _                  -> wtf $ "Call not a function! " <> show fd
+  TypedLet assgs e -> withStackElems "let expression" $ do
+    ns <- getNamespace
+
+    let aslist = M.toList assgs
+        names = fmap fst aslist
+
+    ids <- traverse (const newId) names
+
+    let recNs = foldr (uncurry M.insert)
+          ns (zip names ids)
+
+        domainGuard :: Evaluator a
+        domainGuard = runtimeError "Out of domain"
+
+        bindings :: Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
+                 -> Evaluator Data
+        bindings prevGuard level name alts =
+          let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
+              newGuard = if null finalized then prevGuard else do
+                let ([], te, ds) = head finalized
+                newns <- applyDataSubst ds
+                ii <- withNamespace newns (lazyExpr te)
+                pure $ Ref ii
+          in if | null functions && null finalized -> prevGuard
+                | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
+                | null functions -> newGuard
+                | otherwise -> getNamespace >>= \myNs ->
+                    let asFunction :: Data -> Evaluator Data
+                        asFunction d = do
+                          (conts :: [([Pattern], TypedExpr, DataSubst)]) <-
+                            let extractor ((p:ps), te, s) = do
+                                  msub <- matchDataToPattern p d
+                                  pure $ fmap (\sub -> (ps, te, unionSubst sub s)) msub
+                                extractor _ = wtf "extractor match fail"
+                            in mapMaybe id <$> mapM extractor functions
+                          bindings newGuard (level + 1) name conts
+                    in pure $ Strict $ DataFunc
+                       (name <> "#" <> show level) $ withNamespace myNs . asFunction
+
+    withNamespace recNs $ do
+      dats <- flip mapM aslist $
+              (\(n, (_, a)) -> do
+                  let binding = bindings domainGuard 0 n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
+                  Ref <$> newLazy binding
+              )
+
+      forM_ (zip ids dats) $ uncurry putData
+
+      withStackElems "let evaluation" $ eval e
+
+
+-- |Run evaluator and extract the result
+runEvaluator :: Namespace
+             -> (M.Map DataId Data)
+             -> TypeEnv
+             -> Evaluator a
+             -> Either ErrMsg a
+runEvaluator ns ds ts (Evaluator e)
+  = flip evalState (Dataspace ds (M.size ds))
+  $ flip runReaderT (Env ns ts [] [])
+  $ runExceptT e
+
+
+-- |Run evaluator, but keep the dataspace
+runEvaluatorWithState :: Evaluator a -> (Either ErrMsg a, Dataspace)
+runEvaluatorWithState (Evaluator e)
+  = flip runState (Dataspace M.empty 0)
+  $ flip runReaderT (Env M.empty (TypeEnv M.empty) [] [])
+  $ runExceptT e

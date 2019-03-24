@@ -1,0 +1,40 @@
+type alias String := List Char;;
+newtype Option (~A : Type) := Nothing | Some ~A;;
+
+interface Semigroup ~A {
+  plus : ~A -> ~A -> ~A;;
+}
+;;
+
+interface Monoid ~A implies Semigroup { -- implication separated by comma
+  zero : ~A;;
+}
+;;
+
+impl Int for Monoid {
+-- asdasd
+  plus := plusInt;;
+  zero := 0;;  -- note how one can define whole family of instances at once
+};;
+
+
+impl Int for Monoid {
+-- plus (Some a) (Some b) := Some (op a b);;
+-- plus _ _ := None;;
+  zero := Some zero;;
+};;
+
+id : ~A -> ~A;;
+id x := x;;
+
+{-
+k :=
+  let x := 3
+    | y : List Char
+    | y := "XD\n"
+    | z := \x -> id x
+    | w := plus@(2 3 4 5)  -- plus 2 (plus 3 (plus 4 5))
+    | w := @plus(2 3 4 5)  -- plus (plus (plus 2 3) 4) 5
+  in [1,2,3]
+;;
+-}

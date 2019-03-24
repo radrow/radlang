@@ -2,8 +2,11 @@ module Main where
 
 import System.Environment
 import System.IO
+import System.IO.Unsafe
 
 import Radlang
+import Radlang.Error
+import Radlang.Types
 
 main :: IO ()
 main = do
@@ -13,10 +16,10 @@ main = do
         then (,) "<stdin>" <$> getContents
         else (,) (head args) <$> readFile (head args)
   let result = do
-        e <- parseProgram fileName sourceCode
-        t <- typecheck e
-        d <- evalPrintProgram e
-        pure (t, d)
+        rprg <- parseRDL fileName sourceCode
+        prg <- buildProgram rprg
+        tprg <- unsafePerformIO $ typecheck (TypecheckerConfig True) prg
+        runProgram tprg
   case result of
-    Left e -> hPutStrLn stderr e
-    Right (t, d) -> putStrLn $ d <> " : " <> show t
+    Left e -> hPutStrLn stderr $ showError e
+    Right d -> print d

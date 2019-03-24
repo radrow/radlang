@@ -22,12 +22,16 @@ description:         Please see the README on GitHub at <https://github.com/radr
 dependencies:
 - base >= 4.7 && < 5
 - megaparsec >= 6.5
-- containers
+- containers >= 0.6.0.1
 - mtl
 - transformers
 - ansi-terminal >= 0.8.1
-- set-monad >= 0.3.0.0
 - parser-combinators
+- hashtables
+- raw-strings-qq
+- template-haskell
+- syb
+- lens
 
 ghc-options:
   - -Wall
