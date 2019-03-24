@@ -95,8 +95,8 @@ patternList = sqbrac $ sepBy pattern (symbol ",") <&>
 literal :: Parser Literal
 literal = msum $ fmap try
   [ LitInt <$> signed
-  , LitString <$> between
-    (symbol "\"") (symbol "\"") (many escapedChar)
+  , LitString <$> between (symbol "\"") (symbol "\"") (many escapedChar)
+  , LitChar <$> between (symbol "'") (symbol "'") escapedChar
   ]
 
 escapedChar :: Parser Char
@@ -217,19 +217,7 @@ ifE = do
 
 
 litE :: Parser RawExpr
-litE = fmap RawExprLit $ msum $ fmap try
-  [ mzero
-  , constInt
-  , constString
-  ]
-
-
-constInt :: Parser Literal
-constInt = LitInt <$> signed
-
-
-constString :: Parser Literal
-constString = LitString <$> between (symbol "\"") (symbol "\"") (many alphaNumChar)
+litE = RawExprLit <$> literal
 
 
 caseE :: Parser RawExpr
