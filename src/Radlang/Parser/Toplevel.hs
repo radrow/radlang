@@ -7,6 +7,7 @@ import Text.Megaparsec hiding (sepBy1, some)
 import Text.Megaparsec.Char
 
 import qualified Data.Set as S
+import Data.Functor
 
 import Radlang.Types hiding(kind)
 import Radlang.Parser.General
@@ -77,6 +78,7 @@ patternSimple = msum $
   , try $ PAs <$> valName <*> (char '@' >> brac pattern)
   , PVar <$> valName
   , flip PConstructor [] <$> constructorName
+  , patternList
   , paren pattern
   ]
 
@@ -85,6 +87,10 @@ patternComplex = msum
   [ try $ PConstructor <$> constructorName <*> many pattern
   --, PNPlusK
   ]
+
+patternList :: Parser Pattern
+patternList = sqbrac $ sepBy pattern (symbol ",") <&>
+  Prelude.foldr (\a b -> PConstructor "Cons" [a, b]) (PConstructor "Nil" [])
 
 literal :: Parser Literal
 literal = msum $ fmap try
