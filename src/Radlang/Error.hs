@@ -11,6 +11,10 @@ typecheckError :: MonadError ErrMsg m => String -> m a
 typecheckError = throwError . TypecheckError
 
 
+languageError :: MonadError ErrMsg m => String -> m a
+languageError = throwError . LanguageError
+
+
 kindcheckError :: MonadError ErrMsg m => String -> m a
 kindcheckError = throwError . KindcheckError
 
@@ -33,6 +37,7 @@ runtimeError s = do
 showErrorType :: ErrMsg -> String
 showErrorType = \case
   TypecheckError _ -> "Typecheck error"
+  LanguageError _ -> "Language error"
   KindcheckError _ -> "Kindcheck error"
   ParseError _ -> "Parse error"
   ClassEnvError _ -> "While building class environment"
@@ -42,6 +47,7 @@ showErrorType = \case
 showErrorMessage :: ErrMsg -> String
 showErrorMessage = \case
   TypecheckError e -> e
+  LanguageError e -> e
   KindcheckError e -> e
   ParseError e -> e
   ClassEnvError e -> e

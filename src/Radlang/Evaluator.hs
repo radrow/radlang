@@ -206,33 +206,35 @@ eval = \case
         domainGuard :: Evaluator a
         domainGuard = runtimeError "Out of domain"
 
-        bindings :: Int -> Name -> [([Pattern], TypedExpr, DataSubst)] -> Evaluator Data
-        bindings level name alts = do
+        bindings :: Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
+                 -> Evaluator Data
+        bindings prevGuard level name alts =
           let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
-
-              asFunction :: Data -> Evaluator Data
-              asFunction d = do
-                (conts :: [([Pattern], TypedExpr, DataSubst)]) <-
-                  let extractor ((p:ps), te, s) = do
-                        msub <- matchDataToPattern p d
-                        pure $ fmap (\sub -> (ps, te, unionSubst sub s)) msub
-                      extractor _ = wtf "extractor match fail"
-                  in mapMaybe id <$> mapM extractor functions
-                bindings (level + 1) name conts
-
-          if | null functions && null finalized -> domainGuard
-             | null functions -> do
-                 let ([], te, ds) = head finalized
-                 newns <- applyDataSubst ds
-                 ii <- withNamespace newns (lazyExpr te)
-                 pure $ Ref ii
-             | otherwise -> getNamespace >>= \myNs ->
-                 pure $ Strict $ DataFunc (name <> "#" <> show level) $ withNamespace myNs . asFunction
+              newGuard = if null finalized then prevGuard else do
+                let ([], te, ds) = head finalized
+                newns <- applyDataSubst ds
+                ii <- withNamespace newns (lazyExpr te)
+                pure $ Ref ii
+          in if | null functions && null finalized -> prevGuard
+                | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
+                | null functions -> newGuard
+                | otherwise -> getNamespace >>= \myNs ->
+                    let asFunction :: Data -> Evaluator Data
+                        asFunction d = do
+                          (conts :: [([Pattern], TypedExpr, DataSubst)]) <-
+                            let extractor ((p:ps), te, s) = do
+                                  msub <- matchDataToPattern p d
+                                  pure $ fmap (\sub -> (ps, te, unionSubst sub s)) msub
+                                extractor _ = wtf "extractor match fail"
+                            in mapMaybe id <$> mapM extractor functions
+                          bindings newGuard (level + 1) name conts
+                    in pure $ Strict $ DataFunc
+                       (name <> "#" <> show level) $ withNamespace myNs . asFunction
 
     withNamespace recNs $ do
       dats <- flip mapM aslist $
               (\(n, (_, a)) -> do
-                  let binding = bindings 0 n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
+                  let binding = bindings domainGuard 0 n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
                   Ref <$> newLazy binding
               )
 

@@ -25,7 +25,7 @@ type Stacktrace = [String]
 type EvalStacktrace = [String]
 
 
--- |Desugared expression tree ready for evaluation
+-- |Desugared expression tree
 data Expr
   = Val Name
   | Lit Literal
@@ -34,6 +34,7 @@ data Expr
   deriving (Eq, Show, Ord)
 
 
+-- |Expression tree decorated with type annotations
 data TypedExpr where
  TypedVal :: Name -> TypedExpr
  TypedLit :: Literal -> TypedExpr
@@ -67,16 +68,8 @@ instance Show StrictData where
   show = \case
     DataInt i -> show i
     DataChar c -> show c
-    DataADT n args -> n <> ((\a -> " " <> show a) =<< args)
-    -- DataLambda _ n e -> "\\" <> n <> " -> " <> show e
+    DataADT n args -> n <> (((" "<>) . show) =<< args)
     DataFunc n _ -> "<func " <> n <> ">"
-
-
-instance Eq StrictData where
-  (==) = error "TODO: == for StrictData"
-  -- (DataInt a) == (DataInt b) = a == b
-  -- (DataBool a) == (DataBool b) = a == b
-  -- _ == _ = error "Somebody wanted to illegally compare functions" -- we don't compare functions.
 
 
 -- |Left and right side of function definition

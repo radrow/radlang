@@ -9,6 +9,7 @@ data ErrMsg
   | KindcheckError String
   | ClassEnvError String
   | TypecheckError String
+  | LanguageError String
   | RuntimeError [String] [String] String
   deriving (Eq, Show)
 

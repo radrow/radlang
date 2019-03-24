@@ -30,7 +30,7 @@ withTypeEnv te = local $ \s -> s{typeEnv = te}
 -- |Find typescheme in type env
 lookupType :: HasTypeEnv m => Name -> m TypePoly
 lookupType n = getTypeEnv >>= \(TypeEnv te) -> case M.lookup n te of
-  Nothing -> typecheckError $ "Unbound id: " <> n <> "\nValid ids are: " <> show (M.keys te)
+  Nothing -> languageError $ "Unbound id: " <> n <> "\nValid ids are: " <> show (M.keys te)
   Just tp -> pure tp
 
 
@@ -158,6 +158,8 @@ setAltType t (pts, expr) = do
 
 inferTypeAlts :: Type -> Infer [Alt] (Type, [TypedAlt])
 inferTypeAlts t alts = do
+  when (length (nub $ fmap (length . fst) alts) > 1) $
+    languageError "Different number of patterns"
   psts <- mapM inferTypeAlt alts
   void $ mapM (unify t) (fmap snd psts)
   s <- getSubst

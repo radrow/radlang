@@ -76,13 +76,23 @@ newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
 newtype Bool := True | False;;
 newtype Option (~A : Type) := None | Some ~A;;
 
+head (Cons h _) := h;;
 bot : ~A;;
 id t := t;;
 const c _ := c;;
-minusIntTets test:= id test;;
 minusInt a b := plusInt a (negInt b);;
 fix f := let x := f x in x;;
 
+tail (Cons _ t) := t;;
+
+or False False := False;;
+or _ _ := True;;
+
+and True True := True;;
+and _ _ := False;;
+
+forced a := withForced a a;;
+deepForced a := withDeepForced a a;;
 |]
 
 primitiveSpace :: (Namespace, M.Map DataId Data, TypeEnv)
