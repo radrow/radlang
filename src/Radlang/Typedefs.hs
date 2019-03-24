@@ -7,7 +7,6 @@ import           Data.Set              as S
 
 import           Radlang.Kindchecker
 import           Radlang.Types
-import           Radlang.Types.General
 
 
 tRigid :: Name -> Type

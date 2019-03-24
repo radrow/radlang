@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e1b42cea14179d29fdc19046199b4421af5ba7316e4c4f0dd595d6e65cd31c79
+-- hash: bf1ad26b75e72fef9ed553c54299d75b1e035a7e423ae3ee0798238d369263ef
 
 name:           radlang
 version:        1.0.1
@@ -43,7 +43,6 @@ library
       Radlang.Test
       Radlang.Typechecker
       Radlang.Typedefs
-      Radlang.TypedQQ
       Radlang.Types
       Radlang.Types.General
       Radlang.Types.Kindcheck

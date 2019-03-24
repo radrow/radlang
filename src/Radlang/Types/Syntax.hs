@@ -33,6 +33,7 @@ data RawProgram = RawProgram
   { rawprgNewTypes  :: [RawNewType]
   , rawprgTypeDecls :: [RawTypeDecl]
   , rawprgDataDefs  :: [RawDataDef]
+  , rawprgClassDefs :: [RawClassDef]
   , rawprgImplDefs  :: [RawImplDef]
   }
   deriving (Eq, Show)

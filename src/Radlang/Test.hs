@@ -15,7 +15,6 @@ import Radlang.Types
 import Radlang.Intro
 import Radlang.Error
 import Radlang.QQ
-import Radlang.TypedQQ
 import Radlang.Evaluator
 
 -- tt :: IO ()
