@@ -1,10 +1,12 @@
+-- |Types that describe raw AST. Everything marked with "Raw" prefix indicates
+--toplevel parsing objects that face the programmer.
 module Radlang.Types.Syntax where
 
-import Data.List.NonEmpty
+import           Data.List.NonEmpty
 
-import Data.Set
-import Radlang.Types.General
-import Radlang.Types.Typesystem(Kind)
+import           Data.Set
+import           Radlang.Types.General
+import           Radlang.Types.Typesystem (Kind)
 
 
 -- |Raw representation of type in syntax
@@ -28,11 +30,10 @@ data RawProgramPart
 
 -- |AST of program
 data RawProgram = RawProgram
-  { rawprgNewTypes :: [RawNewType]
+  { rawprgNewTypes  :: [RawNewType]
   , rawprgTypeDecls :: [RawTypeDecl]
-  , rawprgDataDefs :: [RawDataDef]
-  , rawprgClassDefs :: [RawClassDef]
-  , rawprgImplDefs :: [RawImplDef]
+  , rawprgDataDefs  :: [RawDataDef]
+  , rawprgImplDefs  :: [RawImplDef]
   }
   deriving (Eq, Show)
 
@@ -51,6 +52,7 @@ data RawExpr
   deriving(Eq, Show)
 
 
+-- |For comprehension to ease monadic programming
 data ForComphr
   = ForVal RawExpr
   | ForBind Name RawExpr
@@ -78,21 +80,21 @@ data Pattern
 -- |AST version of predicate that type belongs to a class
 data RawPred = RawPred
  { rpClass :: Name
- , rpType :: RawType
+ , rpType  :: RawType
  } deriving (Eq, Ord, Show)
 
 
 -- |AST version of qualification of `a` with list of predicates
 data RawQual a = RawQual
-  { rqPreds :: [RawPred]
+  { rqPreds   :: [RawPred]
   , rqContent :: a
   } deriving (Eq, Ord, Show)
 
 
 -- |`newtype` definition
 data RawNewType = RawNewType
-  { rawntName :: Name
-  , rawntArgs :: [(Name, Kind)]
+  { rawntName   :: Name
+  , rawntArgs   :: [(Name, Kind)]
   , rawntContrs :: [RawConstructorDef]}
   deriving (Eq, Ord, Show)
 
@@ -115,23 +117,23 @@ data RawTypeDecl = RawTypeDecl
 data RawDataDef = RawDataDef
   { rawdatadefName :: Name
   , rawdatadefArgs :: [Pattern]
-  , rawdatadefVal :: RawExpr}
+  , rawdatadefVal  :: RawExpr}
   deriving (Eq, Show)
 
 
 -- |AST version of typeclass definition
 data RawClassDef = RawClassDef
-  { rawclassdefName :: Name
-  , rawclassdefArg :: Name
-  , rawclassdefKind :: Kind
-  , rawclassdefSuper :: (Set Name)
+  { rawclassdefName    :: Name
+  , rawclassdefArg     :: Name
+  , rawclassdefKind    :: Kind
+  , rawclassdefSuper   :: (Set Name)
   , rawclassdefMethods :: [RawTypeDecl]}
   deriving (Eq, Show)
 
 
 -- |Implementation of interface
 data RawImplDef = RawImplDef
-  { rawimpldefClass :: Name
-  , rawimpldefType :: RawQual RawType
+  { rawimpldefClass   :: Name
+  , rawimpldefType    :: RawQual RawType
   , rawimpldefMethods :: [RawDataDef]}
   deriving (Eq, Show)

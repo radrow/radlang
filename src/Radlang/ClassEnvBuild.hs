@@ -31,6 +31,15 @@ emptyClassEnv = ClassEnv
   , defaults = [] -- TODO: defaults!
   }
 
+
+-- |Merge two class environments
+mergeClassEnv :: ClassEnv -> ClassEnv -> ClassEnv
+mergeClassEnv c1 c2 = ClassEnv
+  { classes = M.union (classes c1) (classes c2)
+  , defaults = M.union (defaults c1) (defaults c2)
+  }
+
+
 -- |Introduces new class extending given superclasses
 addClass :: Name -> Set Name -> ClassEnvBuilder ()
 addClass n sups = do

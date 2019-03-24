@@ -5,20 +5,21 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE LambdaCase #-}
 
 -- |Types related to typechecking
 
 module Radlang.Types.Typesystem where
 
-import Data.Foldable
-import Control.Monad.Identity
+import           Data.Foldable
+import           Control.Monad.Identity
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
-import  Data.Map.Strict(Map)
+import           Data.Map.Strict(Map)
 import qualified Data.Set as S
-import Data.Set(Set)
+import           Data.Set(Set)
 
 import Radlang.Types.General
 

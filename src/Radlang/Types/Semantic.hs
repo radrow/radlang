@@ -1,18 +1,17 @@
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 -- |Types related to internal program definition and evaluation
 
 module Radlang.Types.Semantic where
 
+import           Control.Lens               hiding (Lazy, Strict)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
-import Control.Lens hiding(Lazy, Strict)
 import           Data.Map.Strict            (Map)
 import           Data.Set                   as S
 
@@ -48,7 +47,6 @@ data Data
   = Lazy Namespace Stacktrace DataId (Evaluator Data)
   | Strict StrictData
   | Ref DataId
-
 
 instance Show Data where
   show = \case
@@ -93,29 +91,32 @@ type ExplBindings = Map Name (TypePoly, [Alt])
 type ImplBindings = Map Name [Alt]
 
 
-type TypedBindings = Map Name (Type, [TypedAlt])
-
 -- |Collection of bindings splitted into explicitly typed and implicitly typed
 -- grouped as strongly connected components in dependency graph and thopologically
 -- sorted
 type BindingGroup = (ExplBindings, [ImplBindings])
 
 
+-- |Explicitly typed bindings with typed expressions
+type TypedBindings = Map Name (Type, [TypedAlt])
+
+
 -- |Full program representation
 data Program = Program
-  { prgBindings :: [BindingGroup]
-  , prgClassEnv :: ClassEnv
-  , prgTypeEnv  :: TypeEnv
-  , prgDataspace  :: Dataspace
-  , prgNamespace  :: Namespace
+  { prgBindings  :: [BindingGroup]
+  , prgClassEnv  :: ClassEnv
+  , prgTypeEnv   :: TypeEnv
+  , prgDataspace :: Dataspace
+  , prgNamespace :: Namespace
   } deriving (Show)
 
 
+-- |Program decorated with type annotations
 data TypedProgram = TypedProgram
-  { tprgBindings :: TypedBindings
-  , tprgTypeEnv :: TypeEnv
-  , tprgDataspace  :: Dataspace
-  , tprgNamespace  :: Namespace
+  { tprgBindings  :: TypedBindings
+  , tprgTypeEnv   :: TypeEnv
+  , tprgDataspace :: Dataspace
+  , tprgNamespace :: Namespace
   } deriving (Show)
 
 
@@ -146,15 +147,15 @@ data DataDef = DataDef
 
 -- |Implementation of interface
 data ImplDef = ImplDef
-  { impldefClass :: Name
-  , impldefType :: Qual Type
+  { impldefClass   :: Name
+  , impldefType    :: Qual Type
   , impldefMethods :: [DataDef]}
   deriving (Eq, Show)
 
 -- |`newtype` definition
 data NewType = NewType
-  { ntName :: Name
-  , ntType :: Type
+  { ntName   :: Name
+  , ntType   :: Type
   , ntContrs :: [ConstructorDef]}
   deriving (Eq, Ord, Show)
 
@@ -168,16 +169,18 @@ data ConstructorDef = ConstructorDef
 
 type Namespace = Map Name DataId
 
+
 -- |Map of value names into ids
-data Env = Env { _envNamespace :: Namespace
-               , _envTypespace :: TypeEnv
-               , _envDefStacktrace :: Stacktrace
+data Env = Env { _envNamespace      :: Namespace
+               , _envTypespace      :: TypeEnv
+               , _envDefStacktrace  :: Stacktrace
                , _envEvalStacktrace :: EvalStacktrace
                }
   deriving (Show)
 
+
 -- |Map of ids into real data
-data Dataspace = Dataspace { _dsMap :: Map DataId Data
+data Dataspace = Dataspace { _dsMap      :: Map DataId Data
                            , _dsIdSupply :: DataId
                            } deriving (Show)
 

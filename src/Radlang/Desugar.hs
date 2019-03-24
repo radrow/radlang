@@ -1,26 +1,32 @@
+-- |tl;dr this module turns "raw" things into "just" things.
+--
+--Here are all utils related to kindcheck applying and desugaring work.
+--This module builds ready to typecheck program from raw collection of
+--definitions and declarations.
 module Radlang.Desugar where
 
-import Control.Monad
-import Control.Monad.Except
-import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import Data.List.NonEmpty(NonEmpty((:|)), cons, toList)
-import Data.Bitraversable
+import           Control.Monad
+import           Control.Monad.Except
+import           Data.Bitraversable
+import           Data.List.NonEmpty            (NonEmpty ((:|)), cons, toList)
+import qualified Data.Map.Strict               as M
+import qualified Data.Set                      as S
 
-import Radlang.Typesystem.Typesystem
-import Radlang.Types
-import Radlang.Typedefs
-import Radlang.Kindchecker
-import Radlang.Error
-import Radlang.ClassEnvBuild
-import Radlang.DependencyAnalysis
-import Debug.Trace
+import           Radlang.ClassEnvBuild
+import           Radlang.DependencyAnalysis
+import           Radlang.Error
+import           Radlang.Kindchecker
+import           Radlang.Typedefs
+import           Radlang.Types
+import           Radlang.Typesystem.Typesystem
 
 
+-- |Innsert element into dataspace and increment the counter
 dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
 dataspaceInsert d (Dataspace ds next) = (Dataspace (M.insert next d ds) (next+1), next)
 
 
+-- |Generate bindings from constructor definition
 constructorBindings :: Type -> ConstructorDef -> (Type, Data)
 constructorBindings final c =
   let t = foldr fun final (condefArgs c)
@@ -34,6 +40,7 @@ constructorBindings final c =
   in (t, Strict d)
 
 
+-- |Process newtype definition and insert it into computed space
 newTypeBindingsCont :: (TypeEnv, Namespace, Dataspace)
                     -> NewType
                     -> (TypeEnv, Namespace, Dataspace)
@@ -52,10 +59,12 @@ newTypeBindingsCont (tsPrev, nsPrev, dsPrev) nt =
   in (tenv, nspace, dspace)
 
 
+-- |Generate bindings from newtypes definition
 newTypeBindings :: [NewType] -> (TypeEnv, Namespace, Dataspace)
 newTypeBindings = foldl newTypeBindingsCont (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
 
 
+-- |Extract type declarations from class definition
 classBindings :: ClassDef -> [(Name, Qual Type)]
 classBindings cd =
   let clspred = IsIn (classdefName cd) (TypeVarWobbly $ TypeVar (classdefArg cd) (classdefKind cd) )
@@ -67,16 +76,20 @@ classBindings cd =
 
   in fmap methodproc (classdefMethods cd)
 
+
+-- |Substitute all name occurences by certain type in qualified type
 replaceTypeVar :: Name -> Type -> Qual Type -> Qual Type
 replaceTypeVar n repl (prd :=> tp) =
   let newt t = case t of
         TypeVarWobbly (TypeVar nw _) -> if n == nw then repl else t
-        TypeVarRigid _ -> t
-        TypeApp tf ta -> TypeApp (newt tf) (newt ta)
-        TypeGeneric _ -> t
+        TypeVarRigid _               -> t
+        TypeApp tf ta                -> TypeApp (newt tf) (newt ta)
+        TypeGeneric _                -> t
       newprd = fmap (\(IsIn c t) -> IsIn c (newt t)) prd
   in newprd :=> newt tp
 
+
+-- |Extract bindings from impl definition
 implBindings :: ClassDef -> ImplDef -> [Either TypeDecl DataDef]
 implBindings cl idef =
   let nameMod :: Name -> Name
@@ -96,6 +109,8 @@ implBindings cl idef =
 
   in fmap Left tdecls ++ fmap Right tdefs
 
+
+-- |Kindcheck and desugar impl definition
 processImplDef :: RawImplDef -> Kindchecker ImplDef
 processImplDef rid = do
   rq <- processQualType (rawimpldefType rid)
@@ -108,14 +123,17 @@ buildProgram :: RawProgram -> Either ErrMsg Program
 buildProgram prg = runKindchecker stdKindspace (buildClassKinds $ rawprgClassDefs prg) (processProgram prg)
 
 
+-- |Merge two explicit binding sets
 unionBindings :: ExplBindings -> ExplBindings -> ExplBindings
 unionBindings e1 e2 =
   let unionIns :: ExplBindings -> Name -> (TypePoly, [Alt]) -> ExplBindings
       unionIns m k v = case M.lookup k m of
-        Nothing -> M.insert k v m
+        Nothing        -> M.insert k v m
         Just (t, alts) -> M.insert k (t, snd v ++ alts) m
   in foldl (\e (n, d) -> unionIns e n d) e1 (M.toList e2)
 
+
+-- |Ensure that no variable occurs twice in pattern set
 checkUniquePatternVars :: [Pattern] -> Kindchecker ()
 checkUniquePatternVars ps = do
   let checkedInsert :: Name -> S.Set Name -> Kindchecker (S.Set Name)
@@ -264,6 +282,7 @@ buildClassKinds cls = ClassKinds $
   M.fromList $ fmap (\cd -> (rawclassdefName cd, rawclassdefKind cd)) cls
 
 
+-- |Kindcheck and process raw type
 processType :: RawType -> Kindchecker Type
 processType = \case
   RawTypeWobbly n -> TypeVarWobbly . TypeVar n <$> (toKind =<< kindOf n)
@@ -275,6 +294,7 @@ processType = \case
   RawTypeFunc tf ta -> processType $ RawTypeApp (RawTypeRigid "Func") (tf:|[ta])
 
 
+-- |Kindcheck and process raw predicate
 processPred :: RawPred -> Kindchecker Pred
 processPred rp = do
   ks <- getKindspace
@@ -283,6 +303,7 @@ processPred rp = do
   pure $ IsIn (rpClass rp) t
 
 
+-- |Kindcheck and process raw qualified type
 processQualType :: RawQual RawType -> Kindchecker (Qual Type)
 processQualType rq = do
   ks <- getKindspace
@@ -292,10 +313,12 @@ processQualType rq = do
   pure $ preds :=> t
 
 
+-- |Kindcheck and process raw type declaration
 processTypeDecl :: RawTypeDecl -> Kindchecker TypeDecl
 processTypeDecl rtd = TypeDecl (rawtdeclName rtd) <$> processQualType (rawtdeclType rtd)
 
 
+-- |Kindcheck and process raw class definition
 processClassDef :: RawClassDef -> Kindchecker ClassDef
 processClassDef rcd = do
   mts <- forM (rawclassdefMethods rcd) $ \mt -> do
@@ -309,6 +332,8 @@ processClassDef rcd = do
     , classdefMethods = mts
     }
 
+
+-- |Kindcheck and process raw newtype definition
 processNewType :: RawNewType -> Kindchecker NewType
 processNewType rnt = do
   myks <- kindlookNewType rnt
@@ -323,6 +348,7 @@ processNewType rnt = do
   pure $ NewType (rawntName rnt) finalType cs
 
 
+-- |Kindcheck and process constructor definition
 processConstrDef :: RawConstructorDef -> Kindchecker ConstructorDef
 processConstrDef rcd = do
   args <- traverse processType (rawcondefArgs rcd)

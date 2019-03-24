@@ -1,31 +1,28 @@
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 -- |This module is responsible for evaluation of Expr tree into Data
-
 module Radlang.Evaluator where
 
-import Control.Applicative
-import Control.Monad.State.Strict
-import Control.Monad.Reader
-import Control.Monad.Except
-import Control.Lens hiding (Lazy, Strict, (<~))
-import Data.Maybe
-import Data.List
-import Prelude hiding (lookup)
-import qualified Data.Map.Strict as M
+import           Control.Applicative
+import           Control.Lens               hiding (Lazy, Strict, (<~))
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State.Strict
+import           Data.List
+import qualified Data.Map.Strict            as M
+import           Data.Maybe
+import           Prelude                    hiding (lookup)
 
-import Debug.Trace
-
-import Radlang.Types
-import Radlang.Error
+import           Radlang.Error
+import           Radlang.Types
 
 
+-- |Get value by name
 dataByName :: Name -> Evaluator Data
 dataByName n = idByName n >>= dataById
 
 
+-- |Get value by store id
 dataById :: DataId -> Evaluator Data
 dataById i = do
   m <- gets _dsMap
@@ -35,6 +32,7 @@ dataById i = do
     Just x -> pure x
 
 
+-- |Get store id of a variable by name
 idByName :: Name -> Evaluator DataId
 idByName n = do
   m <- asks _envNamespace
@@ -44,42 +42,52 @@ idByName n = do
     Just x -> pure x
 
 
+-- |Update namespace by a single namespace entry
 withAssign :: (Name, DataId) -> Evaluator a -> Evaluator a
 withAssign (n, d) = local $ over envNamespace (M.insert n d)
 
 
+-- |Modify action to be ran in different namespace
 withNamespace :: Namespace -> Evaluator a -> Evaluator a
 withNamespace = local . set envNamespace
 
 
+-- |Modify action to be ran with updated definition stacktrace
 withStackElem :: String -> Evaluator a -> Evaluator a
 withStackElem s = local $ over envDefStacktrace (s:)
 
 
+-- |Modify action to be ran with updated evaluation stacktrace
 withEvalStackElem :: String -> Evaluator a -> Evaluator a
 withEvalStackElem s = local $ over envEvalStacktrace (s:)
 
 
+-- |Modify action to be ran with updated stacktrace
 withStackElems :: String -> Evaluator a -> Evaluator a
 withStackElems s = local $ over envDefStacktrace (s:) . over envEvalStacktrace (s:)
 
 
+-- |Modify action to be ran with different stacktrace
 withDefStacktrace :: Stacktrace -> Evaluator a -> Evaluator a
 withDefStacktrace st = local $ set envDefStacktrace st
 
 
+-- |Get stacktraces from current environment
 getStacktraces :: Evaluator (Stacktrace, EvalStacktrace)
 getStacktraces = liftA2 (,) (asks _envDefStacktrace) (asks _envEvalStacktrace)
 
 
+-- |Insert data over certain id
 putData :: DataId -> Data -> Evaluator ()
 putData i d = modify $ over dsMap (M.insert i d)
 
 
+-- |Get current namespace
 getNamespace :: Evaluator Namespace
 getNamespace = asks _envNamespace
 
 
+-- |Create new lazy thunk from evaluator and return id assigned to it
 newLazy :: Evaluator Data -> Evaluator DataId
 newLazy e = do
   i <- newId
@@ -89,10 +97,12 @@ newLazy e = do
   pure i
 
 
+-- |Create new lazy thunk from expression and return id assigned to it
 lazyExpr :: TypedExpr -> Evaluator DataId
 lazyExpr e =newLazy (eval e)
 
 
+-- |Insert strict data into dataspace and return its id
 newStrict :: StrictData -> Evaluator DataId
 newStrict d = do
   i <- newId
@@ -100,6 +110,7 @@ newStrict d = do
   pure i
 
 
+-- |Insert data into fresh place and return its id
 newData :: Data -> Evaluator DataId
 newData d = do
   i <- newId
@@ -107,6 +118,7 @@ newData d = do
   pure i
 
 
+-- |Evaluate thunk into weak-head normal form
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Ref i) = force =<< dataById i
@@ -116,10 +128,12 @@ force (Lazy ns st i e) = do
   putData i (Strict forced)
   pure forced
 
+
+-- |Perform deep evaluation and remove all thunks from the data
 deepForce :: Data -> Evaluator StrictData
 deepForce (Strict d) = case d of
   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
-  _ -> pure d
+  _              -> pure d
 deepForce (Ref i) = deepForce =<< dataById i
 deepForce (Lazy ns st i e) = do
   forced <- deepForce =<< withDefStacktrace st (withNamespace ns e)
@@ -127,11 +141,16 @@ deepForce (Lazy ns st i e) = do
   pure forced
 
 
+-- |Data substitution used to resolve pattern matching
 newtype DataSubst = DataSubst {dsubMap :: M.Map Name Data}
+
+
+-- |Union two data substitutions
 unionSubst :: DataSubst -> DataSubst -> DataSubst
 unionSubst (DataSubst s1) (DataSubst s2) = DataSubst $ M.union s1 s2
 
 
+-- |Try to match data to pattern and return unifying substitution if possible
 matchDataToPattern :: Pattern -> Data -> Evaluator (Maybe DataSubst)
 matchDataToPattern pat dat = case pat of
   PVar n -> pure $ Just $ DataSubst $ M.singleton n dat
@@ -169,6 +188,7 @@ matchDataToPattern pat dat = case pat of
                              ",\nname=" <> n <> ", args=" <> show pts
 
 
+-- |Apply data substitution to current namespace
 applyDataSubst :: DataSubst -> Evaluator Namespace
 applyDataSubst (DataSubst sub) = do
   let assgs = M.toList sub
@@ -177,6 +197,7 @@ applyDataSubst (DataSubst sub) = do
   pure $ M.union (M.fromList $ zip (fmap fst assgs) ids) ns
 
 
+-- |Evaluate typed expression
 eval :: TypedExpr -> Evaluator Data
 eval = \case
   TypedVal n -> withStackElems ("reading var " <> n) $ dataByName n
@@ -191,7 +212,7 @@ eval = \case
     aId <- lazyExpr a
     case fd of
       DataFunc name func -> withStackElems name $ dataById aId >>= func
-      _ -> wtf $ "Call not a function! " <> show fd
+      _                  -> wtf $ "Call not a function! " <> show fd
   TypedLet assgs e -> withStackElems "let expression" $ do
     ns <- getNamespace
 
@@ -243,6 +264,7 @@ eval = \case
       withStackElems "let evaluation" $ eval e
 
 
+-- |Run evaluator and extract the result
 runEvaluator :: Namespace
              -> (M.Map DataId Data)
              -> TypeEnv
@@ -253,6 +275,8 @@ runEvaluator ns ds ts (Evaluator e)
   $ flip runReaderT (Env ns ts [] [])
   $ runExceptT e
 
+
+-- |Run evaluator, but keep the dataspace
 runEvaluatorWithState :: Evaluator a -> (Either ErrMsg a, Dataspace)
 runEvaluatorWithState (Evaluator e)
   = flip runState (Dataspace M.empty 0)

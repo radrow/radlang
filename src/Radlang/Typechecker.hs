@@ -1,28 +1,28 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-#LANGUAGE MultiWayIf #-}
-{-#LANGUAGE ScopedTypeVariables #-}
-{-#LANGUAGE OverloadedLists #-}
+{-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Radlang.Typechecker where
 
-import Data.List as DL
-import qualified Data.Map.Strict as M
-import Data.Functor
-import Control.Monad.State.Strict
-import Control.Monad.Reader
-import Control.Monad.Except
+import           Control.Monad.Except
+import           Control.Monad.Reader
+import           Control.Monad.State.Strict
+import           Data.Functor
+import           Data.List                     as DL
+import qualified Data.Map.Strict               as M
 
-import Radlang.Types
-import Radlang.Typedefs
-import Radlang.Typesystem.Typesystem
-import Radlang.Error
-import Radlang.Intro
+import           Radlang.Error
+import           Radlang.Intro
+import           Radlang.Typedefs
+import           Radlang.Types
+import           Radlang.Typesystem.Typesystem
 
 
 dbg :: MonadIO m => String -> m ()
 dbg s = liftIO $ putStrLn ("DEBUG: " <> s)
 
 
+-- |Run Typechecker in different type env
 withTypeEnv :: Monad m => TypeEnv -> TypecheckerT m a -> TypecheckerT m a
 withTypeEnv te = local $ \s -> s{typeEnv = te}
 
@@ -60,8 +60,12 @@ freshInst (Forall ks qt) = do
   ts <- mapM (newVar "_Inst") ks
   pure $ instantiate ts qt
 
+
+-- |Given `e` infer qualified `t`
 type Infer e t = e -> TypecheckerT IO ([Pred], t)
 
+
+-- |Get type of Expr
 inferTypeExpr :: Infer Expr Type
 inferTypeExpr = \case
   Val v -> do
@@ -82,6 +86,7 @@ inferTypeExpr = \case
     pure (ps ++ qs, t)
 
 
+-- |Decorate 'Expr' tree with types to match given type
 setExprType :: Type -> Expr -> TypecheckerT IO TypedExpr
 setExprType t = \case
   Val v -> pure $ TypedVal v
@@ -89,7 +94,6 @@ setExprType t = \case
   Let binds e -> do
     as <- getTypeEnv
     (_, (as', tb)) <- inferTypeBindingGroup binds
-    -- tb <- entypeBinds binds
     typedE <- withTypeEnv (as' <> as) $ setExprType t e
     pure $ TypedLet tb typedE
   Application f a -> do
@@ -101,6 +105,7 @@ setExprType t = \case
     pure $ TypedApplication typedf typeda
 
 
+-- |Infer type of literal value
 inferTypeLiteral :: Infer Literal Type
 inferTypeLiteral = \case
   -- LitInt _ -> newVar "_LI" KType >>= \v -> pure ([IsIn "Num" v], v)
@@ -108,6 +113,8 @@ inferTypeLiteral = \case
   LitString _ -> pure ([], tString)
   LitChar _ -> pure ([], tChar)
 
+
+-- |Infer pattern and get it's type and updated type env
 inferTypePattern :: Infer Pattern (TypeEnv, Type)
 inferTypePattern = \case
   PVar i -> newVar "_PV" KType >>= \v ->
@@ -125,6 +132,8 @@ inferTypePattern = \case
     unify t (foldr fun t' ts)
     pure (ps ++ qs, (tspace, t'))
 
+
+-- |Infer types of multiple patterns
 inferTypePatterns :: Infer [Pattern] (TypeEnv, [Type])
 inferTypePatterns pats = do
   psats <- mapM inferTypePattern pats
@@ -135,6 +144,7 @@ inferTypePatterns pats = do
   pure (ps, (as, ts))
 
 
+-- |Infer type of whole alt
 inferTypeAlt :: Infer Alt Type
 inferTypeAlt (pats, e) = do
   as <- getTypeEnv
@@ -143,19 +153,21 @@ inferTypeAlt (pats, e) = do
   pure (ps ++ qs, foldr fun t ts)
 
 
+-- |Decorate alt with type annotations
 setAltType :: Type -> Alt -> TypecheckerT IO TypedAlt
 setAltType t (pts, expr) = do
   as <- getTypeEnv
   (_, (as', _)) <- inferTypePatterns pts
   let dropFun (TypeApp _ resType) = resType
-      dropFun _ = wtf "Bad alt function type"
-      dropFuns [] tp = tp
+      dropFun _                   = wtf "Bad alt function type"
+      dropFuns [] tp       = tp
       dropFuns (_:rest) tp = dropFuns rest (dropFun tp)
       typeForExpr = dropFuns pts t
   typed <- withTypeEnv (as' <> as) $ setExprType typeForExpr expr
   pure (pts, typed)
 
 
+-- |Infer type of list of alts, unify them and decorate with type annotations
 inferTypeAlts :: Type -> Infer [Alt] (Type, [TypedAlt])
 inferTypeAlts t alts = do
   when (length (nub $ fmap (length . fst) alts) > 1) $
@@ -178,10 +190,12 @@ split fs gs ps = do
   pure (ds, rs \\ rs')
 
 
+-- |Get all possible ambiguities from type vars that arise from given set of predicates
 ambiguities :: [TypeVar] -> [Pred] -> [Ambiguity]
 ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ free ps \\ vs
 
 
+-- |Get all candidates that may resolve ambiguity
 candidates :: (HasClassEnv m, MonadIO m) => Ambiguity -> m [Type]
 candidates (v, qs) = getClassEnv >>= \ce ->
   let is = fmap (\(IsIn i _) -> i) qs
@@ -189,18 +203,15 @@ candidates (v, qs) = getClassEnv >>= \ce ->
       -- filt :: [Type] -> m [Type]
       filt tts = flip filterM tts $ \t ->
         and <$> mapM (entail []) [IsIn i t | i <- is]
-  in
-    if all ((TypeVarWobbly v)==) ts
-     && all (`M.member` stdClasses) is
-     && any (`M.member` stdNumClasses) is
-     -- then filt (S.toList $ defaults ce)
-    then filt [def | ii <- is, def <- maybe [] id $ M.lookup ii (defaults ce)]
-     -- && any (`S.member` numClasses) is
-     -- then filt (S.toList $ defaults ce)
+  in if all ((TypeVarWobbly v)==) ts
+        && all (`M.member` stdClasses) is
+        && any (`M.member` stdNumClasses) is
+     then filt [def | ii <- is, def <- maybe [] id $ M.lookup ii (defaults ce)]
      else pure []
 
 
-
+-- |Check whether all ambiguities can be solved. If so, apply given function to ambiguities
+--and first found candidates set
 withDefaults :: (HasClassEnv m, MonadIO m)
              => ([Ambiguity] -> [Type] -> b) -> [TypeVar] -> [Pred] -> m b
 withDefaults f vs ps = do
@@ -210,17 +221,21 @@ withDefaults f vs ps = do
     Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> show bad <> " are empty"
     Nothing -> pure $ f vps (fmap head tss)
 
+
+-- |Predicates that can be removed after ambiguities are solved
 defaultedPreds :: (HasClassEnv m,
                    MonadIO m)
                => [TypeVar] -> [Pred] -> m [Pred]
 defaultedPreds = withDefaults (\vps _ -> join (fmap snd vps))
 
 
+-- |Substitution to remove ambiguities used in toplevel inference
 defaultSubst :: (HasClassEnv m, MonadIO m)
              => [TypeVar] -> [Pred] -> m Substitution
 defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
 
+-- |Typecheck explicitly typed binding
 inferTypeExpl :: ExplBinding -> TypecheckerT IO ([Pred], (Type, [TypedAlt]))
 inferTypeExpl (_, (sc, alts)) = do
   (qs :=> t) <- freshInst sc
@@ -239,11 +254,13 @@ inferTypeExpl (_, (sc, alts)) = do
      | otherwise -> pure (ds, (t, talts))
 
 
+-- |Implicit binding set is restricted when any of its members has alt with no explicit arguments
 restricted :: Foldable t => t ImplBinding -> Bool
 restricted bs = any simple bs where
   simple (_, alts) = any (null . fst) alts
 
 
+-- |Infer type of binding without type declaration
 inferTypeImpl :: Infer ImplBindings (TypeEnv, TypedBindings)
 inferTypeImpl bs = do
   ts <- mapM (const $ newVar "IMPL" KType) bs
@@ -277,6 +294,7 @@ inferTypeImpl bs = do
                  ))
 
 
+-- |Infer types of all members in binding group
 inferTypeBindingGroup :: Infer BindingGroup (TypeEnv, TypedBindings)
 inferTypeBindingGroup (es, iss) = do
   as <- getTypeEnv
@@ -290,6 +308,7 @@ inferTypeBindingGroup (es, iss) = do
   pure (ps ++ join qss, (as'' <> as', M.union tbindsExp tbindsImp))
 
 
+-- |Sequence type inference of bindings
 inferTypeSeq :: Infer bg (TypeEnv, TypedBindings) -> Infer [bg] (TypeEnv, TypedBindings)
 inferTypeSeq ti = \case
   [] -> pure ([], mempty)
@@ -300,6 +319,7 @@ inferTypeSeq ti = \case
     pure (ps ++ qs, (as'' <> as', M.union tb tbs))
 
 
+-- |Infer types of multiple independent binding groups
 inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO (TypeEnv, TypedBindings)
 inferTypeBindingGroups bgs = do
   (ps, (as', tb)) <- inferTypeSeq inferTypeBindingGroup bgs
@@ -320,7 +340,8 @@ runTypecheckerT ce te tc
   . flip runReaderT (TypecheckerEnv ce te tc)
   . runExceptT . (\(Typechecker t) -> t)
 
--- |Toplevel typechecking of program
+
+-- |Toplevel typechecking of a program without intro
 typecheckEmpty :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypedProgram)
 typecheckEmpty tc p =
   let (_, _, ts) = primitiveSpace
@@ -329,6 +350,8 @@ typecheckEmpty tc p =
      (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
      tc (inferTypeBindingGroups $ prgBindings p)
 
+
+-- |Toplevel typechecking of a program
 typecheck :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypedProgram)
 typecheck tc pp =
   let p = withIntro pp

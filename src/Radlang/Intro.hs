@@ -1,28 +1,36 @@
 {-# LANGUAGE QuasiQuotes #-}
+-- |Standard library, prelude, invocation – call it whatever you like,
+--for me it is "intro"
 module Radlang.Intro(primitiveSpace, withIntro) where
 
-import qualified Data.Map as M
+import qualified Data.Map                      as M
 
-import Radlang.Types
-import Radlang.Typedefs
-import Radlang.Typesystem.Typesystem
-import Radlang.QQ
-import Radlang.Error
-import Radlang.Evaluator
-import Radlang.Desugar
+import           Radlang.ClassEnvBuild         (mergeClassEnv)
+import           Radlang.Desugar
+import           Radlang.Error
+import           Radlang.Evaluator
+import           Radlang.QQ
+import           Radlang.Typedefs
+import           Radlang.Types
+import           Radlang.Typesystem.Typesystem
 
+
+-- |Lift 2 argumented function from Haskell into Radlang
 func2 :: Name -> (Data -> Data -> Evaluator Data) -> StrictData
-func2 name f2 = DataFunc name $ \a1 ->
-  pure $ Strict $ DataFunc (name <> "#2") $ \a2 -> f2 a1 a2
+func2 name f2 = DataFunc (name <> "#0") $ \a1 ->
+  pure $ Strict $ DataFunc (name <> "#1") $ \a2 -> f2 a1 a2
 
 
+-- |Same as 'func2', but with strict arguments
 strictFunc2 :: Name -> (StrictData -> StrictData -> Evaluator Data) -> StrictData
-strictFunc2 name sf2 = DataFunc name $ \a1 ->
-  pure $ Strict $ DataFunc (name <> "#2") $ \a2 -> do
+strictFunc2 name sf2 = DataFunc (name <> "#0") $ \a1 ->
+  pure $ Strict $ DataFunc (name <> "#1") $ \a2 -> do
   a1f <- force a1
   a2f <- force a2
   sf2 a1f a2f
 
+
+-- |Primitive functions that cannot be defined within the language
 primitives :: [(Name, Qual Type, StrictData)]
 primitives =
   [ ("plusInt"
@@ -51,10 +59,9 @@ primitives =
 
   , ( "if"
     , [] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A")))
-    , DataFunc "if expression" $ \bb -> force bb >>= \(DataADT b []) ->
-        pure $ Strict $ DataFunc "if#true" $ \onTrue ->
-        pure $ Strict $ DataFunc "if#false" $ \onFalse ->
-        pure $ if b == "True" then onTrue else onFalse
+    , DataFunc "if expression" $ \bb -> force bb >>= \(DataADT b []) -> pure $ Strict $
+        func2 "if evaluation" $ \onTrue onFalse ->
+                                  pure $ if b == "True" then onTrue else onFalse
     )
   , ( "withForced"
     , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
@@ -69,6 +76,17 @@ primitives =
   ]
 
 
+-- |Spaces that include all primitives
+primitiveSpace :: (Namespace, M.Map DataId Data, TypeEnv)
+primitiveSpace = foldr folder (M.empty, M.empty, TypeEnv M.empty) primitives where
+  folder (name, typ, def) (ns, ds, ts) =
+    let nextId = -(M.size ns) - 1 -- FIXME ANDRZEJ TO JEBNIE
+    in ( M.insert name nextId ns
+       , M.insert nextId (Strict def) ds
+       , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
+
+
+-- |Library that will be included as a prelludium to any user's program
 intro :: Program
 intro = either (error . showError) id $ buildProgram [rawrdl|
 newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
@@ -95,20 +113,8 @@ forced a := withForced a a;;
 deepForced a := withDeepForced a a;;
 |]
 
-primitiveSpace :: (Namespace, M.Map DataId Data, TypeEnv)
-primitiveSpace = foldr folder (M.empty, M.empty, TypeEnv M.empty) primitives where
-  folder (name, typ, def) (ns, ds, ts) =
-    let nextId = -(M.size ns) - 1 -- FIXME ANDRZEJ TO JEBNIE
-    in ( M.insert name nextId ns
-       , M.insert nextId (Strict def) ds
-       , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
 
-mergeClassEnv :: ClassEnv -> ClassEnv -> ClassEnv
-mergeClassEnv c1 c2 = ClassEnv
-  { classes = M.union (classes c1) (classes c2)
-  , defaults = M.union (defaults c1) (defaults c2)
-  }
-
+-- |Merge two programs. Currently used only here to add Intro.
 mergePrograms :: Program -> Program -> Program
 mergePrograms r1 r2 = Program
  { prgBindings = prgBindings r2 ++ prgBindings r1
@@ -121,6 +127,8 @@ mergePrograms r1 r2 = Program
    }
  }
 
+
+-- |Extend program with Intro
 withIntro :: Program -> Program
 withIntro p =
   let (_, _, ts) = primitiveSpace

@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedLists #-}
-
+-- |Collection of some useful aliasses and predefined environments
 module Radlang.Typedefs where
 
-import Data.Set as S
-import Data.Map.Strict as M
+import           Data.Map.Strict       as M
+import           Data.Set              as S
 
-import Radlang.Helpers
-import Radlang.Types.General
-import Radlang.Types
-import Radlang.Kindchecker
+import           Radlang.Kindchecker
+import           Radlang.Types
+import           Radlang.Types.General
+
 
 tRigid :: Name -> Type
 tRigid n = TypeVarRigid $ TypeVar n KType
@@ -74,6 +74,9 @@ isString = Class S.empty $ S.fromList
   [ [] :=> IsIn "IsString" tString
   ]
 
+
+(<~) :: a -> b -> (a, b)
+(<~) = (,)
 
 stdNumClasses :: Map Name Class
 stdNumClasses = M.fromList

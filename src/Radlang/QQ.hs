@@ -4,25 +4,14 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Radlang.QQ where
 
-import Data.List.NonEmpty as DLNE
 import Data.Generics
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
 import Text.Megaparsec hiding (State)
 import Text.Megaparsec.Char
-import Data.Data
-import Control.Monad.Except
-import Control.Monad.Identity
-import Control.Monad.Reader
-import Control.Monad.State.Strict
-import Data.Set.Internal as S
-import Data.Map.Strict as M
-import System.IO.Unsafe
 
 import Radlang.Parser
 import Radlang.Types hiding (Data)
-import qualified Radlang.Types as RT(Data)
-import Radlang.Desugar
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
@@ -61,6 +50,7 @@ deriving instance (Data a) => Data (RawQual a)
 deriving instance (Data a) => Data (Qual a)
 
 
+-- |Qoter of RawProgram
 rawrdl :: QuasiQuoter
 rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 
@@ -69,6 +59,7 @@ rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 -- rdl = QuasiQuoter { quoteExp = quoteRdlExp }
 
 
+-- |Parser for QuasiQuoting
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, line, col) s =
   let parser = skipMany controlChar *> rawProgram <* eof
@@ -80,6 +71,7 @@ parseRawrdl (file, line, col) s =
     Right p -> pure p
 
 
+-- |RawProgram Exp for QuasiQuoting
 quoteRawrdlExp :: String -> TH.ExpQ
 quoteRawrdlExp s = do
   loc <- TH.location

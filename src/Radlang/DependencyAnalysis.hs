@@ -1,13 +1,14 @@
+-- |This module provides utilities to discover dependencies between objects in the program
 module Radlang.DependencyAnalysis where
 
+import           Data.Graph
+import           Data.Map.Strict as M
+import           Data.Set        as S
 
-import Data.Graph
-import Data.Map.Strict as M
-import Data.Set as S
-
-import Radlang.Types
+import           Radlang.Types
 
 
+-- |Get names of variables that expression depends on
 exprDependencies :: Expr -> S.Set Name
 exprDependencies = go S.empty where
   go acc = \case
@@ -18,6 +19,8 @@ exprDependencies = go S.empty where
       ims = S.fromList $ M.keys =<< i
       exs = S.fromList $ M.keys e
 
+
+-- |Get all variables' names in the pattern
 patternFree :: Pattern -> S.Set Name
 patternFree= \case
   PLit _ -> S.empty
@@ -26,13 +29,18 @@ patternFree= \case
   PConstructor _ ps -> S.unions $ fmap patternFree ps
   PVar n -> S.singleton n
 
+
+-- |Get names of variables that alt depends on
 altDeps :: Alt -> S.Set Name
 altDeps (ps, e) = exprDependencies e S.\\ S.unions (fmap patternFree ps)
 
+
+-- |Get names of variables that collection of alt depends on
 altsDeps :: [Alt] -> S.Set Name
 altsDeps = S.unions . fmap altDeps
 
 
+-- |Topologically sorted strongly connected components of dependency graph between alts
 sccOfAlts :: [(Name, [Alt])] -> [[Name]]
 sccOfAlts inp =
   let names = zip (fmap fst inp) [1..]
@@ -51,12 +59,15 @@ sccOfAlts inp =
     CyclicSCC n -> pure n
 
 
+-- |Group implicit bindings by the SCC
 groupBindings :: ImplBindings -> [ImplBindings]
 groupBindings im =
   let entries = M.toList im
       toposorted = sccOfAlts entries
   in fmap (\ns -> M.restrictKeys im (S.fromList ns)) toposorted
 
+
+-- |Toposort the class hierarchy
 classHierarchySort :: [ClassDef] -> [ClassDef]
 classHierarchySort cds =
   let cdi = zip cds [0::Int ..]

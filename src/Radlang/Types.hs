@@ -1,4 +1,4 @@
--- |Definitions of types and instances used in program
+-- |Definitions of types and instances used in program.
 
 module Radlang.Types
   ( module Radlang.Types.General
@@ -8,9 +8,9 @@ module Radlang.Types
   , module Radlang.Types.Kindcheck
   ) where
 
-import Radlang.Types.General
-import Radlang.Types.Typesystem
-import Radlang.Types.Semantic
-import Radlang.Types.Syntax
-import Radlang.Types.Kindcheck
+import           Radlang.Types.General
+import           Radlang.Types.Kindcheck
+import           Radlang.Types.Semantic
+import           Radlang.Types.Syntax
+import           Radlang.Types.Typesystem
 

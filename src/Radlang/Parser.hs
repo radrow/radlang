@@ -5,17 +5,21 @@ module Radlang.Parser ( module Radlang.Parser.Toplevel
                       , parseRDL
                       ) where
 
-import Data.Bifunctor
-import Text.Megaparsec
-import Text.Megaparsec.Char
+import           Data.Bifunctor
+import           Text.Megaparsec
+import           Text.Megaparsec.Char
 
-import Radlang.Parser.Toplevel
-import Radlang.Parser.General
-import Radlang.Types
+import           Radlang.Parser.General
+import           Radlang.Parser.Toplevel
+import           Radlang.Types
 
+
+-- |Parse whole program file
 parseProgram :: Parser RawProgram
 parseProgram = (skipMany controlChar *> rawProgram <* eof)
 
+
+-- |Evaluation of the parser
 parseRDL :: String -> String -> Either ErrMsg RawProgram
 parseRDL file inp = first (ParseError . concat . fmap parseErrorPretty . bundleErrors) $
   parse parseProgram file inp

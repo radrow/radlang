@@ -1,21 +1,20 @@
 module Radlang.Parser.Toplevel where
 
-import Data.List.NonEmpty as DLNE
-import Control.Monad
+import           Control.Monad
 import           Control.Monad.Combinators.NonEmpty
-import Text.Megaparsec hiding (sepBy1, some)
-import Text.Megaparsec.Char
+import           Data.List.NonEmpty                 as DLNE
+import           Text.Megaparsec                    hiding (sepBy1, some)
+import           Text.Megaparsec.Char
 
-import qualified Data.Set as S
-import Data.Functor
+import           Data.Functor
+import qualified Data.Set                           as S
 
-import Radlang.Types hiding(kind)
-import Radlang.Parser.General
-import Radlang.Parser.Type
--- import Radlang.ClassEnvBuild
-
+import           Radlang.Parser.General
+import           Radlang.Parser.Type
+import           Radlang.Types                      hiding (kind)
 
 
+-- |Parse whole program
 rawProgram :: Parser RawProgram
 rawProgram = do
   parts <- many $ rawProgramPart <* operator ";;"
@@ -27,6 +26,8 @@ rawProgram = do
       RPClassDef cd -> rp {rawprgClassDefs = cd : rawprgClassDefs rp}
       RPImplDef imd -> rp {rawprgImplDefs = imd : rawprgImplDefs rp}
 
+
+-- |Parse single component of a program
 rawProgramPart :: Parser RawProgramPart
 rawProgramPart = msum
   [ RPNewType <$> newType
@@ -36,6 +37,8 @@ rawProgramPart = msum
   , RPImplDef <$> implDef
   ]
 
+
+-- |Parse definition of new type
 newType :: Parser RawNewType
 newType = do
   word "newtype"
@@ -49,6 +52,8 @@ newType = do
   constructors <- sepBy constructorDef (operator "|")
   pure $ RawNewType name typeParams constructors
 
+
+-- |Parse new type's constructor definition
 constructorDef :: Parser RawConstructorDef
 constructorDef = do
   name <- constructorName
@@ -56,21 +61,28 @@ constructorDef = do
   pure $ RawConstructorDef name params
 
 
+-- |Parse type declaration
 typeDecl :: Parser RawTypeDecl
 typeDecl = do
   name <- try $ valName <* operator ":"
   t <- qual type_
   pure $ RawTypeDecl name t
 
+
+-- |Parse value definition
 dataDef :: Parser RawDataDef
 dataDef = do
   (name, pats) <- try $ liftM2 (,) valName (many patternSimple <* operator ":=")
   def <- expr
   pure $ RawDataDef name pats def
 
+
+-- |Parse pattern
 pattern :: Parser Pattern
 pattern = patternComplex <|> patternSimple
 
+
+-- |Parse simple pattern that won't collide with neighbors
 patternSimple :: Parser Pattern
 patternSimple = msum $
   [ PLit <$> literal
@@ -82,16 +94,22 @@ patternSimple = msum $
   , paren pattern
   ]
 
+
+-- |Parse pattern that may collidie with neighbors and sometimes will need to be surrounded by braces
 patternComplex :: Parser Pattern
 patternComplex = msum
   [ try $ PConstructor <$> constructorName <*> many pattern
   --, PNPlusK
   ]
 
+
+-- |Parse list pattern
 patternList :: Parser Pattern
 patternList = sqbrac $ sepBy pattern (symbol ",") <&>
   Prelude.foldr (\a b -> PConstructor "Cons" [a, b]) (PConstructor "Nil" [])
 
+
+-- |Parse literal value
 literal :: Parser Literal
 literal = msum $ fmap try
   [ LitInt <$> signed
@@ -99,6 +117,8 @@ literal = msum $ fmap try
   , LitChar <$> between (symbol "'") (symbol "'") escapedChar
   ]
 
+
+-- |Parse character with respect to common escaping rules
 escapedChar :: Parser Char
 escapedChar = do
   c <- printChar
@@ -116,6 +136,7 @@ escapedChar = do
     bad -> fail $ "Cannot escape char '" <> [bad] <> "'"
 
 
+-- |Parse definition of a class
 classDef :: Parser RawClassDef
 classDef = do
   try $ word "interface"
@@ -129,6 +150,7 @@ classDef = do
   pure $ RawClassDef name arg knd sups methods
 
 
+-- |Parse instance definition
 implDef :: Parser RawImplDef
 implDef = do
   try $ word "impl"
@@ -139,12 +161,12 @@ implDef = do
   pure $ RawImplDef cname arg methods
 
 
--- |Main RawExpr parser
+-- |Parse raw language expression
 expr :: Parser RawExpr
 expr = try exprComplex <|> exprSimple
 
 
--- |Simple expressions that never require parenthess around them
+-- |Parse simple expressions that never require parenthess around them
 exprSimple :: Parser RawExpr
 exprSimple = msum
   [ mzero
@@ -169,10 +191,12 @@ exprComplex = msum
   ]
 
 
+-- |Parse named value or variable
 valE :: Parser RawExpr
 valE = RawExprVal <$> (valName <|> constructorName)
 
 
+-- |Parse lambda expression
 lambdaE :: Parser RawExpr
 lambdaE = do
   operator "\\"
@@ -182,6 +206,7 @@ lambdaE = do
   pure $ RawExprLambda arg ex
 
 
+-- |Parse application expression
 applicationE :: Parser RawExpr
 applicationE = do
   fun <- try exprSimple
@@ -189,6 +214,7 @@ applicationE = do
   pure $ RawExprApplication fun chain
 
 
+-- |Parse let expression
 letE :: Parser RawExpr
 letE = do
   word "let"
@@ -198,11 +224,13 @@ letE = do
   pure $ RawExprLet assgs inWhat
 
 
+-- |Parse single assignmen used in `let` expression
 assignment :: Parser (Either RawTypeDecl RawDataDef)
 assignment =
   Left <$> typeDecl <|> Right <$> dataDef
 
 
+-- |Parse `if` expression
 ifE :: Parser RawExpr
 ifE = do
   ifthens <- some $ do
@@ -216,10 +244,12 @@ ifE = do
   pure $ RawExprIf ifthens e
 
 
+-- |Parse literal as expression
 litE :: Parser RawExpr
 litE = RawExprLit <$> literal
 
 
+-- |Parse pattern match
 caseE :: Parser RawExpr
 caseE = do
   word "match"
@@ -234,6 +264,7 @@ caseE = do
   pure $ RawExprCase e matches
 
 
+-- |Parse for comprehension
 forE :: Parser RawExpr
 forE = do
   word "for"
@@ -244,5 +275,7 @@ forE = do
   e <- expr
   pure $ RawExprFor comphrs e
 
+
+-- |Parse list expression
 listE :: Parser RawExpr
 listE = sqbrac $ RawExprList <$> sepBy expr (symbol ",")

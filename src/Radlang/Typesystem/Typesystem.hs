@@ -1,29 +1,27 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE MultiWayIf       #-}
+-- |Utilities to solve tasks related to typechecking, kindchecking and building class env
 module Radlang.Typesystem.Typesystem where
 
+import           Control.Applicative
+import           Control.Monad.Except
+import           Data.List                  as DL
+import qualified Data.Map.Strict            as M
+import           Data.Set                   (Set)
+import qualified Data.Set                   as S
 
-import Data.List as DL
-import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import Data.Set(Set)
-import Control.Applicative
-import Control.Monad.State.Strict
-import Control.Monad.Except
-
-import Radlang.Types
-import Radlang.Error
-
-import Debug.Trace
+import           Radlang.Error
+import           Radlang.Types
 
 
--- |Gets superclasses of class by name
+-- |Get direct superclasses of class by name
 super :: HasClassEnv m => Name -> m (Set Name)
 super n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class is _) -> pure is
   Nothing -> classEnvError $ "superclass lookup: " <> n <> " not defined"
 
 
+-- |Get all superclasses of class by name (slow)
 deepSuper :: HasClassEnv m => Name -> m (Set Name)
 deepSuper n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class is _) -> do sups <- traverse deepSuper $ S.toList is
@@ -31,11 +29,13 @@ deepSuper n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Nothing -> classEnvError $ "deep superclass lookup: " <> n <> " not defined"
 
 
+-- |Get direct subclasses of class by name
 sub :: HasClassEnv m => Name -> m (Set Name)
 sub n = getClassEnv >>= \ce ->
   pure $ S.fromList $ fmap fst $ filter (\(_, Class is _) -> S.member n is) (M.toList $ classes ce)
 
 
+-- |Get all subclasses of class by name (slow)
 deepSub :: HasClassEnv m => Name -> m (Set Name)
 deepSub n = do
   shallow <- sub n
@@ -43,7 +43,7 @@ deepSub n = do
   pure $ foldr S.union shallow subs
 
 
--- |Gets instances of class by name
+-- |Get instances of class by name
 instances :: HasClassEnv m => Name -> m (Set Inst)
 instances n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
   Just (Class _ its) -> pure its
@@ -173,9 +173,9 @@ entail ps p = do
 inHNF :: Pred -> Bool
 inHNF (IsIn _ t) = case t of
   (TypeVarWobbly _) -> True
-  (TypeVarRigid _) -> False
-  (TypeApp tt _) -> inHNF (IsIn undefined tt)
-  _ -> error "unimplemented ihnf" -- FIXME
+  (TypeVarRigid _)  -> False
+  (TypeApp tt _)    -> inHNF (IsIn undefined tt)
+  _                 -> error "unimplemented ihnf" -- FIXME
 
 
 -- |Turn predicate into head normal form
