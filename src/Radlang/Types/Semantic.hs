@@ -107,7 +107,7 @@ type TypedBindings = Map Name (Type, [TypedAlt])
 -- |Full program representation
 data Program = Program
   { prgBindings  :: [BindingGroup]
-  , prgClassEnv  :: ClassEnv
+  , prgInterfaceEnv  :: InterfaceEnv
   , prgTypeEnv   :: TypeEnv
   , prgDataspace :: Dataspace
   , prgNamespace :: Namespace
@@ -130,13 +130,13 @@ data TypeDecl = TypeDecl
   deriving (Eq, Ord, Show)
 
 
--- |Class definition
-data ClassDef = ClassDef
-  { classdefName    :: Name
-  , classdefArg     :: Name
-  , classdefKind    :: Kind
-  , classdefSuper   :: (Set Name)
-  , classdefMethods :: [TypeDecl]}
+-- |Interface definition
+data InterfaceDef = InterfaceDef
+  { interfacedefName    :: Name
+  , interfacedefArg     :: Name
+  , interfacedefKind    :: Kind
+  , interfacedefSuper   :: (Set Name)
+  , interfacedefMethods :: [TypeDecl]}
   deriving (Eq, Show)
 
 
@@ -150,7 +150,7 @@ data DataDef = DataDef
 
 -- |Implementation of interface
 data ImplDef = ImplDef
-  { impldefClass   :: Name
+  { impldefInterface   :: Name
   , impldefType    :: Qual Type
   , impldefMethods :: [DataDef]}
   deriving (Eq, Show)

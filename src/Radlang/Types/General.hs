@@ -6,7 +6,7 @@ module Radlang.Types.General where
 data ErrMsg
   = ParseError String
   | KindcheckError String
-  | ClassEnvError String
+  | InterfaceEnvError String
   | TypecheckError String
   | LanguageError String
   | RuntimeError [String] [String] String

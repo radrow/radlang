@@ -39,9 +39,9 @@ getKindspace :: Kindchecker Kindspace
 getKindspace = asks fst
 
 
--- |Returns class kinds
-getClassKinds :: Kindchecker ClassKinds
-getClassKinds = asks snd
+-- |Returns interface kinds
+getInterfaceKinds :: Kindchecker InterfaceKinds
+getInterfaceKinds = asks snd
 
 
 -- |Lookup kind in kindspace
@@ -56,9 +56,9 @@ kindOf n = lookupKind n >>= \case
   Just k -> pure k
 
 
--- |Lookup kind in class kinds
-lookupClassKind :: Name -> Kindchecker (Maybe Kind)
-lookupClassKind n = M.lookup n . getClassKindsMap <$> getClassKinds
+-- |Lookup kind in interface kinds
+lookupInterfaceKind :: Name -> Kindchecker (Maybe Kind)
+lookupInterfaceKind n = M.lookup n . getInterfaceKindsMap <$> getInterfaceKinds
 
 
 -- |Runs Kindchecker with different typespace
@@ -152,10 +152,10 @@ inferInstantiated rt = do
 -- |Returns assumptions necessary to kindcheck predicate
 kindcheckPred :: RawPred -> Kindchecker Kindspace
 kindcheckPred pr =
-  let cn = rpClass pr
+  let cn = rpInterface pr
       t = rpType pr
-  in lookupClassKind cn >>= \case
-    Nothing -> kindcheckError $ "No such class: " <> cn
+  in lookupInterfaceKind cn >>= \case
+    Nothing -> kindcheckError $ "No such interface: " <> cn
     Just kc -> do
       (as, kpr) <- inferInstantiated t
       m <- mgu (toKindVar $ kc) kpr
@@ -232,8 +232,8 @@ kindcheckRawTypeDecl td = do
 
 
 kindcheckImpl :: RawImplDef -> Kindchecker ()
-kindcheckImpl rid = lookupClassKind (rawimpldefClass rid) >>= \case
-  Nothing -> kindcheckError $ "No such class " <> rawimpldefClass rid
+kindcheckImpl rid = lookupInterfaceKind (rawimpldefInterface rid) >>= \case
+  Nothing -> kindcheckError $ "No such interface " <> rawimpldefInterface rid
   Just k -> do
     (_, kinst) <- kindcheckQualType (rawimpldefType rid)
     void $ mgu (toKindVar k) kinst
@@ -247,7 +247,7 @@ toKind = \case
   KindVarFunc f a -> liftM2 KFunc (toKind f) (toKind a)
 
 
--- |Runs kindchecker with initial kindspace and class kinds
-runKindchecker :: Kindspace -> ClassKinds -> Kindchecker a -> Either ErrMsg a
+-- |Runs kindchecker with initial kindspace and interface kinds
+runKindchecker :: Kindspace -> InterfaceKinds -> Kindchecker a -> Either ErrMsg a
 runKindchecker ks cls kc =
   evalState (runReaderT (runExceptT kc) (ks, cls)) (KindcheckerState 0)

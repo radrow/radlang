@@ -70,9 +70,9 @@ instance (Instantiate a, Ord a) => Instantiate (Set a) where
   instantiate ts = S.map (instantiate ts)
 
 
--- |Computation that has access to class environment
-class (MonadError ErrMsg m) => HasClassEnv m where
-  getClassEnv :: m ClassEnv
+-- |Computation that has access to interface environment
+class (MonadError ErrMsg m) => HasInterfaceEnv m where
+  getInterfaceEnv :: m InterfaceEnv
 
 
 -- |Computation that has access to type environment
@@ -109,16 +109,16 @@ data TypecheckerState = TypecheckerState
 
 -- |Immutable environment of typechecker
 data TypecheckerEnv = TypecheckerEnv
-  { classEnv :: ClassEnv
+  { interfaceEnv :: InterfaceEnv
   , typeEnv :: TypeEnv
   , tcConfig :: TypecheckerConfig
   }
 
 
--- |Main container for classes
-data ClassEnv = ClassEnv { classes :: Map Name Class
-                         , defaults :: Map Name [Type]
-                         }
+-- |Main container for interfaces
+data InterfaceEnv = InterfaceEnv { interfaces :: Map Name Interface
+                                 , defaults :: Map Name [Type]
+                                 }
   deriving (Eq, Ord, Show)
 
 
@@ -147,20 +147,20 @@ instance IsType TypeEnv where
   substitute s te = TypeEnv $ fmap (substitute s) (types te)
 
 
--- |Computation that builds class environment
-newtype ClassEnvBuilderT m a =
-  ClassEnvBuilder (StateT ClassEnv (ExceptT ErrMsg m) a)
+-- |Computation that builds interface environment
+newtype InterfaceEnvBuilderT m a =
+  InterfaceEnvBuilder (StateT InterfaceEnv (ExceptT ErrMsg m) a)
   deriving ( Functor, Applicative, Monad
-           , MonadError ErrMsg, MonadState ClassEnv)
--- |Finalized version of 'ClassEnvBuilderT'
-type ClassEnvBuilder = ClassEnvBuilderT Identity
+           , MonadError ErrMsg, MonadState InterfaceEnv)
+-- |Finalized version of 'InterfaceEnvBuilderT'
+type InterfaceEnvBuilder = InterfaceEnvBuilderT Identity
 
 
-deriving instance MonadIO (ClassEnvBuilderT IO)
+deriving instance MonadIO (InterfaceEnvBuilderT IO)
 
 
-instance Monad m => HasClassEnv (ClassEnvBuilderT m) where
-  getClassEnv = get
+instance Monad m => HasInterfaceEnv (InterfaceEnvBuilderT m) where
+  getInterfaceEnv = get
 
 
 -- |Transformer responsible for typechecking whole program and error handling
@@ -175,8 +175,8 @@ type Typechecker = TypecheckerT Identity
 deriving instance MonadIO (TypecheckerT IO)
 
 
-instance Monad m => HasClassEnv (TypecheckerT m) where
-  getClassEnv = asks classEnv
+instance Monad m => HasInterfaceEnv (TypecheckerT m) where
+  getInterfaceEnv = asks interfaceEnv
 
 
 instance Monad m => HasTypeEnv (TypecheckerT m) where
@@ -272,7 +272,7 @@ instance HasKind TypeVar where
   kind (TypeVar _ k) = k
 
 
--- |Predicate that type is in class
+-- |Predicate that type is in interface
 data Pred = IsIn Name Type
   deriving (Eq, Ord)
 
@@ -310,8 +310,8 @@ instance IsType t => IsType (Qual t) where
   substitute s (ps :=> t) = substitute s ps :=> substitute s t
 
 
--- |Instance declaration
-type Inst = Qual Pred
+-- |Impl declaration
+type Impl = Qual Pred
 
 
 -- |Type scheme for polymorphic types
@@ -329,14 +329,14 @@ instance IsType TypePoly where
   free (Forall _ qt) = free qt
 
 
--- |Typeclass ambiguity
+-- |Ambiguity about what is given `TypeVar` knowing that it fulfills given predicates
 type Ambiguity = (TypeVar, [Pred])
 
 
--- |Typeclass is a set of its superclasses and instances
-data Class = Class
-  { classSuper :: Set Name -- superclasses of class
-  , classInstances :: Set Inst -- instances of class
+-- |Interface is a set of its superinterfaces and impls
+data Interface = Interface
+  { interfaceSuper :: Set Name -- superinterfaces of interface
+  , interfaceImpls :: Set Impl -- implementations of interface
   }
   deriving (Eq, Ord, Show)
 

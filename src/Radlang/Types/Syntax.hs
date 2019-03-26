@@ -23,7 +23,7 @@ data RawProgramPart
   = RPNewType RawNewType
   | RPTypeDecl RawTypeDecl
   | RPDataDef RawDataDef
-  | RPClassDef RawClassDef
+  | RPInterfaceDef RawInterfaceDef
   | RPImplDef RawImplDef
   deriving (Eq, Show)
 
@@ -33,7 +33,7 @@ data RawProgram = RawProgram
   { rawprgNewTypes  :: [RawNewType]
   , rawprgTypeDecls :: [RawTypeDecl]
   , rawprgDataDefs  :: [RawDataDef]
-  , rawprgClassDefs :: [RawClassDef]
+  , rawprgInterfaceDefs :: [RawInterfaceDef]
   , rawprgImplDefs  :: [RawImplDef]
   }
   deriving (Eq, Show)
@@ -78,9 +78,9 @@ data Pattern
   deriving (Eq, Show, Ord)
 
 
--- |AST version of predicate that type belongs to a class
+-- |AST version of predicate that type belongs to a interface
 data RawPred = RawPred
- { rpClass :: Name
+ { rpInterface :: Name
  , rpType  :: RawType
  } deriving (Eq, Ord, Show)
 
@@ -122,19 +122,19 @@ data RawDataDef = RawDataDef
   deriving (Eq, Show)
 
 
--- |AST version of typeclass definition
-data RawClassDef = RawClassDef
-  { rawclassdefName    :: Name
-  , rawclassdefArg     :: Name
-  , rawclassdefKind    :: Kind
-  , rawclassdefSuper   :: (Set Name)
-  , rawclassdefMethods :: [RawTypeDecl]}
+-- |AST version of interface definition
+data RawInterfaceDef = RawInterfaceDef
+  { rawinterfacedefName    :: Name
+  , rawinterfacedefArg     :: Name
+  , rawinterfacedefKind    :: Kind
+  , rawinterfacedefSuper   :: (Set Name)
+  , rawinterfacedefMethods :: [RawTypeDecl]}
   deriving (Eq, Show)
 
 
 -- |Implementation of interface
 data RawImplDef = RawImplDef
-  { rawimpldefClass   :: Name
+  { rawimpldefInterface   :: Name
   , rawimpldefType    :: RawQual RawType
   , rawimpldefMethods :: [RawDataDef]}
   deriving (Eq, Show)

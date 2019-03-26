@@ -5,7 +5,7 @@ module Radlang.Intro(primitiveSpace, withIntro) where
 
 import qualified Data.Map                      as M
 
-import           Radlang.ClassEnvBuild         (mergeClassEnv)
+import           Radlang.InterfaceEnvBuild         (mergeInterfaceEnv)
 import           Radlang.Desugar
 import           Radlang.Error
 import           Radlang.Evaluator
@@ -118,7 +118,7 @@ deepForced a := withDeepForced a a;;
 mergePrograms :: Program -> Program -> Program
 mergePrograms r1 r2 = Program
  { prgBindings = prgBindings r2 ++ prgBindings r1
- , prgClassEnv = prgClassEnv r1 `mergeClassEnv` prgClassEnv r2
+ , prgInterfaceEnv = prgInterfaceEnv r1 `mergeInterfaceEnv` prgInterfaceEnv r2
  , prgTypeEnv = TypeEnv $ M.union (types $ prgTypeEnv r1) (types $ prgTypeEnv r2)
  , prgNamespace = M.union (prgNamespace r1) (prgNamespace r2)
  , prgDataspace = Dataspace

@@ -67,11 +67,11 @@ groupBindings im =
   in fmap (\ns -> M.restrictKeys im (S.fromList ns)) toposorted
 
 
--- |Toposort the class hierarchy
-classHierarchySort :: [ClassDef] -> [ClassDef]
-classHierarchySort cds =
+-- |Toposort the interface hierarchy
+interfaceHierarchySort :: [InterfaceDef] -> [InterfaceDef]
+interfaceHierarchySort cds =
   let cdi = zip cds [0::Int ..]
-      connect c = [i | (other, i) <- cdi, S.member (classdefName other) (classdefSuper c)]
+      connect c = [i | (other, i) <- cdi, S.member (interfacedefName other) (interfacedefSuper c)]
       (gr, fromVer, _) = graphFromEdges (fmap (\(c, i) -> (c, i, connect c)) cdi)
       topos = topSort gr
   in reverse $ fmap ((\(c, _, _) -> c) . fromVer) topos

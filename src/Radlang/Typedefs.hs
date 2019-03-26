@@ -39,37 +39,37 @@ a `fun` b = TypeApp (TypeApp tFunc a) b
 
 
 stdPreds :: [Qual Pred]
-stdPreds = concat $ fmap unpack (M.toList stdClasses) where
-  unpack (_, (Class _ insts)) = (S.toList insts)
-ofClass :: Name -> Set (Qual Pred)
-ofClass n = S.fromList $ Prelude.filter (\(_ :=> IsIn k _) -> k == n) stdPreds
+stdPreds = concat $ fmap unpack (M.toList stdInterfaces) where
+  unpack (_, (Interface _ insts)) = (S.toList insts)
+ofInterface :: Name -> Set (Qual Pred)
+ofInterface n = S.fromList $ Prelude.filter (\(_ :=> IsIn k _) -> k == n) stdPreds
 envPart :: b -> [Char] -> ([Char], b, Set (Qual Pred))
-envPart s n = (n, s, ofClass n)
+envPart s n = (n, s, ofInterface n)
 
 
-num :: Class
-num = Class S.empty $ S.fromList
+num :: Interface
+num = Interface S.empty $ S.fromList
   [ [] :=> IsIn "Num" tInt
   ]
 
-eq :: Class
-eq = Class S.empty $ S.fromList
+eq :: Interface
+eq = Interface S.empty $ S.fromList
   [ [] :=> IsIn "Eq" tInt
   , [] :=> IsIn "Eq" tChar
   , [] :=> IsIn "Eq" tBool
   , [IsIn "Eq" (tWobbly "A")] :=> IsIn "Eq" (tListOf (tWobbly "A"))
   ]
 
-ord :: Class
-ord = Class (S.singleton "Eq") $ S.fromList
+ord :: Interface
+ord = Interface (S.singleton "Eq") $ S.fromList
   [ [] :=> IsIn "Ord" tInt
   , [] :=> IsIn "Ord" tBool
   , [] :=> IsIn "Ord" tChar
   , [IsIn "Ord" (tWobbly "A")] :=> IsIn "Ord" (tListOf (tWobbly "A"))
   ]
 
-isString :: Class
-isString = Class S.empty $ S.fromList
+isString :: Interface
+isString = Interface S.empty $ S.fromList
   [ [] :=> IsIn "IsString" tString
   ]
 
@@ -77,18 +77,18 @@ isString = Class S.empty $ S.fromList
 (<~) :: a -> b -> (a, b)
 (<~) = (,)
 
-stdNumClasses :: Map Name Class
-stdNumClasses = M.fromList
+stdNumInterfaces :: Map Name Interface
+stdNumInterfaces = M.fromList
   [ "Num" <~ num
   ]
 
 
-stdClasses :: Map Name Class
-stdClasses = M.fromList
+stdInterfaces :: Map Name Interface
+stdInterfaces = M.fromList
   [ "Eq" <~ eq
   , "Ord" <~ ord
   , "IsString" <~ isString
-  ] `M.union` stdNumClasses
+  ] `M.union` stdNumInterfaces
 
 
 stdDefaults :: Map Name [Type]
@@ -103,5 +103,5 @@ stdKindspace = Kindspace $ fmap toKindVar $ M.fromList
   ]
 
 
-stdClassEnv :: ClassEnv
-stdClassEnv = ClassEnv stdClasses stdDefaults
+stdInterfaceEnv :: InterfaceEnv
+stdInterfaceEnv = InterfaceEnv stdInterfaces stdDefaults

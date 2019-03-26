@@ -3,5 +3,5 @@ reverse acc (Cons a rest) := reverse (Cons a acc) rest;;
 
 f [2] := 1;;
 
-main := f [2]
+main := "aaaa"
 ;;

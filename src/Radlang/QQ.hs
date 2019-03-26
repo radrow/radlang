@@ -19,8 +19,8 @@ deriving instance Data RawProgram
 deriving instance Data ErrMsg
 deriving instance Data TypedExpr
 deriving instance Data TypeEnv
-deriving instance Data ClassEnv
-deriving instance Data Class
+deriving instance Data InterfaceEnv
+deriving instance Data Interface
 deriving instance Data NewType
 deriving instance Data RawNewType
 deriving instance Data ConstructorDef
@@ -33,8 +33,8 @@ deriving instance Data RawDataDef
 deriving instance Data TypeDecl
 deriving instance Data RawTypeDecl
 deriving instance Data TypePoly
-deriving instance Data ClassDef
-deriving instance Data RawClassDef
+deriving instance Data InterfaceDef
+deriving instance Data RawInterfaceDef
 deriving instance Data Pred
 deriving instance Data RawPred
 deriving instance Data Expr

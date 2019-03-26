@@ -29,9 +29,9 @@ parseError :: MonadError ErrMsg m => String -> m a
 parseError = throwError . ParseError
 
 
--- |Throw an error that indicates incorrect use of a typeclass
-classEnvError :: MonadError ErrMsg m => String -> m a
-classEnvError = throwError . ClassEnvError
+-- |Throw an error that indicates incorrect use of a interface
+interfaceEnvError :: MonadError ErrMsg m => String -> m a
+interfaceEnvError = throwError . InterfaceEnvError
 
 
 -- |Throw an error that occured during runtime from users fault (eg. division by zero)
@@ -49,7 +49,7 @@ showErrorType = \case
   LanguageError _ -> "Language error"
   KindcheckError _ -> "Kindcheck error"
   ParseError _ -> "Parse error"
-  ClassEnvError _ -> "While building class environment"
+  InterfaceEnvError _ -> "While building interface environment"
   RuntimeError _ _ _ -> "Runtime error"
 
 
@@ -60,7 +60,7 @@ showErrorMessage = \case
   LanguageError e -> e
   KindcheckError e -> e
   ParseError e -> e
-  ClassEnvError e -> e
+  InterfaceEnvError e -> e
   RuntimeError dst est e ->
     let enum = fmap (uncurry $ (<>) . (<>". ") . show) . zip [(1::Int)..]
     in e <> "\nDefinition Stacktrace:\n" <> unlines (enum dst)

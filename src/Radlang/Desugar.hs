@@ -12,7 +12,7 @@ import           Data.List.NonEmpty            (NonEmpty ((:|)), cons, toList)
 import qualified Data.Map.Strict               as M
 import qualified Data.Set                      as S
 
-import           Radlang.ClassEnvBuild
+import           Radlang.InterfaceEnvBuild
 import           Radlang.DependencyAnalysis
 import           Radlang.Error
 import           Radlang.Kindchecker
@@ -64,17 +64,17 @@ newTypeBindings :: [NewType] -> (TypeEnv, Namespace, Dataspace)
 newTypeBindings = foldl newTypeBindingsCont (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
 
 
--- |Extract type declarations from class definition
-classBindings :: ClassDef -> [(Name, Qual Type)]
-classBindings cd =
-  let clspred = IsIn (classdefName cd) (TypeVarWobbly $ TypeVar (classdefArg cd) (classdefKind cd) )
+-- |Extract type declarations from interface definition
+interfaceBindings :: InterfaceDef -> [(Name, Qual Type)]
+interfaceBindings cd =
+  let clspred = IsIn (interfacedefName cd) (TypeVarWobbly $ TypeVar (interfacedefArg cd) (interfacedefKind cd) )
 
       methodproc :: TypeDecl -> (Name, Qual Type)
       methodproc td =
         let (prds :=> t) = tdeclType td
         in (tdeclName td, (clspred : prds) :=> t)
 
-  in fmap methodproc (classdefMethods cd)
+  in fmap methodproc (interfacedefMethods cd)
 
 
 -- |Substitute all name occurences by certain type in qualified type
@@ -90,7 +90,7 @@ replaceTypeVar n repl (prd :=> tp) =
 
 
 -- |Extract bindings from impl definition
-implBindings :: ClassDef -> ImplDef -> [Either TypeDecl DataDef]
+implBindings :: InterfaceDef -> ImplDef -> [Either TypeDecl DataDef]
 implBindings cl idef =
   let nameMod :: Name -> Name
       nameMod = (<> show (impldefType idef))
@@ -98,13 +98,13 @@ implBindings cl idef =
       typeMod :: Qual Type -> Qual Type
       typeMod qt =
         let (iprd :=> itp) = impldefType idef  -- get instance predicates and type
-            (rprd :=> rtp) = replaceTypeVar (classdefArg cl) itp qt  -- replace original type with instance
+            (rprd :=> rtp) = replaceTypeVar (interfacedefArg cl) itp qt  -- replace original type with instance
         in ((iprd ++ rprd) :=> rtp)  -- join predicates from typedecl and impl contraints
 
       tdeclMod :: TypeDecl -> TypeDecl
       tdeclMod td = TypeDecl (nameMod $ tdeclName td) (typeMod $ tdeclType td)
 
-      tdecls = fmap tdeclMod (classdefMethods cl)
+      tdecls = fmap tdeclMod (interfacedefMethods cl)
       tdefs = fmap (\mt -> mt{datadefName = nameMod $ datadefName mt}) $ impldefMethods idef
 
   in fmap Left tdecls ++ fmap Right tdefs
@@ -115,12 +115,12 @@ processImplDef :: RawImplDef -> Kindchecker ImplDef
 processImplDef rid = do
   rq <- processQualType (rawimpldefType rid)
   mt <- traverse processDataDef (rawimpldefMethods rid)
-  pure $ ImplDef (rawimpldefClass rid) rq mt
+  pure $ ImplDef (rawimpldefInterface rid) rq mt
 
 
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
-buildProgram prg = runKindchecker stdKindspace (buildClassKinds $ rawprgClassDefs prg) (processProgram prg)
+buildProgram prg = runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs prg) (processProgram prg)
 
 
 -- |Merge two explicit binding sets
@@ -172,28 +172,28 @@ processProgram prg = do
         tdas <- kindcheckRawTypeDecl td
         withKindspace (unionKindspaces tdas newAs) $ processTypeDecl td
 
-    cdefs <- traverse processClassDef (rawprgClassDefs prg)
+    cdefs <- traverse processInterfaceDef (rawprgInterfaceDefs prg)
 
     newtypes <- traverse processNewType (rawprgNewTypes prg)
 
     impldefs <- traverse processImplDef (rawprgImplDefs prg)
 
-    ceny <- either throwError (pure :: ClassEnv -> Kindchecker ClassEnv)
-      (buildClassEnv cdefs impldefs)
+    ceny <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
+      (buildInterfaceEnv cdefs impldefs)
     ddefs <- traverse processDataDef (rawprgDataDefs prg)
     let (ntTEnv, ns, ds) = newTypeBindings newtypes
 
-        -- classbnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
-        --   ntTEnv $ fmap classBindings cdefs
-        classdefmap = M.fromList $ fmap (\cd -> (classdefName cd, cd)) cdefs
+        -- interfacebnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
+        --   ntTEnv $ fmap interfaceBindings cdefs
+        interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) cdefs
 
-        imps = (uncurry implBindings . \im -> (classdefmap M.! impldefClass im, im)) =<< impldefs
-        cdecls = cdefs >>= \cd -> fmap (uncurry TypeDecl) (classBindings cd)
+        imps = (uncurry implBindings . \im -> (interfacedefmap M.! impldefInterface im, im)) =<< impldefs
+        cdecls = cdefs >>= \cd -> fmap (uncurry TypeDecl) (interfaceBindings cd)
 
     pure $ Program
       { prgBindings = pure . toplevelBindings $
                       fmap Left tdecls ++ fmap Right ddefs ++ imps ++ fmap Left cdecls
-      , prgClassEnv = ceny
+      , prgInterfaceEnv = ceny
       , prgTypeEnv = ntTEnv
       , prgNamespace = ns
       , prgDataspace = ds
@@ -276,10 +276,10 @@ processRawExpr = \case
 
 
 
--- |Extracts kinds of class' arguments
-buildClassKinds :: [RawClassDef] -> ClassKinds
-buildClassKinds cls = ClassKinds $
-  M.fromList $ fmap (\cd -> (rawclassdefName cd, rawclassdefKind cd)) cls
+-- |Extracts kinds of interface' arguments
+buildInterfaceKinds :: [RawInterfaceDef] -> InterfaceKinds
+buildInterfaceKinds cls = InterfaceKinds $
+  M.fromList $ fmap (\cd -> (rawinterfacedefName cd, rawinterfacedefKind cd)) cls
 
 
 -- |Kindcheck and process raw type
@@ -300,7 +300,7 @@ processPred rp = do
   ks <- getKindspace
   kps <- kindcheckPred rp
   t <- withKindspace (unionKindspaces kps ks) $ processType (rpType rp)
-  pure $ IsIn (rpClass rp) t
+  pure $ IsIn (rpInterface rp) t
 
 
 -- |Kindcheck and process raw qualified type
@@ -318,18 +318,18 @@ processTypeDecl :: RawTypeDecl -> Kindchecker TypeDecl
 processTypeDecl rtd = TypeDecl (rawtdeclName rtd) <$> processQualType (rawtdeclType rtd)
 
 
--- |Kindcheck and process raw class definition
-processClassDef :: RawClassDef -> Kindchecker ClassDef
-processClassDef rcd = do
-  mts <- forM (rawclassdefMethods rcd) $ \mt -> do
+-- |Kindcheck and process raw interface definition
+processInterfaceDef :: RawInterfaceDef -> Kindchecker InterfaceDef
+processInterfaceDef rcd = do
+  mts <- forM (rawinterfacedefMethods rcd) $ \mt -> do
     tdas <- kindcheckRawTypeDecl mt
     withKindspace tdas $ processTypeDecl mt
-  pure $ ClassDef
-    { classdefName = rawclassdefName rcd
-    , classdefArg = rawclassdefArg rcd
-    , classdefKind = rawclassdefKind rcd
-    , classdefSuper = rawclassdefSuper rcd
-    , classdefMethods = mts
+  pure $ InterfaceDef
+    { interfacedefName = rawinterfacedefName rcd
+    , interfacedefArg = rawinterfacedefArg rcd
+    , interfacedefKind = rawinterfacedefKind rcd
+    , interfacedefSuper = rawinterfacedefSuper rcd
+    , interfacedefMethods = mts
     }
 
 

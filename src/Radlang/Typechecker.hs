@@ -181,7 +181,7 @@ inferTypeAlts t alts = do
 
 
 -- |Split predicates on deferred and contraints. fs are fixed variables and gs are varaibles over which we want to quantify
-split :: (HasClassEnv m, MonadIO m)
+split :: (HasInterfaceEnv m, MonadIO m)
       => [TypeVar] -> [TypeVar] -> [Pred] -> m ([Pred], [Pred])
 split fs gs ps = do
   ps' <- reduce ps
@@ -196,23 +196,23 @@ ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ free ps \\ vs
 
 
 -- |Get all candidates that may resolve ambiguity
-candidates :: (HasClassEnv m, MonadIO m) => Ambiguity -> m [Type]
-candidates (v, qs) = getClassEnv >>= \ce ->
+candidates :: (HasInterfaceEnv m, MonadIO m) => Ambiguity -> m [Type]
+candidates (v, qs) = getInterfaceEnv >>= \ce ->
   let is = fmap (\(IsIn i _) -> i) qs
       ts = fmap (\(IsIn _ t) -> t) qs
       -- filt :: [Type] -> m [Type]
       filt tts = flip filterM tts $ \t ->
         and <$> mapM (entail []) [IsIn i t | i <- is]
   in if all ((TypeVarWobbly v)==) ts
-        && all (`M.member` stdClasses) is
-        && any (`M.member` stdNumClasses) is
+        && all (`M.member` stdInterfaces) is
+        && any (`M.member` stdNumInterfaces) is
      then filt [def | ii <- is, def <- maybe [] id $ M.lookup ii (defaults ce)]
      else pure []
 
 
 -- |Check whether all ambiguities can be solved. If so, apply given function to ambiguities
 --and first found candidates set
-withDefaults :: (HasClassEnv m, MonadIO m)
+withDefaults :: (HasInterfaceEnv m, MonadIO m)
              => ([Ambiguity] -> [Type] -> b) -> [TypeVar] -> [Pred] -> m b
 withDefaults f vs ps = do
   let vps = ambiguities vs ps
@@ -223,14 +223,14 @@ withDefaults f vs ps = do
 
 
 -- |Predicates that can be removed after ambiguities are solved
-defaultedPreds :: (HasClassEnv m,
+defaultedPreds :: (HasInterfaceEnv m,
                    MonadIO m)
                => [TypeVar] -> [Pred] -> m [Pred]
 defaultedPreds = withDefaults (\vps _ -> join (fmap snd vps))
 
 
 -- |Substitution to remove ambiguities used in toplevel inference
-defaultSubst :: (HasClassEnv m, MonadIO m)
+defaultSubst :: (HasInterfaceEnv m, MonadIO m)
              => [TypeVar] -> [Pred] -> m Substitution
 defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
@@ -330,7 +330,7 @@ inferTypeBindingGroups bgs = do
 
 
 -- |Evaluation of typechecker
-runTypecheckerT :: ClassEnv
+runTypecheckerT :: InterfaceEnv
                 -> TypeEnv
                 -> TypecheckerConfig
                 -> TypecheckerT IO (TypeEnv, TypedBindings)
@@ -346,7 +346,7 @@ typecheckEmpty :: TypecheckerConfig -> Program -> IO (Either ErrMsg TypedProgram
 typecheckEmpty tc p =
   let (_, _, ts) = primitiveSpace
   in fmap (fmap $ \(te, tb) -> TypedProgram tb te (prgDataspace p) (prgNamespace p)) $ runTypecheckerT
-     (prgClassEnv p)
+     (prgInterfaceEnv p)
      (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
      tc (inferTypeBindingGroups $ prgBindings p)
 
@@ -357,6 +357,6 @@ typecheck tc pp =
   let p = withIntro pp
       (_, _, ts) = primitiveSpace
   in fmap (fmap $ \(te, tb) -> TypedProgram tb te (prgDataspace p) (prgNamespace p)) $ runTypecheckerT
-     (prgClassEnv p)
+     (prgInterfaceEnv p)
      (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
      tc (inferTypeBindingGroups $ prgBindings p)

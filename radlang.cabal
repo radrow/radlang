@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bf1ad26b75e72fef9ed553c54299d75b1e035a7e423ae3ee0798238d369263ef
+-- hash: 5bb27eb68dd9773f0cd16f0ee9c2ec0a4ff502a1e37216db0e615d391cb99ba9
 
 name:           radlang
 version:        1.0.1
@@ -28,11 +28,11 @@ source-repository head
 library
   exposed-modules:
       Radlang
-      Radlang.ClassEnvBuild
       Radlang.DependencyAnalysis
       Radlang.Desugar
       Radlang.Error
       Radlang.Evaluator
+      Radlang.InterfaceEnvBuild
       Radlang.Intro
       Radlang.Kindchecker
       Radlang.Parser

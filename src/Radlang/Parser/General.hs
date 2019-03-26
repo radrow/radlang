@@ -101,7 +101,7 @@ constructorName :: Parser Name
 constructorName = uId
 typeName :: Parser Name
 typeName = uId
-className :: Parser Name
-className = uId
+interfaceName :: Parser Name
+interfaceName = uId
 generalTypeName :: Parser Name
 generalTypeName = liftA2 (:) (char '~') uId

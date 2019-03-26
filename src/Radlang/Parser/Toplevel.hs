@@ -23,7 +23,7 @@ rawProgram = do
       RPNewType nt -> rp {rawprgNewTypes = nt : rawprgNewTypes rp}
       RPTypeDecl td -> rp {rawprgTypeDecls = td : rawprgTypeDecls rp}
       RPDataDef dd -> rp {rawprgDataDefs = dd : rawprgDataDefs rp}
-      RPClassDef cd -> rp {rawprgClassDefs = cd : rawprgClassDefs rp}
+      RPInterfaceDef cd -> rp {rawprgInterfaceDefs = cd : rawprgInterfaceDefs rp}
       RPImplDef imd -> rp {rawprgImplDefs = imd : rawprgImplDefs rp}
 
 
@@ -33,7 +33,7 @@ rawProgramPart = msum
   [ RPNewType <$> newType
   , RPTypeDecl <$> typeDecl
   , RPDataDef <$> dataDef
-  , RPClassDef <$> classDef
+  , RPInterfaceDef <$> interfaceDef
   , RPImplDef <$> implDef
   ]
 
@@ -136,18 +136,18 @@ escapedChar = do
     bad -> fail $ "Cannot escape char '" <> [bad] <> "'"
 
 
--- |Parse definition of a class
-classDef :: Parser RawClassDef
-classDef = do
+-- |Parse definition of a interface
+interfaceDef :: Parser RawInterfaceDef
+interfaceDef = do
   try $ word "interface"
-  name <- className
+  name <- interfaceName
   (arg, knd) <- paren $ do
     liftM2 (,) (generalTypeName <* operator ":") kind
   sups <- do
-    s <- optional $ word "implies" *> (DLNE.toList <$> sepBy1 className (operator ","))
+    s <- optional $ word "implies" *> (DLNE.toList <$> sepBy1 interfaceName (operator ","))
     pure $ maybe S.empty S.fromList s
   methods <- brac $ many $ typeDecl <* (operator ";;")
-  pure $ RawClassDef name arg knd sups methods
+  pure $ RawInterfaceDef name arg knd sups methods
 
 
 -- |Parse instance definition
@@ -156,7 +156,7 @@ implDef = do
   try $ word "impl"
   arg <- qual type_
   word "for"
-  cname <- className
+  cname <- interfaceName
   methods <- brac $ many (dataDef <* (operator ";;"))
   pure $ RawImplDef cname arg methods
 

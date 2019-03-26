@@ -22,13 +22,13 @@ newtype Kindspace = Kindspace { getKindspaceMap :: M.Map Name KindVar }
   deriving (Eq, Show, Ord)
 
 
--- |Map of kinds of class instances
-newtype ClassKinds = ClassKinds { getClassKindsMap :: M.Map Name Kind }
+-- |Map of kinds of interface impls
+newtype InterfaceKinds = InterfaceKinds { getInterfaceKindsMap :: M.Map Name Kind }
   deriving (Eq, Show, Ord)
 
 
 -- |Transformer responsible for typechecking expressions and error handling
-type Kindchecker = ExceptT ErrMsg (ReaderT (Kindspace, ClassKinds) (State KindcheckerState))
+type Kindchecker = ExceptT ErrMsg (ReaderT (Kindspace, InterfaceKinds) (State KindcheckerState))
 
 
 -- |Type wrapper for kind variable names. Prevents from lots of mistakes
@@ -57,7 +57,7 @@ class Ord t => IsKind t where -- Ord is needed because use of Set
   substituteKinds :: KindSubstitution -> t -> t
 
 
----- INSTANCES ----
+---- IMPLS ----
 
 instance IsKind t => IsKind (S.Set t) where
   freeKinds s = S.unions $ S.map freeKinds s

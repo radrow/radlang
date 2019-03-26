@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiWayIf       #-}
--- |Utilities to solve tasks related to typechecking, kindchecking and building class env
+-- |Utilities to solve tasks related to typechecking, kindchecking and building interface env
 module Radlang.Typesystem.Typesystem where
 
 import           Control.Applicative
@@ -14,45 +14,45 @@ import           Radlang.Error
 import           Radlang.Types
 
 
--- |Get direct superclasses of class by name
-super :: HasClassEnv m => Name -> m (Set Name)
-super n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
-  Just (Class is _) -> pure is
-  Nothing -> classEnvError $ "superclass lookup: " <> n <> " not defined"
+-- |Get direct superinterfaces of interface by name
+super :: HasInterfaceEnv m => Name -> m (Set Name)
+super n = getInterfaceEnv >>= \ce -> case M.lookup n (interfaces ce) of
+  Just (Interface is _) -> pure is
+  Nothing -> interfaceEnvError $ "superinterface lookup: " <> n <> " not defined"
 
 
--- |Get all superclasses of class by name (slow)
-deepSuper :: HasClassEnv m => Name -> m (Set Name)
-deepSuper n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
-  Just (Class is _) -> do sups <- traverse deepSuper $ S.toList is
-                          pure $ foldr S.union is sups
-  Nothing -> classEnvError $ "deep superclass lookup: " <> n <> " not defined"
+-- |Get all superinterfaces of interface by name (slow)
+deepSuper :: HasInterfaceEnv m => Name -> m (Set Name)
+deepSuper n = getInterfaceEnv >>= \ce -> case M.lookup n (interfaces ce) of
+  Just (Interface is _) -> do sups <- traverse deepSuper $ S.toList is
+                              pure $ foldr S.union is sups
+  Nothing -> interfaceEnvError $ "deep superinterface lookup: " <> n <> " not defined"
 
 
--- |Get direct subclasses of class by name
-sub :: HasClassEnv m => Name -> m (Set Name)
-sub n = getClassEnv >>= \ce ->
-  pure $ S.fromList $ fmap fst $ filter (\(_, Class is _) -> S.member n is) (M.toList $ classes ce)
+-- |Get direct subinterfaces of interface by name
+sub :: HasInterfaceEnv m => Name -> m (Set Name)
+sub n = getInterfaceEnv >>= \ce ->
+  pure $ S.fromList $ fmap fst $ filter (\(_, Interface is _) -> S.member n is) (M.toList $ interfaces ce)
 
 
--- |Get all subclasses of class by name (slow)
-deepSub :: HasClassEnv m => Name -> m (Set Name)
+-- |Get all subinterfaces of interface by name (slow)
+deepSub :: HasInterfaceEnv m => Name -> m (Set Name)
 deepSub n = do
   shallow <- sub n
   subs <- traverse deepSub $ S.toList shallow
   pure $ foldr S.union shallow subs
 
 
--- |Get instances of class by name
-instances :: HasClassEnv m => Name -> m (Set Inst)
-instances n = getClassEnv >>= \ce -> case M.lookup n (classes ce) of
-  Just (Class _ its) -> pure its
-  Nothing -> classEnvError $ "instances lookup: " <> n <> " not defined"
+-- |Get impls of interface by name
+impls :: HasInterfaceEnv m => Name -> m (Set Impl)
+impls n = getInterfaceEnv >>= \ce -> case M.lookup n (interfaces ce) of
+  Just (Interface _ its) -> pure its
+  Nothing -> interfaceEnvError $ "impls lookup: " <> n <> " not defined"
 
 
--- |Check whether class is defined
-classDefined :: HasClassEnv m => Name -> m Bool
-classDefined n = M.member n . classes <$> getClassEnv
+-- |Check whether interface is defined
+interfaceDefined :: HasInterfaceEnv m => Name -> m Bool
+interfaceDefined n = M.member n . interfaces <$> getInterfaceEnv
 
 
 -- |Creates substitution with type assigned
@@ -122,19 +122,19 @@ match t1 t2 = case (t1, t2) of
 mguPred :: MonadError ErrMsg m => Pred -> Pred -> m Substitution
 mguPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then mgu t1 t2
-  else typecheckError $ "Classes don't unify: " <> i1 <> " vs " <> i2
+  else typecheckError $ "Interfaces don't unify: " <> i1 <> " vs " <> i2
 
 
 -- |match for predicates
 matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m (Maybe Substitution)
 matchPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then catchError (Just <$> match t1 t2) (const $ pure Nothing)
-  else typecheckError $ "Classes don't match: " <> i1 <> " vs " <> i2
+  else typecheckError $ "Interfaces don't match: " <> i1 <> " vs " <> i2
 
 
 
--- |Deep search for all superclasses' predicates
-predsBySuper :: HasClassEnv m => Pred -> m [Pred]
+-- |Deep search for all superinterfaces' predicates
+predsBySuper :: HasInterfaceEnv m => Pred -> m [Pred]
 predsBySuper p@(IsIn i t) = do
   i' <- S.toList <$> super i
   if Prelude.null i'
@@ -142,27 +142,27 @@ predsBySuper p@(IsIn i t) = do
     else insert p <$> (join <$> (forM i' (\i'' -> predsBySuper (IsIn i'' t))))
 
 
--- |Deep search for all matching instances' predicates
-predsByInstances :: (MonadIO m, HasClassEnv m) => Pred -> m [Pred]
-predsByInstances p@(IsIn i _) = do
-  -- list of instances of i
-  insts <- S.toList <$> instances i
-  -- opertation that tries to strictly unify p with instance declaration
+-- |Deep search for all matching impls' predicates
+predsByImpls :: (MonadIO m, HasInterfaceEnv m) => Pred -> m [Pred]
+predsByImpls p@(IsIn i _) = do
+  -- list of impls of i
+  insts <- S.toList <$> impls i
+  -- opertation that tries to strictly unify p with impl declaration
   let tryInst (ps :=> h) = do
         u <- matchPred h p
         pure $ u >>= \uu -> Just (fmap (substitute uu) ps)
   d <- msum <$> traverse tryInst insts
-  maybe (typecheckError $ "Could not get valid instance for " <> show p) pure d
+  maybe (typecheckError $ "Could not get valid impl for " <> show p) pure d
 
 
 -- |Check if predicate will hold whenever all of initial predicates are satisfied
-entail :: (HasClassEnv m, MonadIO m) => [Pred] -> Pred -> m Bool
+entail :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> Pred -> m Bool
 entail ps p = do
-  -- all sets of superclasses of `ps`
+  -- all sets of superinterfaces of `ps`
   sups <- mapM predsBySuper ps
-  -- all matching instances have this property
+  -- all matching impls have this property
   let instCheck = do
-        qs <- predsByInstances p
+        qs <- predsByImpls p
         ents <- mapM (entail ps) qs
         pure $ all id ents
   instc <- catchError instCheck (const $ pure False) -- FIXME this `catch` may cause problems
@@ -179,21 +179,21 @@ inHNF (IsIn _ t) = case t of
 
 
 -- |Turn predicate into head normal form
-toHNF :: (HasClassEnv m, MonadIO m) => Pred -> m [Pred]
+toHNF :: (HasInterfaceEnv m, MonadIO m) => Pred -> m [Pred]
 toHNF p =
   if inHNF p
     then pure [p]
-    else predsByInstances p >>= toHNFs
+    else predsByImpls p >>= toHNFs
 
 -- |Turn a set of predicates into hnf
-toHNFs :: (HasClassEnv m, MonadIO m) => [Pred] -> m [Pred]
+toHNFs :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
 toHNFs ps = do
   pss <- mapM toHNF ps
   pure $ join pss
 
 
 -- |Remove predicates that are entailed by others
-simplify :: (HasClassEnv m, MonadIO m) => [Pred] -> m [Pred]
+simplify :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
 simplify pps = loop [] pps where
   loop rs [] = pure rs
   loop rs (p:ps) = do
@@ -202,7 +202,7 @@ simplify pps = loop [] pps where
 
 
 -- |Turns predicates into head normal form and then simplifies
-reduce :: (HasClassEnv m, MonadIO m) => [Pred] -> m [Pred]
+reduce :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
 reduce ps = toHNFs ps >>= simplify
 
 
