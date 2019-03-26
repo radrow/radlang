@@ -20,7 +20,9 @@ import           Radlang.Types.Syntax
 import           Radlang.Types.Typesystem
 
 
-type Stacktrace = [String]
+-- |Stacktrace that follows runtime by definition of the data
+type DefStacktrace = [String]
+-- |Stacktrace that follows runtime by evaluation of the data
 type EvalStacktrace = [String]
 
 
@@ -44,7 +46,7 @@ data TypedExpr where
 
 -- |Value stored in the dataspace. May be evaluated or not
 data Data
-  = Lazy Namespace Stacktrace DataId (Evaluator Data)
+  = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
   | Ref DataId
 
@@ -70,8 +72,9 @@ instance Show StrictData where
     DataFunc n _ -> "<func " <> n <> ">"
 
 
--- |Left and right side of function definition
+-- |Left and right side of a value/function definition
 type Alt = ([Pattern], Expr)
+-- |Left and right side of a typed value/function definition
 type TypedAlt = ([Pattern], TypedExpr)
 
 
@@ -167,13 +170,14 @@ data ConstructorDef = ConstructorDef
   deriving (Eq, Ord, Show)
 
 
+-- |Mapping from variable names to their place in dataspace
 type Namespace = Map Name DataId
 
 
 -- |Map of value names into ids
 data Env = Env { _envNamespace      :: Namespace
                , _envTypespace      :: TypeEnv
-               , _envDefStacktrace  :: Stacktrace
+               , _envDefStacktrace  :: DefStacktrace
                , _envEvalStacktrace :: EvalStacktrace
                }
   deriving (Show)

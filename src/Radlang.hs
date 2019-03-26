@@ -16,9 +16,8 @@ import Radlang.Types
 import Radlang.Typechecker
 import Radlang.Desugar
 
-import Debug.Trace
 
-
+-- |Perform evaluation of the main value from the program
 runProgram :: TypedProgram -> Either ErrMsg StrictData
 runProgram tp = let mock = TypedLet (tprgBindings tp) (TypedVal "main")
                     (ns, ds, ts) = primitiveSpace

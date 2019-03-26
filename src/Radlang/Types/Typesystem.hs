@@ -152,6 +152,7 @@ newtype ClassEnvBuilderT m a =
   ClassEnvBuilder (StateT ClassEnv (ExceptT ErrMsg m) a)
   deriving ( Functor, Applicative, Monad
            , MonadError ErrMsg, MonadState ClassEnv)
+-- |Finalized version of 'ClassEnvBuilderT'
 type ClassEnvBuilder = ClassEnvBuilderT Identity
 
 
@@ -167,6 +168,7 @@ newtype TypecheckerT m a =
   Typechecker (ExceptT ErrMsg (ReaderT TypecheckerEnv (StateT TypecheckerState m)) a)
   deriving ( Functor, Applicative, Monad
            , MonadError ErrMsg, MonadReader TypecheckerEnv, MonadState TypecheckerState)
+-- |Finalized version of 'TypecheckerT'
 type Typechecker = TypecheckerT Identity
 
 

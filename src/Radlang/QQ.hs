@@ -1,3 +1,4 @@
+-- |QuasiQuotations for Radlang programs
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE QuasiQuotes #-}

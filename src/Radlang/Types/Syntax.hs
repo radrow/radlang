@@ -1,4 +1,4 @@
--- |Types that describe raw AST. Everything marked with "Raw" prefix indicates
+-- |Types that describe raw AST. Everything marked with \"Raw\" prefix indicates
 --toplevel parsing objects that face the programmer.
 module Radlang.Types.Syntax where
 

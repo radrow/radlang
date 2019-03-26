@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
 -- |Module that contains error handling related utils
+{-# LANGUAGE FlexibleContexts #-}
 module Radlang.Error where
 
 import           Control.Monad.Except

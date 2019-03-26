@@ -1,3 +1,5 @@
+-- |This module builds class environment from raw set of declarations.
+--It also ensures that class hierarchy is valid and not contradict.
 {-# LANGUAGE FlexibleContexts #-}
 {-#LANGUAGE OverloadedLists#-}
 
@@ -66,6 +68,7 @@ addInst ps p@(IsIn i _) = do
   updateClassEnv i (Class c $ S.insert (ps :=> p) its)
 
 
+-- |Evaluate `ClassEnvBuilderT` with initial `ClassEnv`
 runClassEnvBuilderT :: Monad m
                     => ClassEnv
                     -> ClassEnvBuilderT m ()
@@ -73,17 +76,22 @@ runClassEnvBuilderT :: Monad m
 runClassEnvBuilderT ce (ClassEnvBuilder cb) = runExceptT $ execStateT cb ce
 
 
+-- |Evaluation of `ClassEnvBuilderT` `Identity`
 runClassEnvBuilder :: ClassEnv -> ClassEnvBuilder () -> Either ErrMsg ClassEnv
 runClassEnvBuilder ce cb = runIdentity $ runClassEnvBuilderT ce cb
 
 
+-- |Evaluate action when `Maybe` is a `Just`
 onPresent :: MonadError ErrMsg m => Maybe e -> (e -> m ()) -> m ()
-onPresent = forM_
+onPresent = forM_ -- TODO: Replace with Control.Monad.Extra
 
+
+-- |Evaluate action when `Maybe` withing the context is a `Just`
 onPresentM :: MonadError ErrMsg m => m (Maybe e) -> (e -> m ()) -> m ()
 onPresentM cond handle = cond >>= void . traverse handle
 
 
+-- |Main builder action that builds class environment from class definitions and implementations set
 buildClassEnv :: [ClassDef] -> [ImplDef] -> Either ErrMsg ClassEnv
 buildClassEnv cses' impls = runClassEnvBuilder (ClassEnv stdClasses []) $ do
   let cses = classHierarchySort cses'

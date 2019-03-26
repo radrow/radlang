@@ -155,7 +155,7 @@ predsByInstances p@(IsIn i _) = do
   maybe (typecheckError $ "Could not get valid instance for " <> show p) pure d
 
 
--- |Check if `p` will hold whenever all of `ps` are satisfied
+-- |Check if predicate will hold whenever all of initial predicates are satisfied
 entail :: (HasClassEnv m, MonadIO m) => [Pred] -> Pred -> m Bool
 entail ps p = do
   -- all sets of superclasses of `ps`

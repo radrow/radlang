@@ -68,12 +68,12 @@ withStackElems s = local $ over envDefStacktrace (s:) . over envEvalStacktrace (
 
 
 -- |Modify action to be ran with different stacktrace
-withDefStacktrace :: Stacktrace -> Evaluator a -> Evaluator a
+withDefStacktrace :: DefStacktrace -> Evaluator a -> Evaluator a
 withDefStacktrace st = local $ set envDefStacktrace st
 
 
 -- |Get stacktraces from current environment
-getStacktraces :: Evaluator (Stacktrace, EvalStacktrace)
+getStacktraces :: Evaluator (DefStacktrace, EvalStacktrace)
 getStacktraces = liftA2 (,) (asks _envDefStacktrace) (asks _envEvalStacktrace)
 
 

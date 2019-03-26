@@ -1,3 +1,5 @@
+-- |Collection of actions that take care of kindchecking.
+--This takes place right before typechecking and is necessary to build initial typespace
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}

@@ -1,5 +1,4 @@
 -- |Reexport of parsing modules
-
 module Radlang.Parser ( module Radlang.Parser.Toplevel
                       , parseProgram
                       , parseRDL

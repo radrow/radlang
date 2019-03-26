@@ -61,7 +61,7 @@ freshInst (Forall ks qt) = do
   pure $ instantiate ts qt
 
 
--- |Given `e` infer qualified `t`
+-- |Given argument infer qualified result
 type Infer e t = e -> TypecheckerT IO ([Pred], t)
 
 
