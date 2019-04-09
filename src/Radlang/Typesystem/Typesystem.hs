@@ -61,7 +61,7 @@ bindVar tv t = if
     | t == TypeVarWobbly tv -> pure mempty
     | elem tv (free t) ->
       typecheckError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
-    | kind tv /= kind t -> kindcheckError $ "Kinds don't match: " <> show (kind tv)
+    | kind tv /= kind t -> kindcheckError $ "Kinds don't match for " <> tName tv <> ": " <> show (kind tv)
       <> " vs " <> show (kind t)
     | otherwise -> pure $ Subst $ M.singleton (tName tv) t
 
@@ -209,7 +209,7 @@ reduce ps = toHNFs ps >>= simplify
 -- |Create scheme of generic type by its arguments
 quantify :: [TypeVar] -> Qual Type -> TypePoly
 quantify vs qt = Forall ks (substitute s qt) where
-  vs' = [v | v <- free qt, v `elem` vs]
+  vs' = [v | v <- nub (free qt), v `elem` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
   s = Subst $ M.fromList $ zip ns (fmap TypeGeneric [0..])

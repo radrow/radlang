@@ -213,8 +213,8 @@ instance HasKind Type where
 
 instance Show Type where
   show = \case
-    TypeVarWobbly (TypeVar a _) -> a
-    TypeVarRigid (TypeVar a _) -> a
+    TypeVarWobbly (TypeVar a _) -> a -- <> if k == KType then "" else " : " <> show k
+    TypeVarRigid (TypeVar a _) -> a -- <> if k == KType then "" else " : " <> show k
     TypeApp (TypeApp (TypeVarRigid (TypeVar "Func" _)) arg)
       val -> let aa = case arg of
                    TypeVarRigid _ -> show arg

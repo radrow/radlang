@@ -17,7 +17,7 @@ import           Radlang.Types                      hiding (kind)
 qual :: Parser a -> Parser (RawQual a)
 qual aPars = do
   preds <- try $ sepBy predicate (operator ",")
-  when (not (Prelude.null preds)) $ operator ":-"
+  when (not (Prelude.null preds)) $ operator "|"
   a <- aPars
   pure $ RawQual preds a
 

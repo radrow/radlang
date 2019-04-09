@@ -6,7 +6,6 @@ module Radlang.Intro(primitiveSpace, withIntro) where
 import qualified Data.Map                      as M
 
 import           Radlang.InterfaceEnvBuild         (mergeInterfaceEnv)
-import           Radlang.Desugar
 import           Radlang.Error
 import           Radlang.Evaluator
 import           Radlang.QQ
@@ -63,6 +62,11 @@ primitives =
         func2 "if evaluation" $ \onTrue onFalse ->
                                   pure $ if b == "True" then onTrue else onFalse
     )
+  , ("f", [] :=> fun (tWobbly "~A")
+      (fun (tWobbly "~A")
+       (fun (tWobbly "~A")
+        (fun (tWobbly "~A")
+         (tWobbly "~A")))), undefined)
   , ( "withForced"
     , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
     , DataFunc "manual force" $ \a ->
@@ -87,8 +91,8 @@ primitiveSpace = foldr folder (M.empty, M.empty, TypeEnv M.empty) primitives whe
 
 
 -- |Library that will be included as a prelludium to any user's program
-intro :: Program
-intro = either (error . showError) id $ buildProgram [rawrdl|
+intro :: RawProgram
+intro = [rawrdl|
 newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
 newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
 newtype Bool := True | False;;
@@ -115,22 +119,17 @@ deepForced a := withDeepForced a a;;
 
 
 -- |Merge two programs. Currently used only here to add Intro.
-mergePrograms :: Program -> Program -> Program
-mergePrograms r1 r2 = Program
- { prgBindings = prgBindings r2 ++ prgBindings r1
- , prgInterfaceEnv = prgInterfaceEnv r1 `mergeInterfaceEnv` prgInterfaceEnv r2
- , prgTypeEnv = TypeEnv $ M.union (types $ prgTypeEnv r1) (types $ prgTypeEnv r2)
- , prgNamespace = M.union (prgNamespace r1) (prgNamespace r2)
- , prgDataspace = Dataspace
-   { _dsMap = M.union (_dsMap $ prgDataspace r1) (_dsMap $ prgDataspace r2)
-   , _dsIdSupply = _dsIdSupply (prgDataspace r1) + _dsIdSupply (prgDataspace r2)
-   }
- }
+mergePrograms :: RawProgram -> RawProgram -> RawProgram
+mergePrograms r1 r2 = RawProgram
+  { rawprgNewTypes = rawprgNewTypes r1 ++ rawprgNewTypes r2
+  , rawprgTypeDecls = rawprgTypeDecls r1 ++ rawprgTypeDecls r2
+  , rawprgDataDefs = rawprgDataDefs r1 ++ rawprgDataDefs r2
+  , rawprgInterfaceDefs = rawprgInterfaceDefs r1 ++ rawprgInterfaceDefs r2
+  , rawprgImplDefs = rawprgImplDefs r1 ++ rawprgImplDefs r2
+  }
 
 
 -- |Extend program with Intro
-withIntro :: Program -> Program
-withIntro p =
-  let (_, _, ts) = primitiveSpace
-      merged = mergePrograms p intro
-  in merged {prgTypeEnv = TypeEnv $ M.union (types $ prgTypeEnv merged) (types ts)}
+withIntro :: RawProgram -> RawProgram
+withIntro = flip mergePrograms intro
+-- withIntro = id

@@ -17,9 +17,11 @@ import           Radlang.DependencyAnalysis
 import           Radlang.Error
 import           Radlang.Kindchecker
 import           Radlang.Typedefs
+import           Radlang.Intro
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 
+import Debug.Trace
 
 -- |Innsert element into dataspace and increment the counter
 dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
@@ -77,7 +79,7 @@ interfaceBindings cd =
   in fmap methodproc (interfacedefMethods cd)
 
 
--- |Substitute all name occurences by certain type in qualified type
+-- |Substitute all name occurences by certain type in a qualified type
 replaceTypeVar :: Name -> Type -> Qual Type -> Qual Type
 replaceTypeVar n repl (prd :=> tp) =
   let newt t = case t of
@@ -93,7 +95,7 @@ replaceTypeVar n repl (prd :=> tp) =
 implBindings :: InterfaceDef -> ImplDef -> [Either TypeDecl DataDef]
 implBindings cl idef =
   let nameMod :: Name -> Name
-      nameMod = (<> show (impldefType idef))
+      nameMod = (<> show ((\(_:=> t) -> t) $ impldefType idef))
 
       typeMod :: Qual Type -> Qual Type
       typeMod qt =
@@ -120,7 +122,8 @@ processImplDef rid = do
 
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
-buildProgram prg = runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs prg) (processProgram prg)
+buildProgram prg = let introed = withIntro prg
+  in runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs introed) (processProgram introed)
 
 
 -- |Merge two explicit binding sets
@@ -162,7 +165,6 @@ processProgram :: RawProgram -> Kindchecker Program
 processProgram prg = do
   as <- getKindspace
   newAs <- foldM (\a nt -> (unionKindspaces a) <$> kindlookNewType nt) as (rawprgNewTypes prg)
-
   withKindspace newAs $ do
     forM_ (rawprgNewTypes prg) kindcheckNewType
     forM_ (rawprgImplDefs prg) kindcheckImpl
@@ -184,7 +186,7 @@ processProgram prg = do
     let (ntTEnv, ns, ds) = newTypeBindings newtypes
 
         -- interfacebnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
-        --   ntTEnv $ fmap interfaceBindings cdefs
+        --    ntTEnv $ fmap interfaceBindings cdefs
         interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) cdefs
 
         imps = (uncurry implBindings . \im -> (interfacedefmap M.! impldefInterface im, im)) =<< impldefs
@@ -214,7 +216,7 @@ toplevelBindings = groupImplicit . Prelude.foldl ins (M.empty, [M.empty]) where
         e = M.insert n (quantifyAll qt, alts) exs
         i = M.delete n imps
         in (e, [i])
-      (Just _, _) -> error "Typedecl duplicate"
+      (Just _, _) -> error $ "Typedecl duplicate: " <> n -- FIXME THROWERROR
     Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) -> let
         i = M.insert n [(args, body)] imps

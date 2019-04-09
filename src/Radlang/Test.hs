@@ -94,11 +94,11 @@ printTypeEnv (TypeEnv te) =
 
 -- runPrg tp = let (res, ds) = run (TypedLet (tprgBindings tp) (TypedVal "main"))
 --   in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)
-runPrg tp =
-  let mock = TypedLet (tprgBindings tp) (TypedVal "main")
-      (ns, ds, _) = primitiveSpace
-      res = runEvaluator ns ds (TypeEnv M.empty) $ eval mock >>= force
-   in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)
+-- runPrg tp =
+--   let mock = TypedLet (tprgBindings tp) (TypedVal "main")
+--       (ns, ds, _) = primitiveSpace
+--       res = runEvaluator ns ds (TypeEnv M.empty) $ eval mock >>= force
+--    in putStrLn (either showError show res) >> (putStrLn $ "\n" ++ show ds)
 
 -- tt :: IO (Either ErrMsg TypeEnv)
 -- tt = typecheck (TypecheckerConfig True) sample
@@ -119,6 +119,6 @@ prettyTAlt ident n (args, te) = prefix ident <> n <> " " <> show args <> " :=\n"
 
 prettyTE :: Int -> TypedExpr -> String
 prettyTE ident = \case
-  TypedLet bnds te -> prefix ident <> "let\n" <> prettyBnds (ident + 4) bnds
+  TypedLet _ bnds te -> prefix ident <> "let\n" <> prettyBnds (ident + 4) bnds
     <> prefix ident <> "in\n" <> prettyTE ident te
   a -> prefix ident <> show a <> "\n"

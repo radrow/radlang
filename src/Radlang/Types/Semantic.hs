@@ -37,11 +37,31 @@ data Expr
 
 -- |Expression tree decorated with type annotations
 data TypedExpr where
- TypedVal :: Name -> TypedExpr
- TypedLit :: Literal -> TypedExpr
- TypedApplication :: TypedExpr -> TypedExpr -> TypedExpr
- TypedLet :: (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
-  deriving (Eq, Show, Ord)
+  TypedVal :: Type -> Name -> TypedExpr
+  TypedLit :: Type -> Literal -> TypedExpr
+  TypedApplication :: Type -> TypedExpr -> TypedExpr -> TypedExpr
+  TypedLet :: Type -> (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
+  deriving (Eq, Ord, Show)
+
+
+instance IsType TypedExpr where
+  free = free . getExprType
+  substitute s = \case
+    TypedVal t v -> TypedVal (substitute s t) v
+    TypedLit t l -> TypedLit (substitute s t) l
+    TypedApplication t f a -> TypedApplication (substitute s t)
+      (substitute s f) (substitute s a)
+    TypedLet t bn e -> TypedLet (substitute s t)
+      (flip fmap bn $ \(ta, alts) -> (substitute s ta, flip fmap alts $ \(pts, ea) -> (pts, substitute s ea))) (substitute s e)
+
+
+-- |Extracts `Type` from `TypedExpr`
+getExprType :: TypedExpr -> Type
+getExprType = \case
+  TypedVal t _ -> t
+  TypedLit t _ -> t
+  TypedApplication t _ _ -> t
+  TypedLet t _ _ -> t
 
 
 -- |Value stored in the dataspace. May be evaluated or not
@@ -116,8 +136,7 @@ data Program = Program
 
 -- |Program decorated with type annotations
 data TypedProgram = TypedProgram
-  { tprgBindings  :: TypedBindings
-  , tprgTypeEnv   :: TypeEnv
+  { tprgTypeEnv   :: TypeEnv
   , tprgDataspace :: Dataspace
   , tprgNamespace :: Namespace
   } deriving (Show)
@@ -141,10 +160,15 @@ data InterfaceDef = InterfaceDef
 
 
 -- |Binding value to name
-data DataDef = DataDef
-  { datadefName :: Name
-  , datadefArgs :: [Pattern]
-  , datadefVal  :: Expr}
+data DataDef
+  = DataDef
+    { datadefName :: Name
+    , datadefArgs :: [Pattern]
+    , datadefVal  :: Expr}
+  | ImplDataDef
+    { datadefName :: Name
+    , datadefArgs :: [Pattern]
+    , datadefVal  :: Expr}
   deriving (Eq, Show)
 
 
@@ -174,31 +198,41 @@ data ConstructorDef = ConstructorDef
 type Namespace = Map Name DataId
 
 
+-- |Mapping from variable names to their data regarding their type
+type Polyspace = Map Name (Type, DataId)
+
+
+-- |Store for data
+type Dataspace = Map DataId Data
+
+
 -- |Map of value names into ids
-data Env = Env { _envNamespace      :: Namespace
-               , _envTypespace      :: TypeEnv
-               , _envDefStacktrace  :: DefStacktrace
-               , _envEvalStacktrace :: EvalStacktrace
-               }
-  deriving (Show)
+data EvaluationEnv = EvaluationEnv
+  { _evenvNamespace      :: Namespace
+  , _evenvPolyDict       :: Polyspace
+  , _evenvDefStacktrace  :: DefStacktrace
+  , _evenvEvalStacktrace :: EvalStacktrace
+  } deriving (Show)
 
 
 -- |Map of ids into real data
-data Dataspace = Dataspace { _dsMap      :: Map DataId Data
-                           , _dsIdSupply :: DataId
-                           } deriving (Show)
+data EvaluationState = EvaluationState
+  { _evstDataspace :: Map DataId Data
+  , _evstIdSupply  :: DataId
+  } deriving (Show)
 
 
 -- |Transformer responsible for expression evaluation and error handling
-newtype Evaluator a = Evaluator (ExceptT ErrMsg (ReaderT Env (State Dataspace)) a)
-  deriving ( Functor, Applicative, Monad, MonadReader Env, MonadState Dataspace
-           , MonadError ErrMsg)
+newtype Evaluator a =
+  Evaluator (ExceptT ErrMsg (ReaderT EvaluationEnv (State EvaluationState)) a)
+  deriving ( Functor, Applicative, Monad, MonadReader EvaluationEnv
+           , MonadState EvaluationState, MonadError ErrMsg)
 
 
-makeLenses ''Dataspace
-makeLenses ''Env
+makeLenses ''EvaluationState
+makeLenses ''EvaluationEnv
 
 
 instance IdSupply Evaluator where
-  newId = gets _dsIdSupply <* modify (over dsIdSupply (+1))
+  newId = gets _evstIdSupply <* modify (over evstIdSupply (+1))
 

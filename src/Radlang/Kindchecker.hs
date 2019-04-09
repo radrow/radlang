@@ -124,10 +124,12 @@ inferKind :: RawType -> Kindchecker (KindSubstitution, KindVar)
 inferKind = \case
   RawTypeWobbly n -> lookupKind n >>= \case
     Just kr -> pure (mempty, kr)
-    Nothing -> fail $ "This should never happen: wobbly variable undefined: " <> n
+    Nothing -> wtf $ "This should never happen: wobbly variable undefined: " <> n
   RawTypeRigid tr -> lookupKind tr >>= \case
     Just kr -> pure (mempty, kr)
-    Nothing -> kindcheckError $ "Undefined variable " <> tr
+    Nothing -> getKindspace >>= \ks ->
+      kindcheckError $ "Undefined variable " <> tr <> ", valid variables are: "
+      <> show (M.elems . getKindspaceMap $ ks)
   RawTypeApp f (a:|rest) -> do
     (sf, kf) <- inferKind f
     let rollapp :: (KindSubstitution, KindVar) -> RawType -> Kindchecker (KindSubstitution, KindVar)
