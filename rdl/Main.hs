@@ -18,7 +18,7 @@ main = do
   let result = do
         rprg <- parseRDL fileName sourceCode
         prg <- buildProgram rprg
-        tprg <- unsafePerformIO $ typecheck (TypecheckerConfig True) prg
+        tprg <- typecheck (TypecheckerConfig True) prg
         runProgram tprg
   case result of
     Left e -> hPutStrLn stderr $ showError e

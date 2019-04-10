@@ -15,19 +15,12 @@ import           Prelude                    hiding (lookup)
 
 import           Radlang.Error
 import           Radlang.Types
-import           Radlang.Intro
 
 import Debug.Trace
 
--- |Get value by name
-dataByName :: Name -> Evaluator Data
-dataByName n = idByName n >>= dataById
-
-
--- |Get poly value by name and type
-dataByNamePoly :: Type -> Name -> Evaluator Data
-dataByNamePoly t n = do
-  if n == "plusInt" then traceM "AAA" >> runtimeError "próbował" else idByName (n <> show t) >>= dataById
+-- |Get value by name and desired type
+dataByName :: Type -> Name -> Evaluator Data
+dataByName t n = idByName t n >>= dataById
 
 
 -- |Get value by store id
@@ -40,14 +33,30 @@ dataById i = do
     Just x -> pure x
 
 
--- |Get store id of a variable by name
-idByName :: Name -> Evaluator DataId
-idByName n = do
-  m <- asks _evenvNamespace
-  case M.lookup n m of
-    Nothing -> runtimeError $ "idByName: no such name " <> show n <>
-      "\nKnown ievst are: " <> show (M.keys m)
-    Just x -> pure x
+-- |Get store id of a variable by name and desired type
+idByName :: Type -> Name -> Evaluator DataId
+idByName t n = do
+  ns <- asks _evenvNamespace
+  ps <- asks _evenvPolyspace
+  case mplus (M.lookup n ns) (M.lookup n ps >>= idByType t) of
+    Just i -> pure i
+    Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t
+
+
+idByType :: Type -> [(Type, DataId)] -> Maybe DataId
+idByType t = \case
+  [] -> Nothing
+  ((th, ih):rest) -> if typesMatch t th then Just ih else idByType t rest
+
+
+typesMatch :: Type -> Type -> Bool
+typesMatch t1 t2 = case (t1, t2) of
+  (TypeVarWobbly _, _) -> True
+  (_, TypeVarWobbly _) -> True
+  (TypeVarRigid tv1, TypeVarRigid tv2) -> tv1 == tv2
+  (TypeApp tf1 ta1, TypeApp tf2 ta2) ->
+    typesMatch tf1 tf2 && typesMatch ta1 ta2
+  _ -> False
 
 
 -- |Update namespace by a single namespace entry
@@ -58,6 +67,11 @@ withAssign (n, d) = local $ over evenvNamespace (M.insert n d)
 -- |Modify action to be ran in different namespace
 withNamespace :: Namespace -> Evaluator a -> Evaluator a
 withNamespace = local . set evenvNamespace
+
+
+-- |Modify action to be ran in different polyspace. Should be used only during initialization
+withPolyspace :: Polyspace -> Evaluator a -> Evaluator a
+withPolyspace = local . set evenvPolyspace
 
 
 -- |Modify action to be ran with updated definition stacktrace
@@ -93,6 +107,11 @@ putData i d = modify $ over evstDataspace (M.insert i d)
 -- |Get current namespace
 getNamespace :: Evaluator Namespace
 getNamespace = asks _evenvNamespace
+
+
+-- |Get current polyspace
+getPolyspace :: Evaluator Polyspace
+getPolyspace = asks _evenvPolyspace
 
 
 -- |Create new lazy thunk from evaluator and return id assigned to it
@@ -212,6 +231,18 @@ processBindings tbnevst = do
     forM_ (zip ievst dats) $ uncurry putData
   pure recNs
 
+
+-- |Build dataspace and namespace from set of polymorphic bindings
+processPolyBindings :: PolyBindings -> Evaluator Polyspace
+processPolyBindings pb = fmap M.fromList $ forM (M.toList pb) $ \(n, tdl) -> do
+  let processSinglePoly t dd = do
+        d <- processSingleBindings ("impl " <> n <> " for " <> show t) $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) dd
+        i <- newData d
+        pure (t, i)
+  is <- mapM (uncurry processSinglePoly) tdl
+  pure $ (n, is)
+
+
 -- |Try to match data to pattern and return unifying substitution if possible
 matchDataToPattern :: Pattern -> Data -> Evaluator (Maybe DataSubst)
 matchDataToPattern pat dat = case pat of
@@ -262,10 +293,7 @@ applyDataSubst (DataSubst sub) = do
 -- |Evaluate typed expression
 eval :: TypedExpr -> Evaluator Data
 eval = \case
-  TypedVal t n -> do
-    traceM $ "SEARCHING FOR " <> show t <> " name " <> n
-    withStackElems ("reading var " <> n) $
-      catchError (dataByNamePoly t n) $ const (dataByName n)
+  TypedVal t n -> dataByName t n
   TypedLit _ l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
@@ -283,26 +311,30 @@ eval = \case
     withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
 
 
+evalProgram :: TypedProgram -> Evaluator StrictData
+evalProgram tp = do
+  ns <- processBindings $ tprgBindings tp
+  ps <- processPolyBindings $ tprgPolyBindings tp
+
+  case M.lookup "main" (tprgBindings tp) of
+    Nothing -> languageError "No `main` function defined!"
+    Just (t, _) ->
+      withNamespace ns $ withPolyspace ps $ withStackElems "main" $ eval (TypedVal t "main") >>= deepForce
+
+
 -- |Perform evaluation of the main value from the program
 runProgram :: TypedProgram -> Either ErrMsg StrictData
-runProgram tp = let (ns, ds, _) = primitiveSpace
-                in runEvaluator
-                   (tprgNamespace tp `M.union` ns)
-                   ((tprgDataspace tp) `M.union` ds)
-                   ts $ do
-  assgsNs <- processBindings $ tprg -- TODO Kurwaaaa rozplanować tooo
-  withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
+runProgram tp = runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
 
 
 -- |Run evaluator and extract the result
 runEvaluator :: Namespace
              -> Dataspace
-             -> Polyspace
              -> Evaluator a
              -> Either ErrMsg a
-runEvaluator ns evst ps (Evaluator e)
+runEvaluator ns evst (Evaluator e)
   = flip evalState (EvaluationState evst (M.size evst))
-  $ flip runReaderT (EvaluationEnv ns ps [] [])
+  $ flip runReaderT (EvaluationEnv ns M.empty [] [])
   $ runExceptT e
 
 

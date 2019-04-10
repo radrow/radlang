@@ -15,9 +15,10 @@ exprDependencies = go S.empty where
     Val n -> S.insert n acc
     Lit _ -> acc
     Application f a -> go (go acc a) f
-    Let (e, i) expr -> exprDependencies expr S.\\ (S.union ims exs) where
+    Let (p, e, i) expr -> exprDependencies expr S.\\ (S.unions [ims, exs, pos]) where
       ims = S.fromList $ M.keys =<< i
       exs = S.fromList $ M.keys e
+      pos = S.fromList $ M.keys p
 
 
 -- |Get all variables' names in the pattern

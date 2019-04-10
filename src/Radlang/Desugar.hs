@@ -5,6 +5,7 @@
 --definitions and declarations.
 module Radlang.Desugar where
 
+import           Data.List(groupBy, sortBy)
 import           Control.Monad
 import           Control.Monad.Except
 import           Data.Bitraversable
@@ -21,11 +22,10 @@ import           Radlang.Intro
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 
-import Debug.Trace
 
 -- |Innsert element into dataspace and increment the counter
-dataspaceInsert :: Data -> Dataspace -> (Dataspace, DataId)
-dataspaceInsert d (Dataspace ds next) = (Dataspace (M.insert next d ds) (next+1), next)
+dataspaceInsert :: Data -> EvaluationState -> EvaluationState
+dataspaceInsert d (EvaluationState ds next) = (EvaluationState (M.insert next d ds) (next+1))
 
 
 -- |Generate bindings from constructor definition
@@ -42,32 +42,31 @@ constructorBindings final c =
   in (t, Strict d)
 
 
--- |Process newtype definition and insert it into computed space
-newTypeBindingsCont :: (TypeEnv, Namespace, Dataspace)
-                    -> NewType
-                    -> (TypeEnv, Namespace, Dataspace)
-newTypeBindingsCont (tsPrev, nsPrev, dsPrev) nt =
-  let constrs = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
-                               in (condefName cd, quantifyAll ([] :=> t), d))
-             $ (ntContrs nt)
-
-      tenv = foldl (\te (n, t, _) -> TypeEnv $ M.insert n t (types te)) tsPrev constrs
-
-      (dspace, ids) = foldl (\(ds, prids) (_, _, d) -> let (dds, did) = dataspaceInsert d ds
-                                                       in (dds, did:prids)
-                            ) (dsPrev, []) constrs
-      nspace = foldl (\ds ((n, _, _), i) -> M.insert n i ds)
-        nsPrev $ zip constrs (reverse ids)
-  in (tenv, nspace, dspace)
+-- |Extracts informations about its constructors
+newtypeConstructorsBindings :: NewType
+                            -> [(Name, Qual Type, Data)]
+newtypeConstructorsBindings nt = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
+                                              in (condefName cd, ([] :=> t), d))
+                                 $ (ntContrs nt)
 
 
 -- |Generate bindings from newtypes definition
-newTypeBindings :: [NewType] -> (TypeEnv, Namespace, Dataspace)
-newTypeBindings = foldl newTypeBindingsCont (TypeEnv M.empty, M.empty, Dataspace M.empty 0)
+newtypeBindings :: [NewType] -> BindingGroup
+newtypeBindings nts =
+  let constrs = foldr (\nt prev -> newtypeConstructorsBindings nt ++ prev) [] nts
+      tdecls = fmap (\(n, t, _) -> Left $ TypeDecl n t) constrs
+  in makeBindings tdecls
+
+
+-- |Get contructors as data with assigned names
+newtypeData :: [NewType] -> M.Map Name Data
+newtypeData nts =
+  let constrs = foldr (\nt prev -> newtypeConstructorsBindings nt ++ prev) [] nts
+  in M.fromList $ fmap (\(n, _, d) -> (n, d)) constrs
 
 
 -- |Extract type declarations from interface definition
-interfaceBindings :: InterfaceDef -> [(Name, Qual Type)]
+interfaceBindings :: InterfaceDef -> BindingGroup
 interfaceBindings cd =
   let clspred = IsIn (interfacedefName cd) (TypeVarWobbly $ TypeVar (interfacedefArg cd) (interfacedefKind cd) )
 
@@ -76,7 +75,8 @@ interfaceBindings cd =
         let (prds :=> t) = tdeclType td
         in (tdeclName td, (clspred : prds) :=> t)
 
-  in fmap methodproc (interfacedefMethods cd)
+      bnds = M.fromList $ fmap ((\(n, qt) -> (n, (quantifyAll qt, []))) . methodproc) (interfacedefMethods cd)
+  in (bnds, M.empty, [])
 
 
 -- |Substitute all name occurences by certain type in a qualified type
@@ -92,24 +92,34 @@ replaceTypeVar n repl (prd :=> tp) =
 
 
 -- |Extract bindings from impl definition
-implBindings :: InterfaceDef -> ImplDef -> [Either TypeDecl DataDef]
-implBindings cl idef =
-  let nameMod :: Name -> Name
-      nameMod = (<> show ((\(_:=> t) -> t) $ impldefType idef))
-
-      typeMod :: Qual Type -> Qual Type
+implBindings :: InterfaceDef -> ImplDef -> BindingGroup
+implBindings cl idef = -- Strategy: write once, forget what the fuck is going on here and never go back
+  let typeMod :: Qual Type -> Qual Type
       typeMod qt =
         let (iprd :=> itp) = impldefType idef  -- get instance predicates and type
             (rprd :=> rtp) = replaceTypeVar (interfacedefArg cl) itp qt  -- replace original type with instance
         in ((iprd ++ rprd) :=> rtp)  -- join predicates from typedecl and impl contraints
 
-      tdeclMod :: TypeDecl -> TypeDecl
-      tdeclMod td = TypeDecl (nameMod $ tdeclName td) (typeMod $ tdeclType td)
+      typeByName :: Name -> Qual Type
+      typeByName n =
+        maybe (wtf "implbindings lookup fail") id
+        $ lookup n (fmap (\mt -> (tdeclName mt, tdeclType mt)) $ interfacedefMethods cl)
 
-      tdecls = fmap tdeclMod (interfacedefMethods cl)
-      tdefs = fmap (\mt -> mt{datadefName = nameMod $ datadefName mt}) $ impldefMethods idef
+      bnds :: InterfaceBindings
+      bnds = M.fromList
+        $ fmap (\(n, l) ->
+                  (n
+                  , ( quantifyAll $ typeByName n
+                    , [( quantifyAll $ typeMod $ typeByName n
+                       , fmap (\dd -> (datadefArgs dd, datadefVal dd)) l)
+                      ])))
+        $ fmap (\l -> (fst $ head l, fmap snd l)) -- extract names, ie. [[(Name, Defs)]] -> [(Name, [Defs])]
+        $ groupBy ((.fst) . (==) . fst) -- group by names
+        $ sortBy ((.fst) . compare . fst) -- sort by names
+        $ fmap (\dd -> (datadefName dd, dd)) -- expose names
+        $ impldefMethods idef -- get method definitions
 
-  in fmap Left tdecls ++ fmap Right tdefs
+  in (bnds, M.empty, [])
 
 
 -- |Kindcheck and desugar impl definition
@@ -127,13 +137,28 @@ buildProgram prg = let introed = withIntro prg
 
 
 -- |Merge two explicit binding sets
-unionBindings :: ExplBindings -> ExplBindings -> ExplBindings
-unionBindings e1 e2 =
+unionExplBindings :: ExplBindings -> ExplBindings -> ExplBindings
+unionExplBindings e1 e2 =
   let unionIns :: ExplBindings -> Name -> (TypePoly, [Alt]) -> ExplBindings
       unionIns m k v = case M.lookup k m of
         Nothing        -> M.insert k v m
         Just (t, alts) -> M.insert k (t, snd v ++ alts) m
-  in foldl (\e (n, d) -> unionIns e n d) e1 (M.toList e2)
+  in foldr (\(n, d) e -> unionIns e n d) e1 (M.toList e2)
+
+
+-- |Merge two interface binding sets
+unionInterBindings :: InterfaceBindings -> InterfaceBindings -> InterfaceBindings
+unionInterBindings i1 i2 =
+  let unionIns :: InterfaceBindings -> Name -> (TypePoly, [(TypePoly, [Alt])]) -> InterfaceBindings
+      unionIns m k v = case M.lookup k m of
+        Nothing        -> M.insert k v m
+        Just (t, altss) -> M.insert k (t, snd v ++ altss) m
+  in foldr (\(n, d) e -> unionIns e n d) i1 (M.toList i2)
+
+
+-- |Merge two binding groups
+unionBindingGroups :: BindingGroup -> BindingGroup -> BindingGroup
+unionBindingGroups (i1, e1, is1) (i2, e2, is2) = (unionInterBindings i1 i2, unionExplBindings e1 e2, is1 ++ is2)
 
 
 -- |Ensure that no variable occurs twice in pattern set
@@ -173,62 +198,58 @@ processProgram prg = do
       forM (rawprgTypeDecls prg) $ \td -> do
         tdas <- kindcheckRawTypeDecl td
         withKindspace (unionKindspaces tdas newAs) $ processTypeDecl td
-
-    cdefs <- traverse processInterfaceDef (rawprgInterfaceDefs prg)
-
+    ddefs <- traverse processDataDef (rawprgDataDefs prg)
+    intdefs <- traverse processInterfaceDef (rawprgInterfaceDefs prg)
     newtypes <- traverse processNewType (rawprgNewTypes prg)
-
     impldefs <- traverse processImplDef (rawprgImplDefs prg)
 
-    ceny <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
-      (buildInterfaceEnv cdefs impldefs)
-    ddefs <- traverse processDataDef (rawprgDataDefs prg)
-    let (ntTEnv, ns, ds) = newTypeBindings newtypes
+    intenv <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
+      (buildInterfaceEnv intdefs impldefs)
 
-        -- interfacebnds = foldl (\t1 t2 -> TypeEnv $ M.union (types t1) (types t2))
-        --    ntTEnv $ fmap interfaceBindings cdefs
-        interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) cdefs
+    let ntbnds = newtypeBindings newtypes
 
-        imps = (uncurry implBindings . \im -> (interfacedefmap M.! impldefInterface im, im)) =<< impldefs
-        cdecls = cdefs >>= \cd -> fmap (uncurry TypeDecl) (interfaceBindings cd)
+        interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) intdefs
+        impbnds = foldr unionBindingGroups (M.empty, M.empty, []) [uncurry implBindings $ (interfacedefmap M.! impldefInterface im, im) | im <- impldefs]
+
+        intbnds = foldr unionBindingGroups (M.empty, M.empty, []) [interfaceBindings i | i <- intdefs]
+
+        topbnds = makeBindings $ fmap Left tdecls ++ fmap Right ddefs
+
+        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [ntbnds, impbnds, intbnds, topbnds]
 
     pure $ Program
-      { prgBindings = pure . toplevelBindings $
-                      fmap Left tdecls ++ fmap Right ddefs ++ imps ++ fmap Left cdecls
-      , prgInterfaceEnv = ceny
-      , prgTypeEnv = ntTEnv
-      , prgNamespace = ns
-      , prgDataspace = ds
+      { prgBindings = [allbnds]
+      , prgInterfaceEnv = intenv
       }
 
 
 -- |Wraps bunch of type and value bindings into a binding group
-toplevelBindings :: [Either TypeDecl DataDef] -> BindingGroup
-toplevelBindings = groupImplicit . Prelude.foldl ins (M.empty, [M.empty]) where
+makeBindings :: [Either TypeDecl DataDef] -> BindingGroup
+makeBindings = groupImplicit . Prelude.foldl ins (M.empty, M.empty, [M.empty]) where
   groupImplicit :: BindingGroup -> BindingGroup
-  groupImplicit (e, is) = (e, groupBindings =<< is)
+  groupImplicit (int, e, is) = (int, e, groupBindings =<< is)
   ins :: BindingGroup -> Either TypeDecl DataDef -> BindingGroup
-  ins (exs, [imps]) tl = case tl of
+  ins (int, exs, [imps]) tl = case tl of
     Left (TypeDecl n qt) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) ->
-        (M.insert n (quantifyAll qt, []) exs, [imps])
+        (int, M.insert n (quantifyAll qt, []) exs, [imps])
       (Nothing, Just alts) -> let
         e = M.insert n (quantifyAll qt, alts) exs
         i = M.delete n imps
-        in (e, [i])
+        in (int, e, [i])
       (Just _, _) -> error $ "Typedecl duplicate: " <> n -- FIXME THROWERROR
     Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) -> let
         i = M.insert n [(args, body)] imps
-        in (exs, [i])
+        in (int, exs, [i])
       (Just (t, alts), Nothing) -> let
         e = M.insert n (t, (args, body):alts) exs
-        in (e, [imps])
+        in (int, e, [imps])
       (Nothing, Just alts) -> let
         i = M.insert n ((args, body):alts) imps
-        in (exs, [i])
-      _ -> error "Impossible happened: binding both explicit and implicit"
-  ins _ _ = error "toplevelBindings process error: imps not a singleton"
+        in (int, exs, [i])
+      _ -> wtf "Impossible happened: binding both explicit and implicit"
+  ins _ _ = wtf "toplevelBindings process error: imps not a singleton"
 
 
 -- |Turns value binding AST into real binding
@@ -252,7 +273,7 @@ processRawExpr = \case
     pure $ Prelude.foldl1 Application sq
   RawExprLet assgs inWhat -> do
     passgs <- traverse (bitraverse processTypeDecl processDataDef) assgs
-    let bnds = toplevelBindings (toList passgs)
+    let bnds = makeBindings (toList passgs)
     ex <- processRawExpr inWhat
     pure $ Let bnds ex
   RawExprLambda (a:|rest) val -> processRawExpr $

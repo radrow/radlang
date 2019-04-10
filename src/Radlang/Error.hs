@@ -37,8 +37,8 @@ interfaceEnvError = throwError . InterfaceEnvError
 -- |Throw an error that occured during runtime from users fault (eg. division by zero)
 runtimeError :: String -> Evaluator a
 runtimeError s = do
-  st <- asks _envDefStacktrace
-  est <- asks _envEvalStacktrace
+  st <- asks _evenvDefStacktrace
+  est <- asks _evenvEvalStacktrace
   throwError $ RuntimeError st est s
 
 

@@ -32,7 +32,7 @@ data Expr
   | Lit Literal
   | Application Expr Expr
   | Let BindingGroup Expr
-  deriving (Eq, Show, Ord)
+  deriving (Show)
 
 
 -- |Expression tree decorated with type annotations
@@ -114,31 +114,38 @@ type ExplBindings = Map Name (TypePoly, [Alt])
 type ImplBindings = Map Name [Alt]
 
 
+-- |Collection of bindings that belong to interface. First `TypePoly` describes general type of method,
+-- the other ones are about the specific implementations
+type InterfaceBindings = Map Name (TypePoly, [(TypePoly, [Alt])])
+
+
 -- |Collection of bindings splitted into explicitly typed and implicitly typed
 -- grouped as strongly connected components in dependency graph and thopologically
 -- sorted
-type BindingGroup = (ExplBindings, [ImplBindings])
+type BindingGroup = (InterfaceBindings, ExplBindings, [ImplBindings])
 
 
 -- |Explicitly typed bindings with typed expressions
 type TypedBindings = Map Name (Type, [TypedAlt])
 
 
+-- |Typed bindings for polymorphic data
+type PolyBindings = Map Name [(Type, [TypedAlt])]
+
+
 -- |Full program representation
 data Program = Program
   { prgBindings  :: [BindingGroup]
   , prgInterfaceEnv  :: InterfaceEnv
-  , prgTypeEnv   :: TypeEnv
-  , prgDataspace :: Dataspace
-  , prgNamespace :: Namespace
   } deriving (Show)
 
 
 -- |Program decorated with type annotations
 data TypedProgram = TypedProgram
-  { tprgTypeEnv   :: TypeEnv
-  , tprgDataspace :: Dataspace
-  , tprgNamespace :: Namespace
+  { tprgDataspace    :: Dataspace
+  , tprgNamespace    :: Namespace
+  , tprgPolyBindings :: PolyBindings
+  , tprgBindings     :: TypedBindings
   } deriving (Show)
 
 
@@ -146,7 +153,7 @@ data TypedProgram = TypedProgram
 data TypeDecl = TypeDecl
   { tdeclName :: Name
   , tdeclType :: Qual Type}
-  deriving (Eq, Ord, Show)
+  deriving (Show)
 
 
 -- |Interface definition
@@ -156,7 +163,7 @@ data InterfaceDef = InterfaceDef
   , interfacedefKind    :: Kind
   , interfacedefSuper   :: (Set Name)
   , interfacedefMethods :: [TypeDecl]}
-  deriving (Eq, Show)
+  deriving (Show)
 
 
 -- |Binding value to name
@@ -165,11 +172,7 @@ data DataDef
     { datadefName :: Name
     , datadefArgs :: [Pattern]
     , datadefVal  :: Expr}
-  | ImplDataDef
-    { datadefName :: Name
-    , datadefArgs :: [Pattern]
-    , datadefVal  :: Expr}
-  deriving (Eq, Show)
+  deriving (Show)
 
 
 -- |Implementation of interface
@@ -177,21 +180,21 @@ data ImplDef = ImplDef
   { impldefInterface   :: Name
   , impldefType    :: Qual Type
   , impldefMethods :: [DataDef]}
-  deriving (Eq, Show)
+  deriving (Show)
 
 -- |`newtype` definition
 data NewType = NewType
   { ntName   :: Name
   , ntType   :: Type
   , ntContrs :: [ConstructorDef]}
-  deriving (Eq, Ord, Show)
+  deriving (Show)
 
 
 -- |Definition of constructor
 data ConstructorDef = ConstructorDef
   { condefName :: Name
   , condefArgs :: [Type]}
-  deriving (Eq, Ord, Show)
+  deriving (Show)
 
 
 -- |Mapping from variable names to their place in dataspace
@@ -199,7 +202,7 @@ type Namespace = Map Name DataId
 
 
 -- |Mapping from variable names to their data regarding their type
-type Polyspace = Map Name (Type, DataId)
+type Polyspace = Map Name [(Type, DataId)]
 
 
 -- |Store for data
@@ -209,7 +212,7 @@ type Dataspace = Map DataId Data
 -- |Map of value names into ids
 data EvaluationEnv = EvaluationEnv
   { _evenvNamespace      :: Namespace
-  , _evenvPolyDict       :: Polyspace
+  , _evenvPolyspace       :: Polyspace
   , _evenvDefStacktrace  :: DefStacktrace
   , _evenvEvalStacktrace :: EvalStacktrace
   } deriving (Show)

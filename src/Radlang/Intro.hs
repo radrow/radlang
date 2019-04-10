@@ -46,7 +46,7 @@ primitives =
     )
   , ("divInt"
     , [] :=> fun tInt (fun tInt tInt)
-    , strictFunc2 "plusInt" $ \(DataInt a) (DataInt b) ->
+    , strictFunc2 "divInt" $ \(DataInt a) (DataInt b) ->
         if b == 0 then runtimeError "Division by zero"
         else pure $ Strict $ DataInt (a `div` b)
     )
@@ -81,13 +81,11 @@ primitives =
 
 
 -- |Spaces that include all primitives
-primitiveSpace :: (Namespace, M.Map DataId Data, TypeEnv)
-primitiveSpace = foldr folder (M.empty, M.empty, TypeEnv M.empty) primitives where
-  folder (name, typ, def) (ns, ds, ts) =
-    let nextId = -(M.size ns) - 1 -- FIXME ANDRZEJ TO JEBNIE
-    in ( M.insert name nextId ns
-       , M.insert nextId (Strict def) ds
-       , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
+primitiveSpace :: (M.Map Name Data, TypeEnv)
+primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) primitives where
+  folder (name, typ, def) (ps, ts) =
+    ( M.insert name (Strict def) ps
+    , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
 
 
 -- |Library that will be included as a prelludium to any user's program
