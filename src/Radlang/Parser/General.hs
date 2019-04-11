@@ -49,12 +49,12 @@ signed = L.signed skipComments (lex L.decimal)
 
 -- |Specific word
 word :: String -> Parser ()
-word w = try $ string w >> notFollowedBy alphaNumChar >> skipComments
+word w = lex $ try $ string w >> notFollowedBy alphaNumChar >> skipComments
 
 
 -- |Specific operator
 operator :: String -> Parser ()
-operator o = try $ string o >> notFollowedBy (oneOf "=+_-*&^%$#@![]{}':\\;\".,<\'>") >> skipComments
+operator o = lex $ try $ string o >> notFollowedBy (oneOf "=+_-*&^%$#@![]{}':\\;\".,<\'>") >> skipComments
 
 
 -- |Surround parser with parentheses
@@ -75,9 +75,7 @@ sqbrac = between (symbol "[") (symbol "]")
 -- |Identifier starting with lower-case character
 lId :: Parser Name
 lId = lex $ do
-  c <- lowerChar
-  rest <- many alphaNumChar
-  let i = c : rest
+  i <- (:) <$> lowerChar <*> (many alphaNumChar)
   when (i `elem` forbiddenIds) $ fail ("forbidden identifier: " <> i)
   return $ i
 
@@ -85,9 +83,7 @@ lId = lex $ do
 -- |Identifier starting with upper-case character
 uId :: Parser Name
 uId = lex $ do
-  c <- upperChar
-  rest <- many alphaNumChar
-  let i = c : rest
+  i <- (:) <$> upperChar <*> (many alphaNumChar)
   when (i `elem` forbiddenIds) $ fail ("forbidden identifier: " <> i)
   return $ i
 

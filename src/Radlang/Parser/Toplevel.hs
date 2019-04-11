@@ -17,6 +17,7 @@ import           Radlang.Types                      hiding (kind)
 -- |Parse whole program
 rawProgram :: Parser RawProgram
 rawProgram = do
+  skipComments
   parts <- many $ rawProgramPart <* operator ";;"
   pure $ foldl insertPart (RawProgram [] [] [] [] []) parts where
     insertPart rp = \case
@@ -125,15 +126,15 @@ escapedChar = do
   if c /= '\\'
     then pure c
     else printChar >>= \case
-    'n' -> pure '\n'
-    't' -> pure '\t'
+    'n'  -> pure '\n'
+    't'  -> pure '\t'
     '\\' -> pure '\\'
-    'r' -> pure '\r'
-    'v' -> pure '\v'
-    'b' -> pure '\b'
-    'f' -> pure '\f'
-    '0' -> pure '\0'
-    bad -> fail $ "Cannot escape char '" <> [bad] <> "'"
+    'r'  -> pure '\r'
+    'v'  -> pure '\v'
+    'b'  -> pure '\b'
+    'f'  -> pure '\f'
+    '0'  -> pure '\0'
+    bad  -> fail $ "Cannot escape char '" <> [bad] <> "'"
 
 
 -- |Parse definition of a interface
