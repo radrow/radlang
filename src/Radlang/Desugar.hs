@@ -22,6 +22,7 @@ import           Radlang.Intro
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 
+import Debug.Trace
 
 -- |Innsert element into dataspace and increment the counter
 dataspaceInsert :: Data -> EvaluationState -> EvaluationState
@@ -51,11 +52,11 @@ newtypeConstructorsBindings nt = fmap (\cd -> let (t,d) = constructorBindings (n
 
 
 -- |Generate bindings from newtypes definition
-newtypeBindings :: [NewType] -> BindingGroup
-newtypeBindings nts =
+newtypeTypeEnv :: [NewType] -> TypeEnv
+newtypeTypeEnv nts =
   let constrs = foldr (\nt prev -> newtypeConstructorsBindings nt ++ prev) [] nts
-      tdecls = fmap (\(n, t, _) -> Left $ TypeDecl n t) constrs
-  in makeBindings tdecls
+      tdecls = fmap (\(n, t, _) -> (n, quantifyAll t)) constrs
+  in TypeEnv $ M.fromList tdecls
 
 
 -- |Get contructors as data with assigned names
@@ -206,20 +207,20 @@ processProgram prg = do
     intenv <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
       (buildInterfaceEnv intdefs impldefs)
 
-    let ntbnds = newtypeBindings newtypes
-
-        interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) intdefs
+    let interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) intdefs
         impbnds = foldr unionBindingGroups (M.empty, M.empty, []) [uncurry implBindings $ (interfacedefmap M.! impldefInterface im, im) | im <- impldefs]
 
         intbnds = foldr unionBindingGroups (M.empty, M.empty, []) [interfaceBindings i | i <- intdefs]
 
         topbnds = makeBindings $ fmap Left tdecls ++ fmap Right ddefs
 
-        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [ntbnds, impbnds, intbnds, topbnds]
+        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [impbnds, intbnds, topbnds]
 
     pure $ Program
-      { prgBindings = [allbnds]
+      { prgDatamap = newtypeData newtypes
+      , prgBindings = [allbnds]
       , prgInterfaceEnv = intenv
+      , prgTypeEnv = newtypeTypeEnv newtypes
       }
 
 

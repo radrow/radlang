@@ -252,7 +252,7 @@ defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName .
 
 -- |Typecheck explicitly typed binding
 inferTypeExpl :: ExplBinding -> TypecheckerT IO ([Pred], (Type, [TypedAlt]))
-inferTypeExpl (_, (sc, alts)) = do
+inferTypeExpl (name, (sc, alts)) = do
   (qs :=> t) <- freshInst sc
   (ps, (_, talts)) <- inferTypeAlts t alts
   s <- getSubst
@@ -264,8 +264,8 @@ inferTypeExpl (_, (sc, alts)) = do
       sc' = quantify gs (qs' :=> t')
   ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
   (ds, rs) <- split fs gs ps'
-  if | sc /= sc' -> typecheckError "Signature is too general"
-     | not (null rs) -> typecheckError "Context is too weak"
+  if | sc /= sc' -> typecheckError $ "Signature is too general for " <> name
+     | not (null rs) -> typecheckError $ "Context is too weak for " <> name
      | otherwise -> pure (ds, (t, talts))
 
 
@@ -368,6 +368,8 @@ runTypecheckerT ce te tc
   . flip runReaderT (TypecheckerEnv ce te tc)
   . runExceptT . (\(Typechecker t) -> t)
 
+tctest :: Program -> TypedProgram
+tctest p = either (error . showError) id $ typecheck (TypecheckerConfig True) p
 
 -- |Toplevel typechecking of a program
 typecheck :: TypecheckerConfig -> Program -> Either ErrMsg TypedProgram
@@ -375,10 +377,10 @@ typecheck tc p =
   let (ps, ts) = primitiveSpace
   in do (_, tb, pb) <- unsafePerformIO $ runTypecheckerT
                           (prgInterfaceEnv p)
-                          ts
+                          (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
                           tc (inferTypeBindingGroups $ prgBindings p)
 
-        let psl = M.toList ps
+        let psl = M.toList ps ++ M.toList (prgDatamap p)
             pids = take (length psl) [0..]
 
             pns = M.fromList $ zip (fmap fst psl) pids

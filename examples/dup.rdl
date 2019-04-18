@@ -1,0 +1,12 @@
+interface Show (~A : Type) {
+  show : ~A -> Int;;
+};;
+
+impl Int for Show {
+  show x := x;;
+};;
+
+zzz x := show x;;
+
+zzzz := zzz 3;;
+

@@ -1,17 +1,32 @@
+
+
 interface Monoid (~M : Type) {
   zero : ~M;;
-  plus : ~M => ~M => ~M;;
+  plus : ~M -> ~M -> ~M;;
 };;
 
 impl Int for Monoid {
   zero := 0;;
   plus := plusInt;;
-}
+};;
 
 impl Bool for Monoid {
   zero := False;;
   plus True True := True;;
   plus _ _ := False;;
-}
+};;
 
-main := if zero then zero else zero;;
+impl ~A is Monoid | Option ~A for Monoid {
+  zero := Some zero;;
+  plus (Some a) (Some b) := Some (plus a b);;
+  plus _ _ := None;;
+};;
+
+f a b := plus a 1;;
+
+dmain := f 1 2;;
+main3 := plus (Some 1) (Some 2);;
+
+
+g x := let y := plus x x in y;;
+main := g 1;;

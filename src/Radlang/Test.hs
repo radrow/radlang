@@ -7,15 +7,13 @@
 
 module Radlang.Test where
 
-import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH.Quote
 import qualified Data.Map as M
 
+import System.IO.Unsafe
 import Radlang.Types
-import Radlang.Intro
-import Radlang.Error
-import Radlang.QQ
-import Radlang.Evaluator
+import Radlang.Parser
+import Radlang.Desugar
+import Radlang.Typechecker
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -113,6 +111,10 @@ prettyBnds :: Int -> TypedBindings -> String
 prettyBnds ident p = unlines $ flip fmap (M.toList p) $ \(n, (t, talts)) ->
   prefix ident <> n <> " : " <> show t <> "\n" <> ((prettyTAlt ident n) =<< talts)
 
+prettyPBnds :: PolyBindings -> String
+prettyPBnds p = unlines $ flip fmap (M.toList p) $ \(n, dl) -> unlines $ flip fmap dl $ \(t, talts) ->
+  "POLY " <> n <> " : " <> show t <> "\n" <> ((prettyTAlt 0 n) =<< talts)
+
 prettyTAlt :: Int -> Name -> TypedAlt -> String
 prettyTAlt ident n (args, te) = prefix ident <> n <> " " <> show args <> " :=\n" <>
   prettyTE (ident + 4) te
@@ -122,3 +124,5 @@ prettyTE ident = \case
   TypedLet _ bnds te -> prefix ident <> "let\n" <> prettyBnds (ident + 4) bnds
     <> prefix ident <> "in\n" <> prettyTE ident te
   a -> prefix ident <> show a <> "\n"
+
+tttest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)

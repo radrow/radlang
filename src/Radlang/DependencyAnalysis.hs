@@ -23,7 +23,7 @@ exprDependencies = go S.empty where
 
 -- |Get all variables' names in the pattern
 patternFree :: Pattern -> S.Set Name
-patternFree= \case
+patternFree = \case
   PLit _ -> S.empty
   PAs n p -> S.insert n (patternFree p)
   PWildcard -> S.empty

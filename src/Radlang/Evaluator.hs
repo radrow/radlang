@@ -14,8 +14,9 @@ import           Data.Maybe
 import           Prelude                    hiding (lookup)
 
 import           Radlang.Error
+import           Radlang.DependencyAnalysis
 import           Radlang.Types
-
+-- import Radlang.Test
 import Debug.Trace
 
 -- |Get value by name and desired type
@@ -43,20 +44,24 @@ idByName t n = do
     Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t
 
 
+-- |Finds the most matching data id by type. "Most matching" is determined by the number of matched rigid variables
 idByType :: Type -> [(Type, DataId)] -> Maybe DataId
-idByType t = \case
-  [] -> Nothing
-  ((th, ih):rest) -> if typesMatch t th then Just ih else idByType t rest
+idByType t propos =
+  let matches = mapMaybe (\(tp, i) -> typesMatch t tp <&> flip (,) i) propos
+  in trace ("MATCHES FOR " <> show t <> " IN\n" <> show (propos) <> " ARE\n" <> show matches) $ if null matches then Nothing
+     else Just (snd $ maximum matches)
 
 
-typesMatch :: Type -> Type -> Bool
+-- |Calculate score of match of two types, or return `Nothing` if types don't match
+typesMatch :: Type -> Type -> Maybe Int
 typesMatch t1 t2 = case (t1, t2) of
-  (TypeVarWobbly _, _) -> True
-  (_, TypeVarWobbly _) -> True
-  (TypeVarRigid tv1, TypeVarRigid tv2) -> tv1 == tv2
+  (TypeVarWobbly _, TypeVarWobbly _) -> Just 1
+  (TypeVarWobbly _, _) -> Just 0
+  (_, TypeVarWobbly _) -> Just 0
+  (TypeVarRigid tv1, TypeVarRigid tv2) -> if tv1 == tv2 then Just 1 else Nothing
   (TypeApp tf1 ta1, TypeApp tf2 ta2) ->
-    typesMatch tf1 tf2 && typesMatch ta1 ta2
-  _ -> False
+    (+) <$> typesMatch tf1 tf2 <*> typesMatch ta1 ta2
+  _ -> Nothing
 
 
 -- |Update namespace by a single namespace entry
@@ -169,7 +174,7 @@ deepForce (Lazy ns st i e) = do
 
 
 -- |Data substitution used to resolve pattern matching
-newtype DataSubst = DataSubst {evstubMap :: M.Map Name Data}
+newtype DataSubst = DataSubst {evstubMap :: M.Map Name Data} deriving Show
 
 
 -- |Union two data substitutions
@@ -185,9 +190,10 @@ processSingleBindings =
 
       bindings :: Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
                -> Evaluator Data
-      bindings prevGuard level name alts =
+      bindings prevGuard level name alts = --trace ("FOR " <> name <> " ALTS " <> show alts) $
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
             newGuard = if null finalized then prevGuard else do
+              -- traceM $ name <> " ::: " <> show finalized
               let ([], te, evst) = head finalized
               newns <- applyDataSubst evst
               ii <- withNamespace newns (lazyExpr te)
@@ -236,7 +242,9 @@ processBindings tbnevst = do
 processPolyBindings :: PolyBindings -> Evaluator Polyspace
 processPolyBindings pb = fmap M.fromList $ forM (M.toList pb) $ \(n, tdl) -> do
   let processSinglePoly t dd = do
-        d <- processSingleBindings ("impl " <> n <> " for " <> show t) $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) dd
+        d <- processSingleBindings ("impl " <> n <> " for " <> show t)
+          $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) dd
+        -- traceM $ "DUPA " <> show dd <> "\n\n"
         i <- newData d
         pure (t, i)
   is <- mapM (uncurry processSinglePoly) tdl
@@ -293,7 +301,7 @@ applyDataSubst (DataSubst sub) = do
 -- |Evaluate typed expression
 eval :: TypedExpr -> Evaluator Data
 eval = \case
-  TypedVal t n -> dataByName t n
+  TypedVal t n -> trace ("EVALUATING " <> n <> " OF TYPE " <> show t) $ dataByName t n
   TypedLit _ l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
@@ -315,7 +323,6 @@ evalProgram :: TypedProgram -> Evaluator StrictData
 evalProgram tp = do
   ns <- processBindings $ tprgBindings tp
   ps <- processPolyBindings $ tprgPolyBindings tp
-
   case M.lookup "main" (tprgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (t, _) ->
@@ -324,7 +331,8 @@ evalProgram tp = do
 
 -- |Perform evaluation of the main value from the program
 runProgram :: TypedProgram -> Either ErrMsg StrictData
-runProgram tp = runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
+runProgram tp = --trace (prettyBnds 0 (tprgBindings tp)) $
+  runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
 
 
 -- |Run evaluator and extract the result
@@ -334,13 +342,5 @@ runEvaluator :: Namespace
              -> Either ErrMsg a
 runEvaluator ns evst (Evaluator e)
   = flip evalState (EvaluationState evst (M.size evst))
-  $ flip runReaderT (EvaluationEnv ns M.empty [] [])
-  $ runExceptT e
-
-
--- |Run evaluator, but keep the dataspace
-runEvaluatorWithState :: Evaluator a -> (Either ErrMsg a, EvaluationState)
-runEvaluatorWithState (Evaluator e)
-  = flip runState (EvaluationState M.empty 0)
-  $ flip runReaderT (EvaluationEnv M.empty M.empty [] [])
+  $ flip runReaderT (EvaluationEnv ns M.empty M.empty [] [])
   $ runExceptT e

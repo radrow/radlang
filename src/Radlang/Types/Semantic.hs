@@ -135,8 +135,10 @@ type PolyBindings = Map Name [(Type, [TypedAlt])]
 
 -- |Full program representation
 data Program = Program
-  { prgBindings  :: [BindingGroup]
-  , prgInterfaceEnv  :: InterfaceEnv
+  { prgDatamap      :: Map Name Data
+  , prgBindings     :: [BindingGroup]
+  , prgInterfaceEnv :: InterfaceEnv
+  , prgTypeEnv      :: TypeEnv
   } deriving (Show)
 
 
@@ -209,10 +211,15 @@ type Polyspace = Map Name [(Type, DataId)]
 type Dataspace = Map DataId Data
 
 
+-- |Forced state of varaible types
+type Typespace = Map Name Type
+
+
 -- |Map of value names into ids
 data EvaluationEnv = EvaluationEnv
   { _evenvNamespace      :: Namespace
-  , _evenvPolyspace       :: Polyspace
+  , _evenvPolyspace      :: Polyspace
+  , _evenvTypespace      :: Typespace
   , _evenvDefStacktrace  :: DefStacktrace
   , _evenvEvalStacktrace :: EvalStacktrace
   } deriving (Show)
