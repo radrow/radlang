@@ -99,6 +99,7 @@ stdDefaults = M.map (Prelude.map (\tn -> TypeVarRigid $ TypeVar tn KType)) $ M.f
 stdKindspace :: Kindspace
 stdKindspace = Kindspace $ fmap toKindVar $ M.fromList
   [ "Int" <~ KType
+  , "Char" <~ KType
   , "Func" <~ KFunc KType (KFunc KType KType)
   ]
 

@@ -31,6 +31,7 @@ strictFunc2 name sf2 = DataFunc (name <> "#0") $ \a1 ->
 
 -- |Primitive functions that cannot be defined within the language
 primitives :: [(Name, Qual Type, StrictData)]
+-- primitives = const []
 primitives =
   [ ("plusInt"
     , [] :=> fun tInt (fun tInt tInt)

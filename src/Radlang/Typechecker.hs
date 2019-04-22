@@ -9,6 +9,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import           Data.Foldable
 import           Data.Functor
+import           Data.Bifunctor
 import           Data.List                     as DL
 import qualified Data.Map.Strict               as M
 import System.IO.Unsafe
@@ -20,8 +21,8 @@ import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 
 
--- dbg :: MonadIO m => String -> m ()
--- dbg s = liftIO $ putStrLn ("DEBUG: " <> s)
+dbg :: MonadIO m => String -> m ()
+dbg s = liftIO $ putStrLn ("DEBUG: " <> s)
 
 
 -- |Run Typechecker in different type env
@@ -64,7 +65,7 @@ newVar prefix k = do
 -- |Create new type varaibles for each parameter of scheme
 freshInst :: IdSupply m => TypePoly -> m (Qual Type)
 freshInst (Forall ks qt) = do
-  ts <- mapM (newVar "_Inst") ks
+  ts <- mapM (newVar "_Inst_") ks
   pure $ instantiate ts qt
 
 
@@ -126,7 +127,7 @@ inferTypeLiteral = \case
 -- |Infer pattern and get it's type and updated type env
 inferTypePattern :: Infer Pattern (TypeEnv, Type)
 inferTypePattern = \case
-  PVar i -> newVar "_PV" KType >>= \v ->
+  PVar i -> newVar "_PV_" KType >>= \v ->
     pure ([], (TypeEnv $ M.singleton i (toTypePoly v), v))
   PWildcard -> newVar "_PW" KType >>= \v -> pure ([], (TypeEnv M.empty, v))
   PAs i patt -> do
@@ -154,28 +155,25 @@ inferTypePatterns pats = do
 
 
 -- |Infer type of whole alt
-inferTypeAlt :: Infer Alt Type
+inferTypeAlt :: Infer Alt (TypeEnv, Type)
 inferTypeAlt (pats, e) = do
   as <- getTypeEnv
   (ps, (as', ts)) <- inferTypePatterns pats
   (qs, t) <- withTypeEnv (as' <> as) (inferTypeExpr e)
-  pure (ps ++ qs, foldr fun t ts)
+  pure (ps ++ qs, (as', foldr fun t ts))
 
 
 -- |Decorate alt with type annotations
 setAltType :: Type -> Alt -> TypecheckerT IO TypedAlt
 setAltType t (pts, expr) = do
   as <- getTypeEnv
-  (_, (as', tps)) <- inferTypePatterns pts
   let dropFun (TypeApp _ resType) = resType
       dropFun _                   = wtf "Bad alt function type"
       dropFuns [] tp       = tp
       dropFuns (_:rest) tp = dropFuns rest (dropFun tp)
       typeForExpr = dropFuns pts t
-      argtypes (TypeApp (TypeApp _ arg) res) = arg : argtypes res
-      argtypes _ = []
-  s <- fmap fold $ sequence $ zipWith mgu (argtypes t) tps
-  let as'' = substitute s as'
+  s <- getSubst --fmap fold $ sequence $ zipWith mgu (argtypes t) tps
+  let as'' = substitute s as -- as'
   typed <- withTypeEnv (as'' <> as) $ setExprType typeForExpr expr
   ss <- getSubst
   pure (pts, substitute ss typed)
@@ -187,12 +185,13 @@ inferTypeAlts t alts = do
   when (length (nub $ fmap (length . fst) alts) > 1) $
     languageError "Different number of patterns"
   psts <- mapM inferTypeAlt alts
-  void $ mapM (unify t) (fmap snd psts)
+  void $ mapM (unify t) (fmap (snd . snd) psts)
+  as <- getTypeEnv
+  let as' = foldr (\a b -> TypeEnv $ M.union (types a) (types b)) as (fmap (fst . snd) psts)
+  talts <- forM alts $ \al ->
+    getSubst >>= \s -> withTypeEnv as' $ setAltType (substitute s t) al
   s <- getSubst
-  talts <- forM (zip alts (fmap snd psts)) $ \(al, _) ->
-    -- let sat = substitute s at in setAltType sat al
-    setAltType (substitute s t) al
-  pure (join $ fmap fst psts, (substitute s t, talts))
+  pure (join $ fmap fst psts, (substitute s t, fmap (second $ substitute s) talts))
 
 
 -- |Split predicates on deferred and contraints. fs are fixed variables and gs are varaibles over which we want to quantify
@@ -266,7 +265,7 @@ inferTypeExpl (name, (sc, alts)) = do
   (ds, rs) <- split fs gs ps'
   if | sc /= sc' -> typecheckError $ "Signature is too general for " <> name
      | not (null rs) -> typecheckError $ "Context is too weak for " <> name
-     | otherwise -> pure (ds, (t, talts))
+     | otherwise -> pure (ds, (t', talts))
 
 
 -- |Implicit binding set is restricted when any of its members has alt with no explicit arguments
@@ -278,7 +277,7 @@ restricted bs = any simple bs where
 -- |Infer type of binding without type declaration
 inferTypeImpl :: Infer ImplBindings (TypeEnv, TypedBindings, PolyBindings)
 inferTypeImpl bs = do
-  ts <- mapM (\(n, _) -> newVar ("_impl" <> n) KType) $ M.toList bs
+  ts <- mapM (\(n, _) -> newVar ("_impl_" <> n) KType) $ M.toList bs
   as <- getTypeEnv
   let is = M.keys bs
       scs = fmap toTypePoly ts
@@ -318,8 +317,11 @@ inferTypeBindingGroup (ints, es, iss) = do
   let as' = -- assumptions made out of explicit bindings and interface declarations
         TypeEnv $ foldr (\(v, sc) m -> M.insert v sc m)
         M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (t, _)) -> (n, t)) (M.toList ints))
+
   (ps, (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
+
   fromExpls <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
+
   (tbindsPoly :: PolyBindings) <- fmap M.fromList $ sequence
     $ M.toList ints <&> \(n, (_, dds)) -> do
     implems <- forM dds $ \(t, alts) -> (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (n, (t, alts))

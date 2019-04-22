@@ -6,13 +6,13 @@ interface Monoid (~M : Type) {
 };;
 
 impl Int for Monoid {
-  zero := 0;;
-  plus := plusInt;;
+  zero := id 0;;
+  plus a b := if plus True True then 1 else 2;;
 };;
 
 impl Bool for Monoid {
   zero := False;;
-  plus True True := True;;
+  plus True True := False;;
   plus _ _ := False;;
 };;
 
@@ -22,11 +22,7 @@ impl ~A is Monoid | Option ~A for Monoid {
   plus _ _ := None;;
 };;
 
-f a b := plus a 1;;
-
-dmain := f 1 2;;
-main3 := plus (Some 1) (Some 2);;
+f a := plus a a;;
 
 
-g x := let y := plus x x in y;;
-main := g 1;;
+main := if f True then f 0 else f 2;;

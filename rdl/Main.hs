@@ -2,11 +2,11 @@ module Main where
 
 import System.Environment
 import System.IO
-import System.IO.Unsafe
 
 import Radlang
 import Radlang.Error
 import Radlang.Types
+import Radlang.Intro
 
 main :: IO ()
 main = do
@@ -17,7 +17,7 @@ main = do
         else (,) (head args) <$> readFile (head args)
   let result = do
         rprg <- parseRDL fileName sourceCode
-        prg <- buildProgram rprg
+        prg <- buildProgram $ withIntro rprg
         tprg <- typecheck (TypecheckerConfig True) prg
         runProgram tprg
   case result of

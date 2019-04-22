@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiWayIf          #-}
+{-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |This module is responsible for evaluation of Expr tree into Data
 module Radlang.Evaluator where
@@ -14,14 +15,29 @@ import           Data.Maybe
 import           Prelude                    hiding (lookup)
 
 import           Radlang.Error
-import           Radlang.DependencyAnalysis
 import           Radlang.Types
--- import Radlang.Test
+import           Radlang.Pretty
+import           Radlang.Typesystem.Typesystem (mgu)
+
 import Debug.Trace
+
+
+typeByName :: Name -> Evaluator Type
+typeByName n = asks (M.lookup n . _evenvTypespace) >>= \case
+  Just t -> pure t
+  Nothing -> do
+    i <- newId
+    pure (TypeVarWobbly (TypeVar ("_RTIME_" <> show i) KType))
+
 
 -- |Get value by name and desired type
 dataByName :: Type -> Name -> Evaluator Data
-dataByName t n = idByName t n >>= dataById
+dataByName t n = do
+  s <- asks _evenvSubst
+  traceM $ "GETTING " <> n <> " : " <> show t <> " WITH SUBST " <> show s
+  idByName t n >>= dataById >>= force >>= \case
+    DataFunc name f -> pure $ Strict $ DataFunc name $ \x -> withSubst s (f x)
+    d -> pure $ Strict d
 
 
 -- |Get value by store id
@@ -41,7 +57,7 @@ idByName t n = do
   ps <- asks _evenvPolyspace
   case mplus (M.lookup n ns) (M.lookup n ps >>= idByType t) of
     Just i -> pure i
-    Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t
+    Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t <> ". Got " <> show ns
 
 
 -- |Finds the most matching data id by type. "Most matching" is determined by the number of matched rigid variables
@@ -72,6 +88,16 @@ withAssign (n, d) = local $ over evenvNamespace (M.insert n d)
 -- |Modify action to be ran in different namespace
 withNamespace :: Namespace -> Evaluator a -> Evaluator a
 withNamespace = local . set evenvNamespace
+
+
+-- |Modify action to be ran in different type substitution
+withSubst :: Substitution -> Evaluator a -> Evaluator a
+withSubst = local . set evenvSubst
+
+
+-- |Modify action to be ran in different typespace
+withTypespace :: Typespace -> Evaluator a -> Evaluator a
+withTypespace = local . set evenvTypespace
 
 
 -- |Modify action to be ran in different polyspace. Should be used only during initialization
@@ -114,6 +140,11 @@ getNamespace :: Evaluator Namespace
 getNamespace = asks _evenvNamespace
 
 
+-- |Get current typespace
+getTypespace :: Evaluator Typespace
+getTypespace = asks _evenvTypespace
+
+
 -- |Get current polyspace
 getPolyspace :: Evaluator Polyspace
 getPolyspace = asks _evenvPolyspace
@@ -124,14 +155,16 @@ newLazy :: Evaluator Data -> Evaluator DataId
 newLazy e = do
   i <- newId
   ns <- getNamespace
+  ts <- getTypespace
+  sub <- asks _evenvSubst
   (st, _) <- getStacktraces
-  putData i $ Lazy ns st i e
+  putData i $ Lazy ns ts sub st i e
   pure i
 
 
 -- |Create new lazy thunk from expression and return id assigned to it
 lazyExpr :: TypedExpr -> Evaluator DataId
-lazyExpr e =newLazy (eval e)
+lazyExpr e = newLazy (eval e)
 
 
 -- |Insert strict data into dataspace and return its id
@@ -154,9 +187,9 @@ newData d = do
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Ref i) = force =<< dataById i
-force (Lazy ns st i e) = do
+force (Lazy ns ts sub st i e) = do
   forced <- force =<< withDefStacktrace st
-    (withEvalStackElem ("forcing " <> show i) $ (withNamespace ns e))
+    (withEvalStackElem ("forcing " <> show i) $ (withSubst sub $ withTypespace ts $ withNamespace ns e))
   putData i (Strict forced)
   pure forced
 
@@ -167,8 +200,8 @@ deepForce (Strict d) = case d of
   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
   _              -> pure d
 deepForce (Ref i) = deepForce =<< dataById i
-deepForce (Lazy ns st i e) = do
-  forced <- deepForce =<< withDefStacktrace st (withNamespace ns e)
+deepForce (Lazy ns ts sub st i e) = do
+  forced <- deepForce =<< (withDefStacktrace st $ withSubst sub $ withTypespace ts $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -190,13 +223,13 @@ processSingleBindings =
 
       bindings :: Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
                -> Evaluator Data
-      bindings prevGuard level name alts = --trace ("FOR " <> name <> " ALTS " <> show alts) $
+      bindings prevGuard level name alts =
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
             newGuard = if null finalized then prevGuard else do
-              -- traceM $ name <> " ::: " <> show finalized
               let ([], te, evst) = head finalized
               newns <- applyDataSubst evst
-              ii <- withNamespace newns (lazyExpr te)
+              sub <- asks _evenvSubst
+              ii <- withNamespace newns (lazyExpr $ substitute sub te)
               pure $ Ref ii
         in if | null functions && null finalized -> prevGuard
               | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
@@ -244,7 +277,6 @@ processPolyBindings pb = fmap M.fromList $ forM (M.toList pb) $ \(n, tdl) -> do
   let processSinglePoly t dd = do
         d <- processSingleBindings ("impl " <> n <> " for " <> show t)
           $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) dd
-        -- traceM $ "DUPA " <> show dd <> "\n\n"
         i <- newData d
         pure (t, i)
   is <- mapM (uncurry processSinglePoly) tdl
@@ -285,8 +317,7 @@ matchDataToPattern pat dat = case pat of
           msubs <- sequence <$> mapM (uncurry matchDataToPattern) (zip pts args)
           pure $ fmap (foldl (\s s1 -> DataSubst $ M.union (evstubMap s) (evstubMap s1)) (DataSubst M.empty)) msubs
         else pure Nothing
-      _ -> wtf $ "Illegal ADT match:\ndata=" <> show sdat <>
-                             ",\nname=" <> n <> ", args=" <> show pts
+      _ -> wtf $ "Illegal ADT match:\ndata=" <> show sdat <> ",\nname=" <> n <> ", args=" <> show pts
 
 
 -- |Apply data substitution to current namespace
@@ -301,7 +332,12 @@ applyDataSubst (DataSubst sub) = do
 -- |Evaluate typed expression
 eval :: TypedExpr -> Evaluator Data
 eval = \case
-  TypedVal t n -> trace ("EVALUATING " <> n <> " OF TYPE " <> show t) $ dataByName t n
+  TypedVal t n -> do
+    tOfN <- typeByName n
+    sub <- asks _evenvSubst
+    newSub <- mgu t tOfN
+    traceM $ "FOR " <> n <> " GOT SUBST " <> show newSub
+    withSubst (newSub <> sub) $ dataByName t n
   TypedLit _ l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
@@ -316,13 +352,18 @@ eval = \case
       _                  -> wtf $ "Call not a function! " <> show fd
   TypedLet _ assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
-    withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
+    withTypespace (typeEnvFromBindings assgs) $ withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
+
+
+typeEnvFromBindings :: TypedBindings -> Typespace
+typeEnvFromBindings bnds = fmap fst bnds
 
 
 evalProgram :: TypedProgram -> Evaluator StrictData
 evalProgram tp = do
+  traceM $ "EVALUATING " <> prettyBnds 0 (tprgBindings tp)
   ns <- processBindings $ tprgBindings tp
-  ps <- processPolyBindings $ tprgPolyBindings tp
+  ps <- withNamespace ns $ processPolyBindings $ tprgPolyBindings tp
   case M.lookup "main" (tprgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (t, _) ->
@@ -331,16 +372,17 @@ evalProgram tp = do
 
 -- |Perform evaluation of the main value from the program
 runProgram :: TypedProgram -> Either ErrMsg StrictData
-runProgram tp = --trace (prettyBnds 0 (tprgBindings tp)) $
-  runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
+runProgram tp =
+  runEvaluator (tprgNamespace tp) (tprgDataspace tp) (typeEnvFromBindings $ tprgBindings tp) $ evalProgram tp
 
 
 -- |Run evaluator and extract the result
 runEvaluator :: Namespace
              -> Dataspace
+             -> Typespace
              -> Evaluator a
              -> Either ErrMsg a
-runEvaluator ns evst (Evaluator e)
-  = flip evalState (EvaluationState evst (M.size evst))
-  $ flip runReaderT (EvaluationEnv ns M.empty M.empty [] [])
+runEvaluator ns ds te (Evaluator e)
+  = flip evalState (EvaluationState ds (fst (M.findMax ds) + 1))
+  $ flip runReaderT (EvaluationEnv ns M.empty (Subst M.empty) te [] [])
   $ runExceptT e

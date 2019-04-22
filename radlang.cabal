@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.1.
+-- This file has been generated from package.yaml by hpack version 0.31.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1b94db4dff6ebd9db6047b153fc6b589b7926e72042d01f8cece0fff0ca7384f
+-- hash: 5e799c53b5f52d2b6b26de53e8a3d19649d42a634ccd0cead8005df08a1059df
 
 name:           radlang
 version:        2.0.1
@@ -39,6 +39,7 @@ library
       Radlang.Parser.General
       Radlang.Parser.Toplevel
       Radlang.Parser.Type
+      Radlang.Pretty
       Radlang.QQ
       Radlang.Test
       Radlang.Typechecker

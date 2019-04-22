@@ -66,13 +66,13 @@ getExprType = \case
 
 -- |Value stored in the dataspace. May be evaluated or not
 data Data
-  = Lazy Namespace DefStacktrace DataId (Evaluator Data)
+  = Lazy Namespace Typespace Substitution DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
   | Ref DataId
 
 instance Show Data where
   show = \case
-    Lazy _ _ i _ -> "<lazy " <> show i <> ">"
+    Lazy _ _ _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
     Ref i -> "<ref " <> show i <> ">"
 
@@ -219,6 +219,7 @@ type Typespace = Map Name Type
 data EvaluationEnv = EvaluationEnv
   { _evenvNamespace      :: Namespace
   , _evenvPolyspace      :: Polyspace
+  , _evenvSubst          :: Substitution
   , _evenvTypespace      :: Typespace
   , _evenvDefStacktrace  :: DefStacktrace
   , _evenvEvalStacktrace :: EvalStacktrace

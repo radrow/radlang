@@ -18,7 +18,6 @@ import           Radlang.DependencyAnalysis
 import           Radlang.Error
 import           Radlang.Kindchecker
 import           Radlang.Typedefs
-import           Radlang.Intro
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 
@@ -133,8 +132,8 @@ processImplDef rid = do
 
 -- |Builds Program from raw AST
 buildProgram :: RawProgram -> Either ErrMsg Program
-buildProgram prg = let introed = withIntro prg
-  in runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs introed) (processProgram introed)
+buildProgram prg =
+  runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs prg) (processProgram prg)
 
 
 -- |Merge two explicit binding sets

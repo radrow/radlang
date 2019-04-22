@@ -1,12 +1,21 @@
-interface Show (~A : Type) {
-  show : ~A -> Int;;
+interface I (~A : Type) {
+  i : ~A -> Int;;
 };;
 
-impl Int for Show {
-  show x := x;;
+impl Int for I {
+  i x := 3;;
 };;
 
-zzz x := show x;;
+impl ~A is I | Option ~A for I {
+  i x := 3;;
+};;
 
-zzzz := zzz 3;;
+pud x := 3;;
+ypud x := pud x;;
+
+zz x := i x;;
+
+zzz x := i (Some x);;
+
+zzzzz x := id x;;
 
