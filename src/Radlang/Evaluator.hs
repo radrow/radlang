@@ -17,154 +17,29 @@ import           Prelude                    hiding (lookup)
 import           Radlang.Error
 import           Radlang.Types
 import           Radlang.Pretty
+import           Radlang.EvaluationUtils
 import           Radlang.Typesystem.Typesystem (mgu)
 
 import Debug.Trace
 
 
-typeByName :: Name -> Evaluator Type
-typeByName n = asks (M.lookup n . _evenvTypespace) >>= \case
-  Just t -> pure t
-  Nothing -> do
-    i <- newId
-    pure (TypeVarWobbly (TypeVar ("_RTIME_" <> show i) KType))
-
-
--- |Get value by name and desired type
-dataByName :: Type -> Name -> Evaluator Data
-dataByName t n = do
-  s <- asks _evenvSubst
-  traceM $ "GETTING " <> n <> " : " <> show t <> " WITH SUBST " <> show s
-  idByName t n >>= dataById >>= force >>= \case
-    DataFunc name f -> pure $ Strict $ DataFunc name $ \x -> withSubst s (f x)
-    d -> pure $ Strict d
-
-
--- |Get value by store id
-dataById :: DataId -> Evaluator Data
-dataById i = do
-  m <- gets _evstDataspace
-  case M.lookup i m of
-    Nothing -> wtf $ "dataById: no such id " <> show i <>
-      "\nKnown ievst are: " <> show (M.keys m)
-    Just x -> pure x
-
-
--- |Get store id of a variable by name and desired type
-idByName :: Type -> Name -> Evaluator DataId
-idByName t n = do
-  ns <- asks _evenvNamespace
-  ps <- asks _evenvPolyspace
-  case mplus (M.lookup n ns) (M.lookup n ps >>= idByType t) of
-    Just i -> pure i
-    Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t <> ". Got " <> show ns
-
-
--- |Finds the most matching data id by type. "Most matching" is determined by the number of matched rigid variables
-idByType :: Type -> [(Type, DataId)] -> Maybe DataId
-idByType t propos =
-  let matches = mapMaybe (\(tp, i) -> typesMatch t tp <&> flip (,) i) propos
-  in trace ("MATCHES FOR " <> show t <> " IN\n" <> show (propos) <> " ARE\n" <> show matches) $ if null matches then Nothing
-     else Just (snd $ maximum matches)
-
-
--- |Calculate score of match of two types, or return `Nothing` if types don't match
-typesMatch :: Type -> Type -> Maybe Int
-typesMatch t1 t2 = case (t1, t2) of
-  (TypeVarWobbly _, TypeVarWobbly _) -> Just 1
-  (TypeVarWobbly _, _) -> Just 0
-  (_, TypeVarWobbly _) -> Just 0
-  (TypeVarRigid tv1, TypeVarRigid tv2) -> if tv1 == tv2 then Just 1 else Nothing
-  (TypeApp tf1 ta1, TypeApp tf2 ta2) ->
-    (+) <$> typesMatch tf1 tf2 <*> typesMatch ta1 ta2
-  _ -> Nothing
-
-
--- |Update namespace by a single namespace entry
-withAssign :: (Name, DataId) -> Evaluator a -> Evaluator a
-withAssign (n, d) = local $ over evenvNamespace (M.insert n d)
-
-
--- |Modify action to be ran in different namespace
-withNamespace :: Namespace -> Evaluator a -> Evaluator a
-withNamespace = local . set evenvNamespace
-
-
--- |Modify action to be ran in different type substitution
-withSubst :: Substitution -> Evaluator a -> Evaluator a
-withSubst = local . set evenvSubst
-
-
--- |Modify action to be ran in different typespace
-withTypespace :: Typespace -> Evaluator a -> Evaluator a
-withTypespace = local . set evenvTypespace
-
-
--- |Modify action to be ran in different polyspace. Should be used only during initialization
-withPolyspace :: Polyspace -> Evaluator a -> Evaluator a
-withPolyspace = local . set evenvPolyspace
-
-
--- |Modify action to be ran with updated definition stacktrace
-withStackElem :: String -> Evaluator a -> Evaluator a
-withStackElem s = local $ over evenvDefStacktrace (s:)
-
-
--- |Modify action to be ran with updated evaluation stacktrace
-withEvalStackElem :: String -> Evaluator a -> Evaluator a
-withEvalStackElem s = local $ over evenvEvalStacktrace (s:)
-
-
--- |Modify action to be ran with updated stacktrace
-withStackElems :: String -> Evaluator a -> Evaluator a
-withStackElems s = local $ over evenvDefStacktrace (s:) . over evenvEvalStacktrace (s:)
-
-
--- |Modify action to be ran with different stacktrace
-withDefStacktrace :: DefStacktrace -> Evaluator a -> Evaluator a
-withDefStacktrace st = local $ set evenvDefStacktrace st
-
-
--- |Get stacktraces from current evenvironment
-getStacktraces :: Evaluator (DefStacktrace, EvalStacktrace)
-getStacktraces = liftA2 (,) (asks _evenvDefStacktrace) (asks _evenvEvalStacktrace)
-
-
--- |Insert data over certain id
-putData :: DataId -> Data -> Evaluator ()
-putData i d = modify $ over evstDataspace (M.insert i d)
-
-
--- |Get current namespace
-getNamespace :: Evaluator Namespace
-getNamespace = asks _evenvNamespace
-
-
--- |Get current typespace
-getTypespace :: Evaluator Typespace
-getTypespace = asks _evenvTypespace
-
-
--- |Get current polyspace
-getPolyspace :: Evaluator Polyspace
-getPolyspace = asks _evenvPolyspace
-
-
 -- |Create new lazy thunk from evaluator and return id assigned to it
-newLazy :: Evaluator Data -> Evaluator DataId
+newLazy :: Evaluator Data -> Evaluator Data
 newLazy e = do
   i <- newId
   ns <- getNamespace
   ts <- getTypespace
   sub <- asks _evenvSubst
   (st, _) <- getStacktraces
-  putData i $ Lazy ns ts sub st i e
-  pure i
+  let laz = Lazy ns ts sub st i e
+  putData i laz
+  pure laz
 
 
 -- |Create new lazy thunk from expression and return id assigned to it
-lazyExpr :: TypedExpr -> Evaluator DataId
-lazyExpr e = newLazy (eval e)
+lazyExpr :: TypedExpr -> Evaluator Data
+lazyExpr e = do
+  newLazy (eval e)
 
 
 -- |Insert strict data into dataspace and return its id
@@ -183,23 +58,11 @@ newData d = do
   pure i
 
 
--- |Evaluate thunk into weak-head normal form
-force :: Data -> Evaluator StrictData
-force (Strict d) = pure d
-force (Ref i) = force =<< dataById i
-force (Lazy ns ts sub st i e) = do
-  forced <- force =<< withDefStacktrace st
-    (withEvalStackElem ("forcing " <> show i) $ (withSubst sub $ withTypespace ts $ withNamespace ns e))
-  putData i (Strict forced)
-  pure forced
-
-
 -- |Perform deep evaluation and remove all thunks from the data
 deepForce :: Data -> Evaluator StrictData
 deepForce (Strict d) = case d of
   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
   _              -> pure d
-deepForce (Ref i) = deepForce =<< dataById i
 deepForce (Lazy ns ts sub st i e) = do
   forced <- deepForce =<< (withDefStacktrace st $ withSubst sub $ withTypespace ts $ withNamespace ns e)
   putData i (Strict forced)
@@ -221,32 +84,32 @@ processSingleBindings =
   let domainGuard :: Evaluator a
       domainGuard = runtimeError "Out of domain"
 
-      bindings :: Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
+      bindings :: Maybe Substitution -> Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
                -> Evaluator Data
-      bindings prevGuard level name alts =
+      bindings msub prevGuard level name alts =
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
             newGuard = if null finalized then prevGuard else do
               let ([], te, evst) = head finalized
               newns <- applyDataSubst evst
-              sub <- asks _evenvSubst
-              ii <- withNamespace newns (lazyExpr $ substitute sub te)
-              pure $ Ref ii
+              sub <- maybe (asks _evenvSubst) pure msub
+              withSubst sub $ withNamespace newns (lazyExpr $ substitute sub te)
         in if | null functions && null finalized -> prevGuard
               | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
               | null functions -> newGuard
               | otherwise -> getNamespace >>= \myNs ->
                   let asFunction :: Data -> Evaluator Data
                       asFunction d = do
+                        sub <- maybe (asks _evenvSubst) pure msub
                         (conts :: [([Pattern], TypedExpr, DataSubst)]) <-
                           let extractor ((p:ps), te, s) = do
-                                msub <- matchDataToPattern p d
-                                pure $ fmap (\sub -> (ps, te, unionSubst sub s)) msub
+                                mdsub <- matchDataToPattern p d
+                                pure $ fmap (\dsub -> (ps, te, unionSubst dsub s)) mdsub
                               extractor _ = wtf "extractor match fail"
                           in mapMaybe id <$> mapM extractor functions
-                        bindings newGuard (level + 1) name conts
-                  in pure $ Strict $ DataFunc
-                     (name <> "#" <> show level) $ withNamespace myNs . asFunction
-  in bindings domainGuard 0
+                        withSubst sub $ bindings (Just sub) newGuard (level + 1) name conts
+                  in pure $ Strict $ DataFunc (name <> "#" <> show level) $ \argd ->
+                      withNamespace myNs $ asFunction argd
+  in bindings Nothing domainGuard 0
 
 
 -- |Build dataspace and namespace from set of bindings
@@ -263,7 +126,7 @@ processBindings tbnevst = do
 
   withNamespace recNs $ do
     dats <- flip mapM aslist $
-            (\(n, (_, a)) -> fmap Ref . newLazy $
+            (\(n, (_, a)) -> newLazy $
               processSingleBindings n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
             )
 
@@ -336,7 +199,6 @@ eval = \case
     tOfN <- typeByName n
     sub <- asks _evenvSubst
     newSub <- mgu t tOfN
-    traceM $ "FOR " <> n <> " GOT SUBST " <> show newSub
     withSubst (newSub <> sub) $ dataByName t n
   TypedLit _ l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
@@ -346,9 +208,10 @@ eval = \case
     LitChar c -> pure $ Strict $ DataChar c
   TypedApplication _ f a -> do
     fd <- force =<< eval f
-    aId <- lazyExpr a
+    alazy <- lazyExpr a
     case fd of
-      DataFunc name func -> withStackElems name $ dataById aId >>= func
+      DataFunc name func -> do
+        withStackElems name $ func alazy
       _                  -> wtf $ "Call not a function! " <> show fd
   TypedLet _ assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
@@ -383,6 +246,6 @@ runEvaluator :: Namespace
              -> Evaluator a
              -> Either ErrMsg a
 runEvaluator ns ds te (Evaluator e)
-  = flip evalState (EvaluationState ds (fst (M.findMax ds) + 1))
+  = flip evalState (EvaluationState ds (if M.null ds then 0 else fst (M.findMax ds) + 1))
   $ flip runReaderT (EvaluationEnv ns M.empty (Subst M.empty) te [] [])
   $ runExceptT e

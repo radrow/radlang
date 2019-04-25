@@ -317,7 +317,9 @@ inferTypeBindingGroup (ints, es, iss) = do
   let as' = -- assumptions made out of explicit bindings and interface declarations
         TypeEnv $ foldr (\(v, sc) m -> M.insert v sc m)
         M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (t, _)) -> (n, t)) (M.toList ints))
+  dbg $ "BINDING GRP " <> show as' <> "\n\n GRP: " <> show iss <> "\n"
 
+  dbg $ "ISS: " <> show (fmap M.keys iss)
   (ps, (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
 
   fromExpls <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)

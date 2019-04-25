@@ -128,8 +128,8 @@ inferKind = \case
   RawTypeRigid tr -> lookupKind tr >>= \case
     Just kr -> pure (mempty, kr)
     Nothing -> getKindspace >>= \ks ->
-      kindcheckError $ "Undefined variable " <> tr <> ", valid variables are: "
-      <> show (M.elems . getKindspaceMap $ ks)
+      languageError $ "Undefined type variable " <> tr <> ", valid variables are: "
+      <> show (M.keys . getKindspaceMap $ ks)
   RawTypeApp f (a:|rest) -> do
     (sf, kf) <- inferKind f
     let rollapp :: (KindSubstitution, KindVar) -> RawType -> Kindchecker (KindSubstitution, KindVar)

@@ -19,6 +19,7 @@ import           Radlang.Error
 import           Radlang.Kindchecker
 import           Radlang.Typedefs
 import           Radlang.Types
+import           Radlang.EvaluationUtils
 import           Radlang.Typesystem.Typesystem
 
 import Debug.Trace
@@ -100,8 +101,8 @@ implBindings cl idef = -- Strategy: write once, forget what the fuck is going on
             (rprd :=> rtp) = replaceTypeVar (interfacedefArg cl) itp qt  -- replace original type with instance
         in ((iprd ++ rprd) :=> rtp)  -- join predicates from typedecl and impl contraints
 
-      typeByName :: Name -> Qual Type
-      typeByName n =
+      qtypeByName :: Name -> Qual Type
+      qtypeByName n =
         maybe (wtf "implbindings lookup fail") id
         $ lookup n (fmap (\mt -> (tdeclName mt, tdeclType mt)) $ interfacedefMethods cl)
 
@@ -109,8 +110,8 @@ implBindings cl idef = -- Strategy: write once, forget what the fuck is going on
       bnds = M.fromList
         $ fmap (\(n, l) ->
                   (n
-                  , ( quantifyAll $ typeByName n
-                    , [( quantifyAll $ typeMod $ typeByName n
+                  , ( quantifyAll $ qtypeByName n
+                    , [( quantifyAll $ typeMod $ qtypeByName n
                        , fmap (\dd -> (datadefArgs dd, datadefVal dd)) l)
                       ])))
         $ fmap (\l -> (fst $ head l, fmap snd l)) -- extract names, ie. [[(Name, Defs)]] -> [(Name, [Defs])]

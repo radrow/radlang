@@ -5,13 +5,14 @@ module Radlang.Intro(primitiveSpace, withIntro) where
 
 import qualified Data.Map                      as M
 
-import           Radlang.InterfaceEnvBuild         (mergeInterfaceEnv)
 import           Radlang.Error
 import           Radlang.Evaluator
 import           Radlang.QQ
 import           Radlang.Typedefs
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
+import           Radlang.EvaluationUtils
+
 
 
 -- |Lift 2 argumented function from Haskell into Radlang

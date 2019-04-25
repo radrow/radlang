@@ -41,8 +41,14 @@ data TypedExpr where
   TypedLit :: Type -> Literal -> TypedExpr
   TypedApplication :: Type -> TypedExpr -> TypedExpr -> TypedExpr
   TypedLet :: Type -> (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
 
+instance Show TypedExpr where
+  show = \case
+    TypedVal t v -> "(" <> v <> " : " <> show t <> ")"
+    TypedLit t l -> "(" <> show l <> " : " <> show t <> ")"
+    TypedApplication _ f a -> "(" <> show f <> ") " <> show a
+    TypedLet _ bn e -> "let " <> show bn <> " in " <> show e
 
 instance IsType TypedExpr where
   free = free . getExprType
@@ -68,13 +74,11 @@ getExprType = \case
 data Data
   = Lazy Namespace Typespace Substitution DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
-  | Ref DataId
 
 instance Show Data where
   show = \case
     Lazy _ _ _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
-    Ref i -> "<ref " <> show i <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -82,6 +86,7 @@ data StrictData
   = DataInt Integer
   | DataChar Char
   | DataADT Name [Data]
+  | DataFuncSub Name (Substitution -> Data -> Evaluator Data)
   | DataFunc Name (Data -> Evaluator Data)
 
 instance Show StrictData where
@@ -90,6 +95,7 @@ instance Show StrictData where
     DataChar c -> show c
     DataADT n args -> n <> (((" "<>) . show) =<< args)
     DataFunc n _ -> "<func " <> n <> ">"
+    DataFuncSub n _ -> "<func " <> n <> ">"
 
 
 -- |Left and right side of a value/function definition
