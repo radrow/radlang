@@ -214,7 +214,7 @@ processProgram prg = do
 
         topbnds = makeBindings $ fmap Left tdecls ++ fmap Right ddefs
 
-        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [impbnds, intbnds, topbnds]
+        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [intbnds, impbnds, topbnds]
 
     pure $ Program
       { prgDatamap = newtypeData newtypes

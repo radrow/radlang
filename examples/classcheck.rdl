@@ -1,28 +1,30 @@
-
-
-interface Monoid (~M : Type) {
+interface F (~M : Type) {
   zero : ~M;;
-  plus : ~M -> ~M -> ~M;;
+  one  : ~M -> ~M;;
+  two : ~M -> ~M -> ~M;;
 };;
 
-impl Int for Monoid {
-  zero := id 0;;
-  plus a b := if plus True True then 1 else 2;;
+impl Int for F {
+  zero := 0;;
+  one x := 1;;
+  two a b := 2;;
 };;
 
-impl Bool for Monoid {
+impl Bool for F {
   zero := False;;
-  plus True True := False;;
-  plus _ _ := False;;
+  one a := True;;
+  two b a := False;;
 };;
 
-impl ~A is Monoid | Option ~A for Monoid {
-  zero := Some zero;;
-  plus (Some a) (Some b) := Some (plus a b);;
-  plus _ _ := None;;
+impl ~A is F | Option ~A for F {
+  zero := None;;
+  one (Some a) := Some a;;
+  two (Some a) (Some b) := Some b;;
 };;
 
-f a := plus a a;;
 
+f := one;;
+ff := two;;
 
-main := if f True then f 0 else f 2;;
+-- main := let k := f 1 in k;;
+main := f 1;;

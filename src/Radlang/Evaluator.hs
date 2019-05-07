@@ -136,14 +136,7 @@ processBindings tbnevst = do
 
 -- |Build dataspace and namespace from set of polymorphic bindings
 processPolyBindings :: PolyBindings -> Evaluator Polyspace
-processPolyBindings pb = fmap M.fromList $ forM (M.toList pb) $ \(n, tdl) -> do
-  let processSinglePoly t dd = do
-        d <- processSingleBindings ("impl " <> n <> " for " <> show t)
-          $ fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) dd
-        i <- newData d
-        pure (t, i)
-  is <- mapM (uncurry processSinglePoly) tdl
-  pure $ (n, is)
+processPolyBindings pb = undefined
 
 
 -- |Try to match data to pattern and return unifying substitution if possible
@@ -198,8 +191,8 @@ eval = \case
   TypedVal t n -> do
     tOfN <- typeByName n
     sub <- asks _evenvSubst
-    newSub <- mgu t tOfN
-    withSubst (newSub <> sub) $ dataByName t n
+    newSub <- undefined -- mgu t tOfN
+    withSubst (newSub <> sub) $ undefined --dataByName t n
   TypedLit _ l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->

@@ -293,6 +293,11 @@ instance Instantiate Pred where
 -- |Object with qualified with predicates
 data Qual t = [Pred] :=> t
   deriving (Eq, Ord)
+infix 3 :=>
+getPreds :: Qual t -> [Pred]
+getPreds (ps :=> _) = ps
+getQualified :: Qual t -> t
+getQualified (_ :=> q) = q
 
 
 instance Show t => Show (Qual t) where

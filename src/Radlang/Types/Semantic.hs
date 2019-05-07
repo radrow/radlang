@@ -32,16 +32,23 @@ data Expr
   | Lit Literal
   | Application Expr Expr
   | Let BindingGroup Expr
-  deriving (Show)
+  -- deriving (Show)
 
 
 -- |Expression tree decorated with type annotations
 data TypedExpr where
-  TypedVal :: Type -> Name -> TypedExpr
-  TypedLit :: Type -> Literal -> TypedExpr
-  TypedApplication :: Type -> TypedExpr -> TypedExpr -> TypedExpr
-  TypedLet :: Type -> (Map Name (Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
+  TypedVal :: Qual Type -> Name -> TypedExpr
+  TypedLit :: Qual Type -> Literal -> TypedExpr
+  TypedApplication :: Qual Type -> TypedExpr -> TypedExpr -> TypedExpr
+  TypedLet :: Qual Type -> (Map Name (Qual Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
   deriving (Eq, Ord)
+
+instance Show Expr where
+  show = \case
+    Val v -> v
+    Lit l -> show l
+    Application f a -> "(" <> show f <> " " <> show a <> ")"
+    Let bn e -> "let " <> show bn <> " in " <> show e
 
 instance Show TypedExpr where
   show = \case
@@ -62,7 +69,7 @@ instance IsType TypedExpr where
 
 
 -- |Extracts `Type` from `TypedExpr`
-getExprType :: TypedExpr -> Type
+getExprType :: TypedExpr -> Qual Type
 getExprType = \case
   TypedVal t _ -> t
   TypedLit t _ -> t
@@ -74,11 +81,13 @@ getExprType = \case
 data Data
   = Lazy Namespace Typespace Substitution DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
+  | Dict Namespace
 
 instance Show Data where
   show = \case
     Lazy _ _ _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
+    Dict d -> "<dict " <> show d <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -132,11 +141,11 @@ type BindingGroup = (InterfaceBindings, ExplBindings, [ImplBindings])
 
 
 -- |Explicitly typed bindings with typed expressions
-type TypedBindings = Map Name (Type, [TypedAlt])
+type TypedBindings = Map Name (Qual Type, [TypedAlt])
 
 
 -- |Typed bindings for polymorphic data
-type PolyBindings = Map Name [(Type, [TypedAlt])]
+type PolyBindings = Map Name [(Qual Type, [TypedAlt])]
 
 
 -- |Full program representation
@@ -210,7 +219,7 @@ type Namespace = Map Name DataId
 
 
 -- |Mapping from variable names to their data regarding their type
-type Polyspace = Map Name [(Type, DataId)]
+type Polyspace = Map Name [(Qual Type, DataId)]
 
 
 -- |Store for data
@@ -218,7 +227,7 @@ type Dataspace = Map DataId Data
 
 
 -- |Forced state of varaible types
-type Typespace = Map Name Type
+type Typespace = Map Name (Qual Type)
 
 
 -- |Map of value names into ids

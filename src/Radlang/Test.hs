@@ -15,6 +15,7 @@ import Radlang.Parser
 import Radlang.Desugar
 import Radlang.Typechecker
 import Radlang.Pretty
+import Radlang.InterfaceResolve
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -106,4 +107,5 @@ printEither (Left e) = show e
 printEither (Right r) = prettyBnds 0 $ tprgBindings r
 
 
-tttest = readFile "examples/classcheck.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
+tttest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
+ttttest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) print $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True) >>= \tp -> runResolver (fmap fst $ tprgBindings tp) (fmap fst $ resolveAssgs $ tprgBindings tp)

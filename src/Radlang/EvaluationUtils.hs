@@ -12,12 +12,8 @@ import Radlang.Error
 
 import Debug.Trace
 
-typeByName :: Name -> Evaluator Type
-typeByName n = asks (M.lookup n . _evenvTypespace) >>= \case
-  Just t -> pure t
-  Nothing -> do
-    i <- newId
-    pure (TypeVarWobbly (TypeVar ("_RTIME_" <> show i) KType))
+typeByName :: Name -> Evaluator (Qual Type)
+typeByName n = undefined
 
 -- |Evaluate thunk into weak-head normal form
 force :: Data -> Evaluator StrictData
@@ -33,12 +29,7 @@ force (Lazy ns ts sub st i e) = do
 
 -- |Get value by name and desired type
 dataByName :: Type -> Name -> Evaluator Data
-dataByName t n = do
-  s <- asks _evenvSubst
-  traceM $ "GETTING " <> n <> " : " <> show t <> " WITH SUBST " <> show s
-  idByName (substitute s t) n >>= dataById >>= \case
-    Strict (DataFunc fname f) -> pure $ Strict $ DataFunc fname (\arg -> withSubst s $ f arg)
-    d -> pure d
+dataByName t n = undefined
 
 
 -- |Get value by store id
@@ -52,13 +43,8 @@ dataById i = do
 
 
 -- |Get store id of a variable by name and desired type
-idByName :: Type -> Name -> Evaluator DataId
-idByName t n = do
-  ns <- asks _evenvNamespace
-  ps <- asks _evenvPolyspace
-  case mplus (M.lookup n ns) (M.lookup n ps >>= idByType t) of
-    Just i -> pure i
-    Nothing -> wtf $ "idByName: no such name " <> n <> " of type " <> show t <> ". Got " <> show ns
+idByName :: Qual Type -> Name -> Evaluator DataId
+idByName t n = undefined
 
 
 -- |Finds the most matching data id by type. "Most matching" is determined by the number of matched rigid variables

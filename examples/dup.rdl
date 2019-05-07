@@ -1,21 +1,26 @@
-interface I (~A : Type) {
-  i : ~A -> Int;;
+interface C (~C : Type) {
+  c : ~C -> ~C;;
 };;
-
-impl Int for I {
-  i x := 3;;
+impl Int for C {
+  c x := x;;
 };;
-
-impl ~A is I | Option ~A for I {
-  i x := 3;;
+interface D (~C : Type) {
+  d : ~C -> ~C;;
 };;
+impl Int for D {
+  d x := x;;
+};;
+-- newtype Option (~A : Type) := Some ~A | None;;
+-- impl ~A is D | Option ~A for D {d x := x;;
+-- }
+-- ;;
+-- impl ~A is C | Option ~A for C {c x := x;;
+-- }
+-- ;;
 
-pud x := 3;;
-ypud x := pud x;;
+f a := c (d a);;
 
-zz x := i x;;
+g x := f x;;
 
-zzz x := i (Some x);;
-
-zzzzz x := id x;;
+main := g 1;;
 
