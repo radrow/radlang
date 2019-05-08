@@ -8,37 +8,17 @@ import Control.Monad.Reader
 import Radlang.Types
 import Radlang.Typedefs
 import Radlang.Error
-import Radlang.EvaluationUtils hiding (withTypespace)
 import Radlang.Typesystem.Typesystem
-
-
-matchPatternToType :: Qual Type -> Pattern -> Typespace
-matchPatternToType t = \case
-  PLit _ -> M.empty
-  PVar v -> M.singleton v t
-  PWildcard -> M.empty
-  PAs a p -> M.insert a t $ matchPatternToType t p
-  -- PConstructor _ args ->
-  --   let unapply (TypeApp a b) = a : unapply 
-
-
-reduceType :: Qual Type -> Qual Type
-reduceType (ps :=> t) = (filter (\(IsIn _ pt) -> getName pt `elem` fmap (\(TypeVar n _) -> n) (free t)) ps :=> t)
 
 
 resolveAssgs :: TypedBindings -> ExceptT ErrMsg (Reader Typespace) (BindingGroup, Typespace)
 resolveAssgs tb = do
   ts <- ask
   let newts = fmap fst tb <> ts
-  (mapped :: ImplBindings) <- flip mapM tb $ \(t, talts) ->
-    let unapply (TypeApp (TypeApp _ ta) tv) = ta : unapply tv
-        unapply _ = []
-        args :: [Qual Type]
-        args = fmap (reduceType . (getPreds t :=>)) $ unapply (getQualified t)
-    in flip mapM talts $ \(targs, te) -> do
-      let argts = foldr (<>) newts (zipWith matchPatternToType args targs)
-      tre <- withTypespace argts $ resolve te
-      pure (targs, tre)
+  (mapped :: ImplBindings) <- flip mapM tb $ \((prds :=> _), talts) ->
+    flip mapM talts $ \(targs, te) -> do
+      tre <- withTypespace newts $ resolve te
+      pure (fmap (\(IsIn cname tp) -> PVar $ "@dict_" <> cname <> "_" <> getName tp) prds ++ targs, tre)
   pure ((M.empty, M.empty, [mapped]), newts)
 
 
@@ -48,17 +28,19 @@ getName _ = wtf "Non wobbly interface constraint"
 
 makeArgs :: Substitution -> [Pred] -> [Expr]
 makeArgs (Subst s) = fmap $ \(IsIn cname tp) ->
-  Val $ "dict_" <> cname <> "_" <> maybe (getName tp) show (M.lookup (getName tp) s)
+  Val $ "@dict_" <> cname <> "_" <> maybe (getName tp) show (M.lookup (getName tp) s)
 
+withTypespace :: Typespace -> ExceptT ErrMsg (Reader Typespace) a -> ExceptT ErrMsg (Reader Typespace) a
 withTypespace = local . const
 
 resolve :: TypedExpr -> ExceptT ErrMsg (Reader Typespace) Expr
 resolve = \case
-  TypedVal (_ :=> tv) v -> do
-    (ps :=> to) <- asks (M.lookup v) >>= maybe (wtf $ "No such var " <> v) pure
-    s <- mgu to tv
-    let dictArgs = makeArgs s ps
-    pure $ foldl Application (Val v) dictArgs
+  TypedVal (_ :=> tv) v -> asks (M.lookup v) >>= \case
+    Just (ps :=> to) -> do
+      s <- mgu to tv
+      let dictArgs = makeArgs s ps
+      pure $ foldl Application (Val v) dictArgs
+    Nothing -> pure $ Val v
   TypedLit _ l -> pure $ Lit l
   TypedApplication _ f a -> Application <$> resolve f <*> resolve a
   TypedLet _ assgs ine -> do

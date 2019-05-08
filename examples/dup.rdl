@@ -1,15 +1,15 @@
 interface C (~C : Type) {
   c : ~C -> ~C;;
 };;
-impl Int for C {
+impl ~A for C {
   c x := x;;
 };;
-interface D (~C : Type) {
-  d : ~C -> ~C;;
-};;
-impl Int for D {
-  d x := x;;
-};;
+-- interface D (~C : Type) {
+--   d : ~C -> ~C;;
+-- };;
+-- impl ~A for D {
+--   d x := x;;
+-- };;
 -- newtype Option (~A : Type) := Some ~A | None;;
 -- impl ~A is D | Option ~A for D {d x := x;;
 -- }
@@ -17,10 +17,10 @@ impl Int for D {
 -- impl ~A is C | Option ~A for C {c x := x;;
 -- }
 -- ;;
+main := 3;;
+-- f a := c (d a);;
 
-f a := c (d a);;
+-- g x := (f x) (f 1);;
 
-g x := f x;;
-
-main := g 1;;
+-- main := g id 1;;
 

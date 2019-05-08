@@ -16,7 +16,7 @@ import qualified Data.Set                      as S
 import           Radlang.InterfaceEnvBuild
 import           Radlang.DependencyAnalysis
 import           Radlang.Error
-import           Radlang.Kindchecker
+import           Radlang.Kindchecker as K
 import           Radlang.Typedefs
 import           Radlang.Types
 import           Radlang.EvaluationUtils
@@ -125,10 +125,16 @@ implBindings cl idef = -- Strategy: write once, forget what the fuck is going on
 
 -- |Kindcheck and desugar impl definition
 processImplDef :: RawImplDef -> Kindchecker ImplDef
-processImplDef rid = do
-  rq <- processQualType (rawimpldefType rid)
-  mt <- traverse processDataDef (rawimpldefMethods rid)
-  pure $ ImplDef (rawimpldefInterface rid) rq mt
+processImplDef rid = lookupInterfaceKind (rawimpldefInterface rid) >>= \case
+  Nothing -> wtf $ "No such interface " <> (rawimpldefInterface rid)
+  Just k -> do
+    ks <- getKindspace
+    (ksq, kinst) <- kindcheckQualType (rawimpldefType rid)
+    s <- K.mgu (toKindVar k) kinst
+    let newks = substituteKinds s (unionKindspaces ksq ks)
+    rq <- withKindspace newks $ processQualType (rawimpldefType rid)
+    mt <- traverse processDataDef (rawimpldefMethods rid)
+    pure $ ImplDef (rawimpldefInterface rid) rq mt
 
 
 -- |Builds Program from raw AST
@@ -330,16 +336,18 @@ processPred rp = do
 -- |Kindcheck and process raw qualified type
 processQualType :: RawQual RawType -> Kindchecker (Qual Type)
 processQualType rq = do
-  ks <- getKindspace
-  (krs, _) <- kindcheckQualType rq
   preds <- traverse processPred (rqPreds rq)
-  t <- withKindspace (unionKindspaces krs ks) $ processType (rqContent rq)
+  t <- processType (rqContent rq)
   pure $ preds :=> t
 
 
 -- |Kindcheck and process raw type declaration
 processTypeDecl :: RawTypeDecl -> Kindchecker TypeDecl
-processTypeDecl rtd = TypeDecl (rawtdeclName rtd) <$> processQualType (rawtdeclType rtd)
+processTypeDecl rtd = do
+  ks <- getKindspace
+  (krs, _) <- kindcheckQualType (rawtdeclType rtd)
+  TypeDecl (rawtdeclName rtd) <$>
+    withKindspace (unionKindspaces krs ks) (processQualType (rawtdeclType rtd))
 
 
 -- |Kindcheck and process raw interface definition

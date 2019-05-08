@@ -1,0 +1,9 @@
+newtype NonEmpty (~A : Type) := NNil ~A | NCons ~A (NonEmpty ~A);;
+
+map f (NNil x) := NNil (f x);;
+map f (NCons x r) := NCons (f x) (map f r);;
+
+fromList (Cons x Nil) := NNil x;;
+fromList (Cons x r) := NCons x (fromList r);;
+
+main := fromList [1,2,3,4,5];;

@@ -145,7 +145,7 @@ type TypedBindings = Map Name (Qual Type, [TypedAlt])
 
 
 -- |Typed bindings for polymorphic data
-type PolyBindings = Map Name [(Qual Type, [TypedAlt])]
+type PolyBindings = Map Name (Qual Type, [(Qual Type, [TypedAlt])])
 
 
 -- |Full program representation

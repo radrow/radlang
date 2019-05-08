@@ -20,6 +20,8 @@ module Radlang.Kindchecker
   , toKindVar
   , insertKind
   , kindOf
+  , mgu
+  , lookupInterfaceKind
   ) where
 
 import           Control.Monad.Except
@@ -224,6 +226,7 @@ kindlookNewType nt =
   pure $ Kindspace $ M.singleton (rawntName nt)
     (toKindVar $ foldr KFunc KType (fmap snd $ rawntArgs nt))
 
+
 -- |Kindchecks type declaration
 kindcheckRawTypeDecl :: RawTypeDecl -> Kindchecker Kindspace
 kindcheckRawTypeDecl td = do
@@ -241,7 +244,7 @@ kindcheckImpl rid = lookupInterfaceKind (rawimpldefInterface rid) >>= \case
     void $ mgu (toKindVar k) kinst
 
 
--- |FreeKindszes `KindVar` into `Kind`
+-- |Freezes `KindVar` into `Kind`
 toKind :: KindVar -> Kindchecker Kind
 toKind = \case
   KindVar n -> kindcheckError $ "Cannot resolve kind variable " <> kstr n
