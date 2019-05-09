@@ -77,17 +77,17 @@ type Infer e t = e -> TypecheckerT IO (Qual t)
 -- |Get type of UntypedExpr
 inferTypeExpr :: Infer UntypedExpr Type
 inferTypeExpr = \case
-  Val v -> do
+  UntypedVal v -> do
     sc <- lookupType v
     (ps :=> t) <- freshInst sc
     pure (ps :=> t)
-  Lit l -> inferTypeLiteral l <&> (\(p :=> t) -> (p :=> t))
-  Let binds e -> do
+  UntypedLit l -> inferTypeLiteral l <&> (\(p :=> t) -> (p :=> t))
+  UntypedLet binds e -> do
     as <- getTypeEnv
     (ps :=> (as', _, _)) <- inferTypeBindingGroup binds
     (qs :=> t) <- withTypeEnv (as' <> as) $ inferTypeExpr e
     pure (ps ++ qs :=> t)
-  Application f a -> do
+  UntypedApplication f a -> do
     (ps :=> tf) <- inferTypeExpr f
     (qs :=> ta) <- inferTypeExpr a
     t <- newVar "_FunRes" KType
@@ -98,15 +98,15 @@ inferTypeExpr = \case
 -- |Decorate 'UntypedExpr' tree with types to match given type
 setExprType :: Qual Type -> UntypedExpr -> TypecheckerT IO TypedExpr
 setExprType t@(pt :=> tt) = \case
-  Val v -> do
+  UntypedVal v -> do
     pure $ TypedVal t v
-  Lit l -> pure $ TypedLit t l
-  Let binds e -> do
+  UntypedLit l -> pure $ TypedLit t l
+  UntypedLet binds e -> do
     as <- getTypeEnv
     (_ :=> (as', tb, _)) <- inferTypeBindingGroup binds
     typedE <- withTypeEnv (as' <> as) $ setExprType t e
     pure $ TypedLet t tb typedE
-  Application f a -> do
+  UntypedApplication f a -> do
     (_ :=> tf) <- inferTypeExpr f
     (_ :=> ta) <- inferTypeExpr a
     s <- mgu (fun ta tt) tf
@@ -136,7 +136,7 @@ reduceAltsPreds = mapM (\(pats, be) -> reduceExprPreds be >>= \rbe -> pure (pats
 -- |Infer type of literal value
 inferTypeLiteral :: Infer Literal Type
 inferTypeLiteral = \case
-  -- LitInt _ -> newVar "_LI" KType >>= \v -> pure ([IsIn "Num" v], v)
+  -- UntypedLitInt _ -> newVar "_LI" KType >>= \v -> pure ([IsIn "Num" v], v)
   LitInt _ -> pure ([] :=> tInt)
   LitString _ -> pure ([] :=> tString)
   LitChar _ -> pure ([] :=> tChar)

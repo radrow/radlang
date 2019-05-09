@@ -32,7 +32,7 @@ getName _ = wtf "Non wobbly interface constraint"
 
 makeArgs :: Substitution -> [Pred] -> [UntypedExpr]
 makeArgs (Subst s) = fmap $ \(IsIn cname tp) ->
-  Val $ dictName (IsIn cname $ maybe tp id (M.lookup (getName tp) s))
+  UntypedVal $ dictName (IsIn cname $ maybe tp id (M.lookup (getName tp) s))
 
 withTypespace :: Typespace -> ExceptT ErrMsg (Reader Typespace) a -> ExceptT ErrMsg (Reader Typespace) a
 withTypespace = local . const
@@ -43,14 +43,14 @@ resolve = \case
     Just (ps :=> to) -> do
       s <- mgu to tv
       let dictArgs = makeArgs s ps
-      pure $ foldl Application (Val v) dictArgs
-    Nothing -> pure $ Val v
-  TypedLit _ l -> pure $ Lit l
-  TypedApplication _ f a -> Application <$> resolve f <*> resolve a
+      pure $ foldl UntypedApplication (UntypedVal v) dictArgs
+    Nothing -> pure $ UntypedVal v
+  TypedLit _ l -> pure $ UntypedLit l
+  TypedApplication _ f a -> UntypedApplication <$> resolve f <*> resolve a
   TypedLet _ assgs ine -> do
     (eassgs, ts) <- resolveAssgs assgs
     eine <- withTypespace ts $ resolve ine
-    pure $ Let eassgs eine
+    pure $ UntypedLet eassgs eine
 
 ex :: TypedExpr
 ex =

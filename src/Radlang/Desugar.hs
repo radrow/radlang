@@ -273,16 +273,16 @@ processDataDef dd = do
 -- |Turns expression AST into UntypedExpr
 processRawExpr :: RawExpr -> Kindchecker UntypedExpr
 processRawExpr = \case
-  RawExprVal v -> pure $ Val v
-  RawExprLit l -> pure $ Lit l
+  RawExprVal v -> pure $ UntypedVal v
+  RawExprLit l -> pure $ UntypedLit l
   RawExprApplication kfun args -> do
     sq <- traverse processRawExpr $ cons kfun args
-    pure $ Prelude.foldl1 Application sq
+    pure $ Prelude.foldl1 UntypedApplication sq
   RawExprLet assgs inWhat -> do
     passgs <- traverse (bitraverse processTypeDecl processDataDef) assgs
     let bnds = makeBindings (toList passgs)
     ex <- processRawExpr inWhat
-    pure $ Let bnds ex
+    pure $ UntypedLet bnds ex
   RawExprLambda (a:|rest) val -> processRawExpr $
     RawExprLet (Right (RawDataDef "_lambda" (a:rest) val) :|[]) (RawExprVal "_lambda")
   RawExprIf ((c,t):|rest) els -> case rest of
@@ -300,7 +300,7 @@ processRawExpr = \case
       let cont = RawExprLambda (PVar n:|[]) (RawExprFor t e)
       processRawExpr $ RawExprApplication (RawExprVal "bind") (v:|[cont])
   RawExprFor [] e -> processRawExpr e
-  RawExprList [] -> pure $ Val "Nil"
+  RawExprList [] -> pure $ UntypedVal "Nil"
   RawExprList (h:t) ->
       processRawExpr $ RawExprApplication (RawExprVal "Cons") (h:|[RawExprList t])
 

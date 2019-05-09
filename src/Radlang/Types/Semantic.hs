@@ -28,26 +28,29 @@ type EvalStacktrace = [String]
 
 -- |Desugared expression tree
 data UntypedExpr
-  = Val Name
-  | Lit Literal
-  | Application UntypedExpr UntypedExpr
-  | Let BindingGroup UntypedExpr
+  = UntypedVal Name
+  | UntypedLit Literal
+  | UntypedApplication UntypedExpr UntypedExpr
+  | UntypedLet BindingGroup UntypedExpr
 
 
 -- |Expression tree decorated with type annotations
-data TypedExpr where
-  TypedVal :: Qual Type -> Name -> TypedExpr
-  TypedLit :: Qual Type -> Literal -> TypedExpr
-  TypedApplication :: Qual Type -> TypedExpr -> TypedExpr -> TypedExpr
-  TypedLet :: Qual Type -> (Map Name (Qual Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
+data TypedExpr
+  = TypedVal (Qual Type) Name
+  | TypedLit (Qual Type) Literal
+  | TypedApplication (Qual Type) TypedExpr TypedExpr
+  | TypedLet (Qual Type) (Map Name (Qual Type, [([Pattern], TypedExpr)])) TypedExpr
   deriving (Eq, Ord)
+
+data Expr
+  = TODO
 
 instance Show UntypedExpr where
   show = \case
-    Val v -> v
-    Lit l -> show l
-    Application f a -> "(" <> show f <> " " <> show a <> ")"
-    Let bn e -> "let " <> show bn <> " in " <> show e
+    UntypedVal v -> v
+    UntypedLit l -> show l
+    UntypedApplication f a -> "(" <> show f <> " " <> show a <> ")"
+    UntypedLet bn e -> "let " <> show bn <> " in " <> show e
 
 instance Show TypedExpr where
   show = \case

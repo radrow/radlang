@@ -12,10 +12,10 @@ import           Radlang.Types
 exprDependencies :: UntypedExpr -> S.Set Name
 exprDependencies = go S.empty where
   go acc = \case
-    Val n -> S.insert n acc
-    Lit _ -> acc
-    Application f a -> go (go acc a) f
-    Let (p, e, i) expr -> S.unions (exprDependencies expr : fromP ++ fromE ++ fromI) S.\\ (S.unions [ims, exs, pos]) where
+    UntypedVal n -> S.insert n acc
+    UntypedLit _ -> acc
+    UntypedApplication f a -> go (go acc a) f
+    UntypedLet (p, e, i) expr -> S.unions (exprDependencies expr : fromP ++ fromE ++ fromI) S.\\ (S.unions [ims, exs, pos]) where
       ims = S.fromList $ M.keys =<< i
       exs = S.fromList $ M.keys e
       pos = S.fromList $ M.keys p
