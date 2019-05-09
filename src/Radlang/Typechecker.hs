@@ -74,8 +74,8 @@ freshInst (Forall ks qt) = do
 type Infer e t = e -> TypecheckerT IO (Qual t)
 
 
--- |Get type of Expr
-inferTypeExpr :: Infer Expr Type
+-- |Get type of UntypedExpr
+inferTypeExpr :: Infer UntypedExpr Type
 inferTypeExpr = \case
   Val v -> do
     sc <- lookupType v
@@ -95,8 +95,8 @@ inferTypeExpr = \case
     pure (ps ++ qs :=> t)
 
 
--- |Decorate 'Expr' tree with types to match given type
-setExprType :: Qual Type -> Expr -> TypecheckerT IO TypedExpr
+-- |Decorate 'UntypedExpr' tree with types to match given type
+setExprType :: Qual Type -> UntypedExpr -> TypecheckerT IO TypedExpr
 setExprType t@(pt :=> tt) = \case
   Val v -> do
     pure $ TypedVal t v

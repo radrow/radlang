@@ -27,11 +27,11 @@ type EvalStacktrace = [String]
 
 
 -- |Desugared expression tree
-data Expr
+data UntypedExpr
   = Val Name
   | Lit Literal
-  | Application Expr Expr
-  | Let BindingGroup Expr
+  | Application UntypedExpr UntypedExpr
+  | Let BindingGroup UntypedExpr
 
 
 -- |Expression tree decorated with type annotations
@@ -42,7 +42,7 @@ data TypedExpr where
   TypedLet :: Qual Type -> (Map Name (Qual Type, [([Pattern], TypedExpr)])) -> TypedExpr -> TypedExpr
   deriving (Eq, Ord)
 
-instance Show Expr where
+instance Show UntypedExpr where
   show = \case
     Val v -> v
     Lit l -> show l
@@ -78,13 +78,13 @@ getExprType = \case
 
 -- |Value stored in the dataspace. May be evaluated or not
 data Data
-  = Lazy Namespace Typespace Substitution DefStacktrace DataId (Evaluator Data)
+  = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
   | Dict Namespace
 
 instance Show Data where
   show = \case
-    Lazy _ _ _ _ i _ -> "<lazy " <> show i <> ">"
+    Lazy _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
     Dict d -> "<dict " <> show d <> ">"
 
@@ -107,7 +107,7 @@ instance Show StrictData where
 
 
 -- |Left and right side of a value/function definition
-type Alt = ([Pattern], Expr)
+type Alt = ([Pattern], UntypedExpr)
 -- |Left and right side of a typed value/function definition
 type TypedAlt = ([Pattern], TypedExpr)
 
@@ -187,7 +187,7 @@ data DataDef
   = DataDef
     { datadefName :: Name
     , datadefArgs :: [Pattern]
-    , datadefVal  :: Expr}
+    , datadefVal  :: UntypedExpr}
   deriving (Show)
 
 

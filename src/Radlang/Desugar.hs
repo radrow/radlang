@@ -270,8 +270,8 @@ processDataDef dd = do
     }
 
 
--- |Turns expression AST into Expr
-processRawExpr :: RawExpr -> Kindchecker Expr
+-- |Turns expression AST into UntypedExpr
+processRawExpr :: RawExpr -> Kindchecker UntypedExpr
 processRawExpr = \case
   RawExprVal v -> pure $ Val v
   RawExprLit l -> pure $ Lit l

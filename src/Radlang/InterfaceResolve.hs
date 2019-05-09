@@ -30,14 +30,14 @@ getName :: Type -> Name
 getName (TypeVarWobbly (TypeVar n KType)) = n
 getName _ = wtf "Non wobbly interface constraint"
 
-makeArgs :: Substitution -> [Pred] -> [Expr]
+makeArgs :: Substitution -> [Pred] -> [UntypedExpr]
 makeArgs (Subst s) = fmap $ \(IsIn cname tp) ->
   Val $ dictName (IsIn cname $ maybe tp id (M.lookup (getName tp) s))
 
 withTypespace :: Typespace -> ExceptT ErrMsg (Reader Typespace) a -> ExceptT ErrMsg (Reader Typespace) a
 withTypespace = local . const
 
-resolve :: TypedExpr -> ExceptT ErrMsg (Reader Typespace) Expr
+resolve :: TypedExpr -> ExceptT ErrMsg (Reader Typespace) UntypedExpr
 resolve = \case
   TypedVal (_ :=> tv) v -> asks (M.lookup v) >>= \case
     Just (ps :=> to) -> do

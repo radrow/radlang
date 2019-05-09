@@ -34,7 +34,7 @@ prettyAlt :: Int -> Name -> Alt -> String
 prettyAlt ident n (args, e) = prefix ident <> n <> " " <> show args <> " :=\n" <>
   prettyE (ident + 4) e
 
-prettyE :: Int -> Expr -> String
+prettyE :: Int -> UntypedExpr -> String
 prettyE ident = \case
   Let (_, _, [bnds]) te -> prefix ident <> "let\n" <> prettyBndsE (ident + 4) bnds
     <> prefix ident <> "in\n" <> prettyE ident te

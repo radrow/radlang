@@ -37,7 +37,7 @@ deriving instance Data InterfaceDef
 deriving instance Data RawInterfaceDef
 deriving instance Data Pred
 deriving instance Data RawPred
-deriving instance Data Expr
+deriving instance Data UntypedExpr
 deriving instance Data RawExpr
 deriving instance Data ForComphr
 deriving instance Data RawProgramPart

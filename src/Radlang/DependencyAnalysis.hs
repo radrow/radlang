@@ -9,7 +9,7 @@ import           Radlang.Types
 
 
 -- |Get names of variables that expression depends on
-exprDependencies :: Expr -> S.Set Name
+exprDependencies :: UntypedExpr -> S.Set Name
 exprDependencies = go S.empty where
   go acc = \case
     Val n -> S.insert n acc

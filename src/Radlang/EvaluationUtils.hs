@@ -18,10 +18,10 @@ typeByName n = undefined
 -- |Evaluate thunk into weak-head normal form
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
-force (Lazy ns ts sub st i e) = do
+force (Lazy ns st i e) = do
   s <- asks _evenvSubst
   forced <- force =<< withDefStacktrace st
-    (withEvalStackElem ("forcing " <> show i) $ (withSubst sub $ withNamespace ns e))
+    (withEvalStackElem ("forcing " <> show i) $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -114,8 +114,3 @@ putData i d = modify $ over evstDataspace (M.insert i d)
 -- |Get current namespace
 getNamespace :: Evaluator Namespace
 getNamespace = asks _evenvNamespace
-
-
--- |Get current typespace
-getTypespace :: Evaluator Typespace
-getTypespace = asks _evenvTypespace

@@ -39,7 +39,7 @@ data RawProgram = RawProgram
   deriving (Eq, Show)
 
 
--- |Abstract syntax tree that faithfully represents code. Layer between text and Expr
+-- |Abstract syntax tree that faithfully represents code. Layer between text and UntypedExpr
 data RawExpr
   = RawExprVal Name
   | RawExprLit Literal

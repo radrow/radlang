@@ -29,10 +29,9 @@ newLazy :: Evaluator Data -> Evaluator Data
 newLazy e = do
   i <- newId
   ns <- getNamespace
-  ts <- getTypespace
   sub <- asks _evenvSubst
   (st, _) <- getStacktraces
-  let laz = Lazy ns ts sub st i e
+  let laz = Lazy ns st i e
   putData i laz
   pure laz
 
@@ -64,8 +63,8 @@ deepForce :: Data -> Evaluator StrictData
 deepForce (Strict d) = case d of
   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
   _              -> pure d
-deepForce (Lazy ns ts sub st i e) = do
-  forced <- deepForce =<< (withDefStacktrace st $ withSubst sub $ withNamespace ns e)
+deepForce (Lazy ns st i e) = do
+  forced <- deepForce =<< (withDefStacktrace st $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
