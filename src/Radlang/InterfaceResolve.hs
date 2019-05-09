@@ -11,6 +11,10 @@ import Radlang.Error
 import Radlang.Typesystem.Typesystem
 
 
+dictName :: Pred -> String
+dictName (IsIn c t) = "@dict_" <> c <> "_" <> getName t
+
+
 resolveAssgs :: TypedBindings -> ExceptT ErrMsg (Reader Typespace) (BindingGroup, Typespace)
 resolveAssgs tb = do
   ts <- ask
@@ -18,7 +22,7 @@ resolveAssgs tb = do
   (mapped :: ImplBindings) <- flip mapM tb $ \((prds :=> _), talts) ->
     flip mapM talts $ \(targs, te) -> do
       tre <- withTypespace newts $ resolve te
-      pure (fmap (\(IsIn cname tp) -> PVar $ "@dict_" <> cname <> "_" <> getName tp) prds ++ targs, tre)
+      pure (fmap (PVar . dictName) prds ++ targs, tre)
   pure ((M.empty, M.empty, [mapped]), newts)
 
 
@@ -28,7 +32,7 @@ getName _ = wtf "Non wobbly interface constraint"
 
 makeArgs :: Substitution -> [Pred] -> [Expr]
 makeArgs (Subst s) = fmap $ \(IsIn cname tp) ->
-  Val $ "@dict_" <> cname <> "_" <> maybe (getName tp) show (M.lookup (getName tp) s)
+  Val $ dictName (IsIn cname $ maybe tp id (M.lookup (getName tp) s))
 
 withTypespace :: Typespace -> ExceptT ErrMsg (Reader Typespace) a -> ExceptT ErrMsg (Reader Typespace) a
 withTypespace = local . const

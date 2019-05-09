@@ -32,8 +32,8 @@ strictFunc2 name sf2 = DataFunc (name <> "#0") $ \a1 ->
 
 -- |Primitive functions that cannot be defined within the language
 primitives :: [(Name, Qual Type, StrictData)]
-primitives = const []
--- primitives =
+-- primitives = const []
+primitives =
   [ ("plusInt"
     , [] :=> fun tInt (fun tInt tInt)
     , strictFunc2 "plusInt" $ \(DataInt a) (DataInt b) -> pure $ Strict $ DataInt (a + b)
@@ -57,6 +57,12 @@ primitives = const []
     , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) ->
         pure $ Strict $ DataADT (if a == b then "True" else "False") []
     )
+  , ("eqChar"
+    , [] :=> fun tChar (fun tChar tBool)
+    , strictFunc2 "eqChar" $ \(DataChar a) (DataChar b) ->
+        pure $ Strict $ DataADT (if a == b then "True" else "False") []
+    )
+
 
   , ( "if"
     , [] :=> fun tBool (fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A")))
@@ -131,5 +137,5 @@ mergePrograms r1 r2 = RawProgram
 
 -- |Extend program with Intro
 withIntro :: RawProgram -> RawProgram
--- withIntro = flip mergePrograms intro
-withIntro = id
+withIntro = flip mergePrograms intro
+-- withIntro = id

@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Radlang.Typechecker where
-import Debug.Trace
+
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Applicative
@@ -268,26 +268,28 @@ defaultedPreds = withDefaults (\vps _ -> join (fmap snd vps))
 -- |Substitution to remove ambiguities used in toplevel inference
 defaultSubst :: (HasInterfaceEnv m, MonadIO m)
              => [TypeVar] -> [Pred] -> m Substitution
-defaultSubst  = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
+defaultSubst = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
 
 
 -- |Typecheck explicitly typed binding
 inferTypeExpl :: Infer ExplBinding (Type, [TypedAlt])
-inferTypeExpl (name, (sc, alts)) = do
-  qt@(qs :=> t) <- freshInst sc
-  (ps :=> (_, talts)) <- inferTypeAlts qt alts
+inferTypeExpl (name, (typeDeclared, alts)) = do
+  qt@(tpreds :=> t) <- freshInst typeDeclared
+  (inferredPreds :=> (_, talts)) <- inferTypeAlts qt alts
   s <- getSubst
   as <- getTypeEnv
-  let qs' = substitute s qs
-      t'= substitute s t
-      fs = free $ substitute s as
-      gs = free t' \\ fs
-      sc' = quantify gs (qs' :=> t')
-  ps' <- filterM (\x -> not <$> entail qs' x) (substitute s ps)
-  (ds, rs) <- split fs gs ps'
-  if | sc /= sc' -> typecheckError $ "Signature is too general for " <> name
+  let predsUnified = substitute s tpreds
+      typeUnified = substitute s t
+      freeOutside = free $ substitute s as
+      freeInside = free typeUnified \\ freeOutside
+      typeQuantified = quantify freeInside (predsUnified :=> typeUnified)
+  ps' <- filterM (\x -> not <$> entail predsUnified x) (substitute s inferredPreds)
+  (_, rs) <- split freeOutside freeInside ps'
+  if | typeDeclared /= typeQuantified ->
+         typecheckError $ "Signature is too general for " <> name
      | not (null rs) -> typecheckError $ "Context is too weak for " <> name
-     | otherwise -> pure (ds :=> (t', talts))
+     | otherwise -> pure ( predsUnified -- TODO Why was it ds originally?
+                          :=> (typeUnified, talts))
 
 
 -- |Implicit binding set is restricted when any of its members has alt with no explicit arguments
@@ -342,7 +344,6 @@ inferTypeBindingGroup (ints, es, iss) = do
   (ps :=> (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
 
   (fromExpls :: [Qual (Type, [TypedAlt])]) <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
-
   (tbindsPoly :: PolyBindings) <- fmap (fmap (fmap (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence
     $ M.toList ints <&> \(n, (tp, dds)) -> do
     tpinst <- freshInst tp
@@ -350,9 +351,8 @@ inferTypeBindingGroup (ints, es, iss) = do
     pure (n, (tpinst, implems))
 
   let qss = fmap getPreds fromExpls
-      exInfer = fromExpls
       tbindsExp :: TypedBindings
-      tbindsExp = M.fromList $ zipWith (\(n, _) (q :=> (t, talt)) -> (n, (q :=> t, talt))) (M.toList es) exInfer
+      tbindsExp = M.fromList $ zipWith (\(n, _) (q :=> (t, talt)) -> (n, (q :=> t, talt))) (M.toList es) fromExpls
 
   pure (ps ++ join qss
        :=> (as'' <> as'
@@ -373,14 +373,10 @@ inferTypeSeq ti = \case
 
 
 -- |Infer types of multiple independent binding groups
-inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO (TypeEnv, TypedBindings, PolyBindings)
+inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO (TypedBindings, PolyBindings)
 inferTypeBindingGroups bgs = do
-  dbg $ show bgs
-  (ps :=> (as', tb, pb)) <- inferTypeSeq inferTypeBindingGroup bgs
-  s <- getSubst
-  rs <- reduce (substitute s ps)
-  s' <- defaultSubst [] rs
-  pure (substitute (s' <> s) as', tb, pb)
+  (_ :=> (_, tb, pb)) <- inferTypeSeq inferTypeBindingGroup bgs
+  pure (tb, pb)
 
 
 -- |Evaluation of typechecker
@@ -401,7 +397,7 @@ tctest p = either (error . showError) id $ typecheck (TypecheckerConfig True) p
 typecheck :: TypecheckerConfig -> Program -> Either ErrMsg TypedProgram
 typecheck tc p =
   let (ps, ts) = primitiveSpace
-  in do (_, tb, pb) <- unsafePerformIO $ runTypecheckerT
+  in do (tb, pb) <- unsafePerformIO $ runTypecheckerT
                           (prgInterfaceEnv p)
                           (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
                           tc (inferTypeBindingGroups $ prgBindings p)

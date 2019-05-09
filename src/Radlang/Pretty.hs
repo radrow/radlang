@@ -11,7 +11,8 @@ prettyBnds ident p = unlines $ flip fmap (M.toList p) $ \(n, (t, talts)) ->
   prefix ident <> n <> " : " <> show t <> "\n" <> ((prettyTAlt ident n) =<< talts)
 
 prettyPBnds :: PolyBindings -> String
-prettyPBnds p = unlines $ flip fmap (M.toList p) $ \(n, dl) -> unlines $ flip fmap (snd dl) $ \(t, talts) ->
+prettyPBnds p = unlines $ flip fmap (M.toList p) $ \(n, dl) ->
+  (("FOR " <> n <> " : " <> show (fst dl) <> "\n")<>) $ unlines $ flip fmap (snd dl) $ \(t, talts) ->
   "POLY " <> n <> " : " <> show t <> "\n" <> ((prettyTAlt 0 n) =<< talts)
 
 prettyTAlt :: Int -> Name -> TypedAlt -> String

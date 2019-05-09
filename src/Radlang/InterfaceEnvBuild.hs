@@ -55,7 +55,7 @@ addInterface n sups = do
 
 -- |Declares new impl with qualification
 addInst :: [Pred] -> Pred -> InterfaceEnvBuilder ()
-addInst ps p@(IsIn i _) = do
+addInst ps p@(IsIn i it) = do
   iDefined <- interfaceDefined i
   when (not iDefined) (interfaceEnvError $ "Interface not defined: " <> i)
   its <- impls i
@@ -64,7 +64,8 @@ addInst ps p@(IsIn i _) = do
       qs = S.map (\(_ :=> q) -> q) its
   filterM (overlaps p) (S.toList qs) >>= \case
     [] -> pure ()
-    (IsIn h _):_ -> interfaceEnvError $ "Impls overlap: " <> i <> " with " <> h
+    (IsIn h oit):_ ->
+      interfaceEnvError $ "Impls overlap: " <> show it <> " is " <> i <> " with " <> show oit <> " is " <> h
   updateInterfaceEnv i (Interface c $ S.insert (ps :=> p) its)
 
 

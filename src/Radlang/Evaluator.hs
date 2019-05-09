@@ -17,6 +17,7 @@ import           Prelude                    hiding (lookup)
 import           Radlang.Error
 import           Radlang.Types
 import           Radlang.Pretty
+import           Radlang.InterfaceResolve
 import           Radlang.EvaluationUtils
 import           Radlang.Typesystem.Typesystem (mgu)
 
@@ -64,7 +65,7 @@ deepForce (Strict d) = case d of
   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
   _              -> pure d
 deepForce (Lazy ns ts sub st i e) = do
-  forced <- deepForce =<< (withDefStacktrace st $ withSubst sub $ withTypespace ts $ withNamespace ns e)
+  forced <- deepForce =<< (withDefStacktrace st $ withSubst sub $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -135,8 +136,33 @@ processBindings tbnevst = do
 
 
 -- |Build dataspace and namespace from set of polymorphic bindings
-processPolyBindings :: PolyBindings -> Evaluator Polyspace
-processPolyBindings pb = undefined
+processPolyBindings :: PolyBindings -> Evaluator Namespace
+processPolyBindings pb = do
+  let polylist :: [(Name, (Qual Type, [(Qual Type, [TypedAlt])]))]
+      polylist = M.toList pb
+
+      makeMethod :: (Name, Qual Type, [(Qual Type, [TypedAlt])]) -> Evaluator Namespace
+      makeMethod (n, t, defs) = do
+        prens <- forM defs $ \(qt, alts) -> do
+          let dict = case getPreds t \\ getPreds qt of
+                [cp] -> dictName cp
+                x -> wtf $ "Class pred failure: " <> show x
+
+              impls :: Namespace
+              impls = undefined
+
+              method = DataFunc n $ \ldic -> do
+                force ldic >>= \case
+                  DataPolyDict dic -> withNamespace dic $ eval (TypedVal undefined n)
+                  x -> wtf $ "This is not poly dict: " <> show x
+          i <- newData $ Strict method
+
+          pure $ M.insert n i impls
+        pure $ foldr M.union M.empty prens
+
+  methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) (M.toList pb)
+  pure $ foldr M.union M.empty methodNss
+
 
 
 -- |Try to match data to pattern and return unifying substitution if possible
@@ -208,7 +234,7 @@ eval = \case
       _                  -> wtf $ "Call not a function! " <> show fd
   TypedLet _ assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
-    withTypespace (typeEnvFromBindings assgs) $ withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
+    withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
 
 
 typeEnvFromBindings :: TypedBindings -> Typespace
@@ -223,22 +249,21 @@ evalProgram tp = do
   case M.lookup "main" (tprgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (t, _) ->
-      withNamespace ns $ withPolyspace ps $ withStackElems "main" $ eval (TypedVal t "main") >>= deepForce
+      withNamespace ns $ withStackElems "main" $ eval (TypedVal t "main") >>= deepForce
 
 
 -- |Perform evaluation of the main value from the program
 runProgram :: TypedProgram -> Either ErrMsg StrictData
 runProgram tp =
-  runEvaluator (tprgNamespace tp) (tprgDataspace tp) (typeEnvFromBindings $ tprgBindings tp) $ evalProgram tp
+  runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
 
 
 -- |Run evaluator and extract the result
 runEvaluator :: Namespace
              -> Dataspace
-             -> Typespace
              -> Evaluator a
              -> Either ErrMsg a
-runEvaluator ns ds te (Evaluator e)
+runEvaluator ns ds (Evaluator e)
   = flip evalState (EvaluationState ds (if M.null ds then 0 else fst (M.findMax ds) + 1))
-  $ flip runReaderT (EvaluationEnv ns M.empty (Subst M.empty) te [] [])
+  $ flip runReaderT (EvaluationEnv ns (Subst M.empty) [] [])
   $ runExceptT e

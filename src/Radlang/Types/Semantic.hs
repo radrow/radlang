@@ -12,7 +12,7 @@ import           Control.Lens               hiding (Lazy, Strict)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
-import           Data.Map.Strict            (Map)
+import           Data.Map.Strict            (Map, keys)
 import           Data.Set                   as S
 
 import           Radlang.Types.General
@@ -32,7 +32,6 @@ data Expr
   | Lit Literal
   | Application Expr Expr
   | Let BindingGroup Expr
-  -- deriving (Show)
 
 
 -- |Expression tree decorated with type annotations
@@ -95,8 +94,8 @@ data StrictData
   = DataInt Integer
   | DataChar Char
   | DataADT Name [Data]
-  | DataFuncSub Name (Substitution -> Data -> Evaluator Data)
   | DataFunc Name (Data -> Evaluator Data)
+  | DataPolyDict Namespace
 
 instance Show StrictData where
   show = \case
@@ -104,7 +103,7 @@ instance Show StrictData where
     DataChar c -> show c
     DataADT n args -> n <> (((" "<>) . show) =<< args)
     DataFunc n _ -> "<func " <> n <> ">"
-    DataFuncSub n _ -> "<func " <> n <> ">"
+    DataPolyDict ns -> "<dict containing " <> show (keys ns) <> ">"
 
 
 -- |Left and right side of a value/function definition
@@ -218,10 +217,6 @@ data ConstructorDef = ConstructorDef
 type Namespace = Map Name DataId
 
 
--- |Mapping from variable names to their data regarding their type
-type Polyspace = Map Name [(Qual Type, DataId)]
-
-
 -- |Store for data
 type Dataspace = Map DataId Data
 
@@ -233,9 +228,7 @@ type Typespace = Map Name (Qual Type)
 -- |Map of value names into ids
 data EvaluationEnv = EvaluationEnv
   { _evenvNamespace      :: Namespace
-  , _evenvPolyspace      :: Polyspace
   , _evenvSubst          :: Substitution
-  , _evenvTypespace      :: Typespace
   , _evenvDefStacktrace  :: DefStacktrace
   , _evenvEvalStacktrace :: EvalStacktrace
   } deriving (Show)
@@ -243,7 +236,7 @@ data EvaluationEnv = EvaluationEnv
 
 -- |Map of ids into real data
 data EvaluationState = EvaluationState
-  { _evstDataspace :: Map DataId Data
+  { _evstDataspace :: Dataspace
   , _evstIdSupply  :: DataId
   } deriving (Show)
 

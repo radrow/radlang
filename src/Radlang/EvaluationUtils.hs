@@ -19,11 +19,9 @@ typeByName n = undefined
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Lazy ns ts sub st i e) = do
-  traceM $ "FORCING LAZY IN SUBST " <> show sub
   s <- asks _evenvSubst
-  traceM $ "FORCING SUBST " <> show s
   forced <- force =<< withDefStacktrace st
-    (withEvalStackElem ("forcing " <> show i) $ (withSubst sub $ withTypespace ts $ withNamespace ns e))
+    (withEvalStackElem ("forcing " <> show i) $ (withSubst sub $ withNamespace ns e))
   putData i (Strict forced)
   pure forced
 
@@ -83,16 +81,6 @@ withSubst :: Substitution -> Evaluator a -> Evaluator a
 withSubst = local . set evenvSubst
 
 
--- |Modify action to be ran in different typespace
-withTypespace :: Typespace -> Evaluator a -> Evaluator a
-withTypespace = local . set evenvTypespace
-
-
--- |Modify action to be ran in different polyspace. Should be used only during initialization
-withPolyspace :: Polyspace -> Evaluator a -> Evaluator a
-withPolyspace = local . set evenvPolyspace
-
-
 -- |Modify action to be ran with updated definition stacktrace
 withStackElem :: String -> Evaluator a -> Evaluator a
 withStackElem s = local $ over evenvDefStacktrace (s:)
@@ -131,8 +119,3 @@ getNamespace = asks _evenvNamespace
 -- |Get current typespace
 getTypespace :: Evaluator Typespace
 getTypespace = asks _evenvTypespace
-
-
--- |Get current polyspace
-getPolyspace :: Evaluator Polyspace
-getPolyspace = asks _evenvPolyspace
