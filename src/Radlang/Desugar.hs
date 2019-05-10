@@ -280,7 +280,7 @@ processRawExpr = \case
     pure $ Prelude.foldl1 UntypedApplication sq
   RawExprLet assgs inWhat -> do
     passgs <- traverse (bitraverse processTypeDecl processDataDef) assgs
-    let bnds = makeBindings (toList passgs)
+    let bnds = makeBindings (reverse $ toList passgs)
     ex <- processRawExpr inWhat
     pure $ UntypedLet bnds ex
   RawExprLambda (a:|rest) val -> processRawExpr $
@@ -289,7 +289,7 @@ processRawExpr = \case
     [] -> processRawExpr $ RawExprApplication (RawExprVal "if") (c:|[t,els])
     hd:tl -> processRawExpr $ RawExprApplication (RawExprVal "if")
       (c :|[t, RawExprIf (hd:|tl) els])
-  RawExprCase cased matches -> processRawExpr $
+  RawExprMatch cased matches -> processRawExpr $
     let defs = fmap (\(p, e) -> Right $ RawDataDef "_case" [p] e) matches
     in RawExprLet defs $ RawExprApplication (RawExprVal "_case") (cased:|[])
   RawExprFor (h:t) e -> case h of

@@ -186,7 +186,7 @@ exprComplex = msum
   , lambdaE
   , letE
   , ifE
-  , caseE
+  , matchE
   , forE
   , applicationE
   ]
@@ -251,8 +251,8 @@ litE = RawExprLit <$> literal
 
 
 -- |Parse pattern match
-caseE :: Parser RawExpr
-caseE = do
+matchE :: Parser RawExpr
+matchE = do
   word "match"
   e <- expr
   word "with"
@@ -262,7 +262,7 @@ caseE = do
     operator "->"
     em <- expr
     pure (p, em)
-  pure $ RawExprCase e matches
+  pure $ RawExprMatch e matches
 
 
 -- |Parse for comprehension

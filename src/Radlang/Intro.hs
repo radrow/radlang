@@ -85,6 +85,11 @@ primitives =
     , DataFunc "manual deep force" $ \a ->
         deepForce a >> pure (Strict $ DataFunc "return after manual deep force" pure)
     )
+  , ( "error"
+    , [] :=> (fun (tWobbly "~A") (tWobbly "~B"))
+    , DataFunc "error" $ \a ->
+        deepForce a >>= \d -> runtimeError ("thrown by the user: " <> show d)
+    )
   ]
 
 
