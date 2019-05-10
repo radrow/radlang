@@ -43,7 +43,11 @@ data TypedExpr
   deriving (Eq, Ord)
 
 data Expr
-  = TODO
+  = Val Name
+  | Lit Literal
+  | Application Expr Expr
+  | Let Bindings Expr
+  deriving (Show)
 
 instance Show UntypedExpr where
   show = \case
@@ -83,13 +87,11 @@ getExprType = \case
 data Data
   = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
-  | Dict Namespace
 
 instance Show Data where
   show = \case
     Lazy _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
-    Dict d -> "<dict " <> show d <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -150,12 +152,15 @@ type TypedBindings = Map Name (Qual Type, [TypedAlt])
 type PolyBindings = Map Name (Qual Type, [(Qual Type, [TypedAlt])])
 
 
+type Bindings = Map Name [([Pattern], Expr)]
+
+
 -- |Full program representation
-data Program = Program
-  { prgDatamap      :: Map Name Data
-  , prgBindings     :: [BindingGroup]
-  , prgInterfaceEnv :: InterfaceEnv
-  , prgTypeEnv      :: TypeEnv
+data UntypedProgram = UntypedProgram
+  { uprgDatamap      :: Map Name Data
+  , uprgBindings     :: [BindingGroup]
+  , uprgInterfaceEnv :: InterfaceEnv
+  , uprgTypeEnv      :: TypeEnv
   } deriving (Show)
 
 
@@ -165,6 +170,14 @@ data TypedProgram = TypedProgram
   , tprgNamespace    :: Namespace
   , tprgPolyBindings :: PolyBindings
   , tprgBindings     :: TypedBindings
+  } deriving (Show)
+
+
+data Program = Program
+  { prgDataspace    :: Dataspace
+  , prgNamespace    :: Namespace
+  , prgPolyBindings :: PolyBindings
+  , prgBindings     :: Bindings
   } deriving (Show)
 
 
@@ -231,7 +244,6 @@ type Typespace = Map Name (Qual Type)
 -- |Map of value names into ids
 data EvaluationEnv = EvaluationEnv
   { _evenvNamespace      :: Namespace
-  , _evenvSubst          :: Substitution
   , _evenvDefStacktrace  :: DefStacktrace
   , _evenvEvalStacktrace :: EvalStacktrace
   } deriving (Show)

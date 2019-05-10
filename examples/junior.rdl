@@ -1,0 +1,27 @@
+elem _ Nil := False;;
+elem x (Cons a rest) := or (eqChar x a) (elem x rest);;
+
+isSpace x := elem x " \n\t";;
+
+dropWhile : (~A -> Bool) -> List ~A -> List ~A;;
+dropWhile p [] := [];;
+dropWhile p (Cons x rest) :=
+  if p x then dropWhile p rest else (Cons x rest);;
+
+break _ [] := Pair [] [];;
+break p (Cons x xs) :=
+  if p x
+  then Pair [] (Cons x xs)
+  else match break p xs with
+    | Pair ys zs -> Pair (Cons x ys) zs
+;;
+
+words : (List Char) -> List (List Char);;
+words s := match dropWhile isSpace s with
+  | [] -> []
+  | ss -> (match break isSpace ss with
+    | Pair w sss -> Cons w sss
+    )
+;;
+
+main := words "aa aaaa a";;

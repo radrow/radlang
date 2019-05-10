@@ -109,4 +109,4 @@ printEither (Right r) = prettyBnds 0 $ tprgBindings r
 
 ttest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
 ptest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyPBnds . tprgPolyBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
-etest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsE 0 . \(_, _, [a]) -> a) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True) >>= \tp -> runResolver (fmap fst (tprgBindings tp) `M.union` fmap fst (tprgPolyBindings tp)) (fmap fst $ resolveAssgs $ tprgBindings tp)
+-- etest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsE 0 . \(_, _, [a]) -> a) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True) >>= \tp -> runResolver (fmap fst (tprgBindings tp) `M.union` fmap fst (tprgPolyBindings tp)) (fmap fst $ resolveAssgs $ tprgBindings tp)

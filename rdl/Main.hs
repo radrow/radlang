@@ -7,6 +7,7 @@ import Radlang
 import Radlang.Error
 import Radlang.Types
 import Radlang.Intro
+import Radlang.InterfaceResolve
 
 main :: IO ()
 main = do
@@ -17,9 +18,10 @@ main = do
         else (,) (head args) <$> readFile (head args)
   let result = do
         rprg <- parseRDL fileName sourceCode
-        prg <- buildProgram $ withIntro rprg
-        tprg <- typecheck (TypecheckerConfig True) prg
-        runProgram tprg
+        uprg <- buildProgram $ withIntro rprg
+        tprg <- typecheck (TypecheckerConfig True) uprg
+        prg <- runResolver (resolveProgram tprg)
+        runProgram prg
   case result of
     Left e -> hPutStrLn stderr $ showError e
     Right d -> print d

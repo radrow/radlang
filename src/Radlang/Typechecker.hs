@@ -390,19 +390,19 @@ runTypecheckerT ce te tc
   . flip runReaderT (TypecheckerEnv ce te tc)
   . runExceptT . (\(Typechecker t) -> t)
 
-tctest :: Program -> TypedProgram
+tctest :: UntypedProgram -> TypedProgram
 tctest p = either (error . showError) id $ typecheck (TypecheckerConfig True) p
 
 -- |Toplevel typechecking of a program
-typecheck :: TypecheckerConfig -> Program -> Either ErrMsg TypedProgram
+typecheck :: TypecheckerConfig -> UntypedProgram -> Either ErrMsg TypedProgram
 typecheck tc p =
   let (ps, ts) = primitiveSpace
   in do (tb, pb) <- unsafePerformIO $ runTypecheckerT
-                          (prgInterfaceEnv p)
-                          (TypeEnv $ M.union (types ts) (types $ prgTypeEnv p))
-                          tc (inferTypeBindingGroups $ prgBindings p)
+                          (uprgInterfaceEnv p)
+                          (TypeEnv $ M.union (types ts) (types $ uprgTypeEnv p))
+                          tc (inferTypeBindingGroups $ uprgBindings p)
 
-        let psl = M.toList ps ++ M.toList (prgDatamap p)
+        let psl = M.toList ps ++ M.toList (uprgDatamap p)
             pids = take (length psl) [0..]
 
             pns = M.fromList $ zip (fmap fst psl) pids

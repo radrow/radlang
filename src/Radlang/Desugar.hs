@@ -138,7 +138,7 @@ processImplDef rid = lookupInterfaceKind (rawimpldefInterface rid) >>= \case
 
 
 -- |Builds Program from raw AST
-buildProgram :: RawProgram -> Either ErrMsg Program
+buildProgram :: RawProgram -> Either ErrMsg UntypedProgram
 buildProgram prg =
   runKindchecker stdKindspace (buildInterfaceKinds $ rawprgInterfaceDefs prg) (processProgram prg)
 
@@ -193,7 +193,7 @@ checkUniquePatternVars ps = do
 
 -- |Kindchecker that builds typesystem and returns well kinded (kind!) program ready for typechecking
 -- and evaluation
-processProgram :: RawProgram -> Kindchecker Program
+processProgram :: RawProgram -> Kindchecker UntypedProgram
 processProgram prg = do
   as <- getKindspace
   newAs <- foldM (\a nt -> (unionKindspaces a) <$> kindlookNewType nt) as (rawprgNewTypes prg)
@@ -222,11 +222,11 @@ processProgram prg = do
 
         allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [intbnds, impbnds, topbnds]
 
-    pure $ Program
-      { prgDatamap = newtypeData newtypes
-      , prgBindings = [allbnds]
-      , prgInterfaceEnv = intenv
-      , prgTypeEnv = newtypeTypeEnv newtypes
+    pure $ UntypedProgram
+      { uprgDatamap = newtypeData newtypes
+      , uprgBindings = [allbnds]
+      , uprgInterfaceEnv = intenv
+      , uprgTypeEnv = newtypeTypeEnv newtypes
       }
 
 

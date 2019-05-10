@@ -12,22 +12,19 @@ import Radlang.Error
 
 import Debug.Trace
 
-typeByName :: Name -> Evaluator (Qual Type)
-typeByName n = undefined
 
 -- |Evaluate thunk into weak-head normal form
 force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Lazy ns st i e) = do
-  s <- asks _evenvSubst
   forced <- force =<< withDefStacktrace st
     (withEvalStackElem ("forcing " <> show i) $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
 -- |Get value by name and desired type
-dataByName :: Type -> Name -> Evaluator Data
-dataByName t n = undefined
+dataByName :: Name -> Evaluator Data
+dataByName = idByName >=> dataById
 
 
 -- |Get value by store id
@@ -41,8 +38,10 @@ dataById i = do
 
 
 -- |Get store id of a variable by name and desired type
-idByName :: Qual Type -> Name -> Evaluator DataId
-idByName t n = undefined
+idByName :: Name -> Evaluator DataId
+idByName n = asks (M.lookup n . _evenvNamespace) >>= \case
+  Nothing -> wtf $ "idByName: no such name " <> n
+  Just i -> pure i
 
 
 -- |Finds the most matching data id by type. "Most matching" is determined by the number of matched rigid variables
@@ -74,11 +73,6 @@ withAssign (n, d) = local $ over evenvNamespace (M.insert n d)
 -- |Modify action to be ran in different namespace
 withNamespace :: Namespace -> Evaluator a -> Evaluator a
 withNamespace = local . set evenvNamespace
-
-
--- |Modify action to be ran in different type substitution
-withSubst :: Substitution -> Evaluator a -> Evaluator a
-withSubst = local . set evenvSubst
 
 
 -- |Modify action to be ran with updated definition stacktrace

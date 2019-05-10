@@ -1,26 +1,33 @@
 interface C (~C : Type) {
   c : ~C -> ~C;;
 };;
-impl ~A for C {
+impl Int for C {
   c x := x;;
 };;
--- interface D (~C : Type) {
---   d : ~C -> ~C;;
--- };;
--- impl ~A for D {
---   d x := x;;
--- };;
--- newtype Option (~A : Type) := Some ~A | None;;
--- impl ~A is D | Option ~A for D {d x := x;;
--- }
--- ;;
--- impl ~A is C | Option ~A for C {c x := x;;
--- }
--- ;;
-main := 3;;
--- f a := c (d a);;
+interface D (~C : Type) {
+  d : ~C -> ~C;;
+};;
+impl Int for D {
+  d x := x;;
+};;
+newtype Option (~A : Type) := Some ~A | None;;
+impl ~A is D | Option ~A for D {d x := x;;
+}
+;;
+impl ~A is C | Option ~A for C {c x := x;;
+}
+;;
 
--- g x := (f x) (f 1);;
+const a b := a;;
 
--- main := g id 1;;
+dd x y := d (const (c x) (c y));;
 
+g x := dd 1 x;;
+
+zz := d (Some 1);;
+
+{-
+
+zz [] :=
+    ((d (@dict_D_Option @dict_D_Int)) (Some LitInt 1))
+-}

@@ -29,7 +29,6 @@ newLazy :: Evaluator Data -> Evaluator Data
 newLazy e = do
   i <- newId
   ns <- getNamespace
-  sub <- asks _evenvSubst
   (st, _) <- getStacktraces
   let laz = Lazy ns st i e
   putData i laz
@@ -37,7 +36,7 @@ newLazy e = do
 
 
 -- |Create new lazy thunk from expression and return id assigned to it
-lazyExpr :: TypedExpr -> Evaluator Data
+lazyExpr :: Expr -> Evaluator Data
 lazyExpr e = do
   newLazy (eval e)
 
@@ -79,45 +78,43 @@ unionSubst (DataSubst s1) (DataSubst s2) = DataSubst $ M.union s1 s2
 
 
 -- |Build data definition from bindings
-processSingleBindings :: Name -> [([Pattern], TypedExpr, DataSubst)] -> Evaluator Data
+processSingleBindings :: Name -> [([Pattern], Expr, DataSubst)] -> Evaluator Data
 processSingleBindings =
   let domainGuard :: Evaluator a
       domainGuard = runtimeError "Out of domain"
 
-      bindings :: Maybe Substitution -> Evaluator Data -> Int -> Name -> [([Pattern], TypedExpr, DataSubst)]
+      bindings :: Evaluator Data -> Int -> Name -> [([Pattern], Expr, DataSubst)]
                -> Evaluator Data
-      bindings msub prevGuard level name alts =
+      bindings prevGuard level name alts =
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
             newGuard = if null finalized then prevGuard else do
-              let ([], te, evst) = head finalized
-              newns <- applyDataSubst evst
-              sub <- maybe (asks _evenvSubst) pure msub
-              withSubst sub $ withNamespace newns (lazyExpr $ substitute sub te)
+              let ([], e, dsub) = head finalized
+              newns <- applyDataSubst dsub
+              withNamespace newns (lazyExpr e)
         in if | null functions && null finalized -> prevGuard
               | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
               | null functions -> newGuard
               | otherwise -> getNamespace >>= \myNs ->
                   let asFunction :: Data -> Evaluator Data
                       asFunction d = do
-                        sub <- maybe (asks _evenvSubst) pure msub
-                        (conts :: [([Pattern], TypedExpr, DataSubst)]) <-
+                        (conts :: [([Pattern], Expr, DataSubst)]) <-
                           let extractor ((p:ps), te, s) = do
                                 mdsub <- matchDataToPattern p d
                                 pure $ fmap (\dsub -> (ps, te, unionSubst dsub s)) mdsub
                               extractor _ = wtf "extractor match fail"
                           in mapMaybe id <$> mapM extractor functions
-                        withSubst sub $ bindings (Just sub) newGuard (level + 1) name conts
+                        bindings newGuard (level + 1) name conts
                   in pure $ Strict $ DataFunc (name <> "#" <> show level) $ \argd ->
                       withNamespace myNs $ asFunction argd
-  in bindings Nothing domainGuard 0
+  in bindings domainGuard 0
 
 
 -- |Build dataspace and namespace from set of bindings
-processBindings :: TypedBindings -> Evaluator Namespace
-processBindings tbnevst = do
+processBindings :: Bindings -> Evaluator Namespace
+processBindings bnevst = do
   ns <- getNamespace
 
-  let aslist = M.toList tbnevst
+  let aslist = M.toList bnevst
       names = fmap fst aslist
 
   ievst <- traverse (const newId) names
@@ -126,7 +123,7 @@ processBindings tbnevst = do
 
   withNamespace recNs $ do
     dats <- flip mapM aslist $
-            (\(n, (_, a)) -> newLazy $
+            (\(n, a) -> newLazy $
               processSingleBindings n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
             )
 
@@ -140,10 +137,13 @@ processPolyBindings pb = do
   let polylist :: [(Name, (Qual Type, [(Qual Type, [TypedAlt])]))]
       polylist = M.toList pb
 
+      -- Get single method definition and create dictionary reader for it
       makeMethod :: (Name, Qual Type, [(Qual Type, [TypedAlt])]) -> Evaluator Namespace
       makeMethod (n, t, defs) = do
+        -- For each method instance (its type, its alts)
         prens <- forM defs $ \(qt, alts) -> do
-          let dict = case getPreds t \\ getPreds qt of
+          let dict :: Name
+              dict = case getPreds t \\ getPreds qt of
                 [cp] -> dictName cp
                 x -> wtf $ "Class pred failure: " <> show x
 
@@ -152,14 +152,14 @@ processPolyBindings pb = do
 
               method = DataFunc n $ \ldic -> do
                 force ldic >>= \case
-                  DataPolyDict dic -> withNamespace dic $ eval (TypedVal undefined n)
+                  DataPolyDict dic -> withNamespace dic $ eval (Val n)
                   x -> wtf $ "This is not poly dict: " <> show x
           i <- newData $ Strict method
 
           pure $ M.insert n i impls
         pure $ foldr M.union M.empty prens
 
-  methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) (M.toList pb)
+  methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) polylist
   pure $ foldr M.union M.empty methodNss
 
 
@@ -211,50 +211,41 @@ applyDataSubst (DataSubst sub) = do
 
 
 -- |Evaluate typed expression
-eval :: TypedExpr -> Evaluator Data
+eval :: Expr -> Evaluator Data
 eval = \case
-  TypedVal t n -> do
-    tOfN <- typeByName n
-    sub <- asks _evenvSubst
-    newSub <- undefined -- mgu t tOfN
-    withSubst (newSub <> sub) $ undefined --dataByName t n
-  TypedLit _ l -> case l of
+  Val n -> dataByName n
+  Lit l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
       let folder el li = Strict $ DataADT "Cons" [Strict $ DataChar el, li]
       in pure $ foldr folder (Strict $ DataADT "Nil" []) s
     LitChar c -> pure $ Strict $ DataChar c
-  TypedApplication _ f a -> do
+  Application f a -> do
     fd <- force =<< eval f
     alazy <- lazyExpr a
     case fd of
       DataFunc name func -> do
         withStackElems name $ func alazy
       _                  -> wtf $ "Call not a function! " <> show fd
-  TypedLet _ assgs e -> withStackElems "let expression" $ do
+  Let assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
     withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
 
 
-typeEnvFromBindings :: TypedBindings -> Typespace
-typeEnvFromBindings bnds = fmap fst bnds
-
-
-evalProgram :: TypedProgram -> Evaluator StrictData
+evalProgram :: Program -> Evaluator StrictData
 evalProgram tp = do
-  traceM $ "EVALUATING " <> prettyBnds 0 (tprgBindings tp)
-  ns <- processBindings $ tprgBindings tp
-  ps <- withNamespace ns $ processPolyBindings $ tprgPolyBindings tp
-  case M.lookup "main" (tprgBindings tp) of
+  ns <- processBindings $ prgBindings tp
+  ps <- withNamespace ns $ processPolyBindings $ prgPolyBindings tp
+  case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
-    Just (t, _) ->
-      withNamespace ns $ withStackElems "main" $ eval (TypedVal t "main") >>= deepForce
+    Just (_) ->
+      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce
 
 
 -- |Perform evaluation of the main value from the program
-runProgram :: TypedProgram -> Either ErrMsg StrictData
+runProgram :: Program -> Either ErrMsg StrictData
 runProgram tp =
-  runEvaluator (tprgNamespace tp) (tprgDataspace tp) $ evalProgram tp
+  runEvaluator (prgNamespace tp) (prgDataspace tp) $ evalProgram tp
 
 
 -- |Run evaluator and extract the result
@@ -264,5 +255,5 @@ runEvaluator :: Namespace
              -> Either ErrMsg a
 runEvaluator ns ds (Evaluator e)
   = flip evalState (EvaluationState ds (if M.null ds then 0 else fst (M.findMax ds) + 1))
-  $ flip runReaderT (EvaluationEnv ns (Subst M.empty) [] [])
+  $ flip runReaderT (EvaluationEnv ns [] [])
   $ runExceptT e
