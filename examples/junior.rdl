@@ -1,27 +1,183 @@
-elem _ Nil := False;;
-elem x (Cons a rest) := or (eqChar x a) (elem x rest);;
+elem _ [] := False;;
+elem a (Cons x xs) := if eqChar a x then True else elem a xs;;
 
-isSpace x := elem x " \n\t";;
+concat [] a := a;;
+concat (Cons x xs) a := Cons x (concat xs a);;
 
-dropWhile : (~A -> Bool) -> List ~A -> List ~A;;
-dropWhile p [] := [];;
-dropWhile p (Cons x rest) :=
-  if p x then dropWhile p rest else (Cons x rest);;
+concats [] := [];;
+concats (Cons x rest) := concat x (concats rest);;
 
-break _ [] := Pair [] [];;
-break p (Cons x xs) :=
-  if p x
-  then Pair [] (Cons x xs)
-  else match break p xs with
-    | Pair ys zs -> Pair (Cons x ys) zs
+isDigit c := elem c "0123456789";;
+isLower c := elem c "qwertyuiopasdfghjklzxcvbnm";;
+isWhite c := elem c " \t\n";;
+fst (Pair a _) := a;;
+snd (Pair _ a) := a;;
+eqStr [] [] := True;;
+eqStr [] _ := False;;
+eqStr _ [] := False;;
+eqStr (Cons a as) (Cons b bs) := and (eqChar a b) (eqStr as bs);;
+comp f g x := f (g x);;
+
+newtype Input := Input Int Int (List Char);;
+newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
+newtype Option (~A : Type) := Some ~A | None;;
+
+newtype Expr
+  := EInt Int | Plus (List Expr) | Minus (List Expr) | Mul (List Expr)
+  | Paren Expr | Eq (List Expr) | EVar (List Char);;
+
+newtype Instr := Skip | Assg (List Char) Expr | While Expr (List Instr);;
+
+getLine (Input l _ _) := l;;
+getCol (Input _ c _) := c;;
+getStream (Input _ _ s) := s;;
+
+setLine l (Input _ c s) := (Input c l s);;
+setCol c (Input l _ s) := (Input c l s);;
+setStream s (Input c l _) := (Input c l s);;
+
+
+next (Input l c (Cons s srest)) :=
+  let nextL := if eqChar s '\n' then plusInt l 1 else l
+    | nextC := if eqChar s '\n' then plusInt c 1 else 0
+  in Pair s (Input nextL nextC srest);;
+
+resMap f (Pair a b) := Pair (f a) b;;
+peek (Input _ _ (Cons s _)) := s;;
+
+eof (Input _ _ []) := True;;
+eof (Input _ _ _) := False;;
+
+
+readInt [] := error "Empty input for int parsing";;
+readInt l :=
+  let go [] acc := acc
+    | go (Cons n r) acc := go r (plusInt (mulInt acc 10) (charToInt n))
+  in go l 0;;
+
+charToInt '0' := 0;;
+charToInt '1' := 1;;
+charToInt '2' := 2;;
+charToInt '3' := 3;;
+charToInt '4' := 4;;
+charToInt '5' := 5;;
+charToInt '6' := 6;;
+charToInt '7' := 7;;
+charToInt '8' := 8;;
+charToInt '9' := 9;;
+charToInt _ := error "Char parse error";;
+
+
+readNext s0 :=
+  let s1 := skipSpaces s0
+    | c := peek s1
+  in if or (isDigit c) (eqChar '-' c)
+  then readNumber s1
+  else if isLower c
+  then readId s1
+  else error (concat "Bad character " [c]);;
+
+skipSpaces s0 :=
+  if isWhite (peek s0) then skipSpaces (snd (next s0)) else s0;;
+
+readId s := if eof s then error "Empty id (eof)" else
+  let go s0 :=
+        let res := next s0
+        in if isLower (fst res)
+        then if eof (snd res)
+             then Pair [fst res] (snd res)
+             else let res1 := go (snd res)
+                  in Pair (Cons (fst res) (fst res1)) (snd res1)
+        else Pair [] s0
+     | i := go s
+  in if or (eqStr (fst i) "while") (eqStr (fst i) "fun")
+  then error (concat "Forbidden id " (fst i))
+  else if eqStr [] (fst i) then error "Empty id" else i
 ;;
 
-words : (List Char) -> List (List Char);;
-words s := match dropWhile isSpace s with
-  | [] -> []
-  | ss -> (match break isSpace ss with
-    | Pair w sss -> Cons w sss
-    )
-;;
+readNumber s0 :=
+  let res := next s0
+  in if isDigit (fst res)
+  then let res1 := if eof (snd res) then Pair "" (snd res) else readNumber (snd res)
+       in Pair (Cons (fst res) (fst res1)) (snd res1)
+  else Pair [] s0;;
 
-main := words "aa aaaa a";;
+
+skipWord [] s0 := s0;;
+skipWord (Cons wc ww) s0 :=
+  let res := next s0
+  in if eqChar (fst res) wc then skipWord ww (snd res)
+  else error (concats ["No parse: wanted ", (Cons wc ww), " got '", [(fst res)], "'"]);;
+isWord [] s0 := True;;
+isWord (Cons wc ww) s0 := if eof s0 then False else
+                      let res := next s0
+                      in if eqChar (fst res) wc then isWord ww (snd res) else False;;
+
+
+delimiter beg end sep pars s0 :=
+  let s1 := skipWord beg s0
+
+    | go s0 :=
+        let s := skipSpaces s0
+          | r := pars s
+        in if isWord end (snd r)
+           then Pair [fst r] (skipWord end (snd r))
+           else let s1 := skipWord sep (snd r)
+                  | r2 := go s1
+                in Pair (Cons (fst r) (fst r2)) (snd r2)
+
+  in if isWord end s1 then Pair [] (skipWord end s1) else go s1;;
+
+
+between beg end pars s0 :=
+  let s1 := skipWord beg s0
+    | res2 := pars s1
+    | s2 := skipWord end (snd res2)
+  in Pair (fst res2) s2;;
+
+exprFunApp fname wrap s0 :=
+  let s1 := skipSpaces s0
+  in if isWord fname s1
+  then let s2 := skipWord fname s1
+         | r3 := delimiter "(" ")" "," expr s2
+       in Pair (wrap (fst r3)) (snd r3)
+  else error (concat "No parse fun expr: " fname);;
+
+expr s0 :=
+  let s1 := skipSpaces s0
+    | c := peek s1
+  in if eqChar '(' c
+  then between "(" ")" expr s1
+  else if isWord "plus" s1 then exprFunApp "plus" Plus s1
+  else if isWord "minus" s1 then exprFunApp "minus" Minus s1
+  else if isWord "mul" s1 then exprFunApp "mul" Mul s1
+  else if isWord "eq" s1 then exprFunApp "eq" Eq s1
+  else if or (isDigit c) (eqChar '-' c)
+  then resMap (comp EInt readInt) (readNumber s1)
+  else if isLower c
+  then resMap EVar (readId s1)
+  else error (concat "Bad character " [c]);;
+
+instr s0 :=
+  let s1 := skipSpaces s0
+  in if isWord "skip" s1
+  then Pair Skip (skipWord "skip" s1)
+  else if isWord "while" s1
+  then let s2 := skipWord "while" s1
+         | r3 := between "(" ")" expr (skipSpaces s2)
+         | r4 := block (skipSpaces (snd r3))
+       in Pair (While (fst r3) (fst r4)) (snd r4)
+  else let r2 := readId s1
+         | s3 := skipWord ":=" (skipSpaces (snd r2))
+         | r4 := expr (skipSpaces s3)
+       in Pair (Assg (fst r2) (fst r4)) (snd r4);;
+
+block s0 :=
+  let s1 := skipSpaces s0
+  in delimiter "{" "}" ";" instr s1;;
+
+testInstr inp := fst (instr (Input 0 0 inp));;
+
+
+main := testInstr "x:=1";;
+
