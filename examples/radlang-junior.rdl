@@ -2,7 +2,7 @@ newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
 newtype Option (~A : Type) := Some ~A | None;;
 
 elem _ [] := False;;
-elem a (Cons x xs) := if eqChar a x then True else elem a xs;;
+elem a (Cons x xs) := if bruteEq a x then True else elem a xs;;
 
 len [] := 0;;
 len (Cons _ rest) := plusInt 1 (len rest);;
@@ -29,7 +29,7 @@ newtype Expr
   := EInt Int | Plus (List Expr) | Minus (List Expr) | Mul (List Expr)
   | Paren Expr | Eq (List Expr) | EVar (List Char);;
 
-newtype Instr := Skip | Assg (List Char) Expr | While Expr Block;;
+newtype Instr := Skip | Assg (List Char) Expr | While Expr Block | If Expr Block Block ;;
 
 newtype Block := Block (List (List Char)) (List Instr);;
 
@@ -78,7 +78,7 @@ readId s := if eof s then error "Empty id (eof)" else
                   in Pair (Cons (fst res) (fst res1)) (snd res1)
         else Pair [] s0
      | i := go s
-  in if or (bruteEq (fst i) "while") (bruteEq (fst i) "fun")
+  in if elem (fst i) ["while", "if", "then", "else"]
   then error (concat "Forbidden id " (fst i))
   else if bruteEq [] (fst i) then error "Empty id" else i
 ;;
@@ -157,6 +157,14 @@ instr s0 :=
          | r3 := between "(" ")" expr (skipSpaces s2)
          | r4 := block (skipSpaces (snd r3))
        in Pair (While (fst r3) (fst r4)) (snd r4)
+  else if isWord "if" s1
+  then let s2 := skipWord "if" s1
+         | r3 := expr (skipSpaces s2)
+         | s4 := skipWord "then" (skipSpaces (snd r3))
+         | r5 := block (skipSpaces s4)
+         | s6 := skipWord "else" (skipSpaces (snd r5))
+         | r7 := block (skipSpaces s6)
+       in Pair (If (fst r3) (fst r5) (fst r7)) (snd r7)
   else let r2 := readId s1
          | s3 := skipWord ":=" (skipSpaces (snd r2))
          | r4 := expr (skipSpaces s3)
@@ -206,6 +214,7 @@ sInstr i env k := match i with
   | While cond bl ->
     let phi while := sExpr cond env (\bcond -> if eqInt bcond 0 then k else sBlock bl env while)
     in fix phi
+  | If cond th el -> sExpr cond env (\bcond -> if eqInt bcond 0 then sBlock th env k else sBlock el env k)
 ;;
 
 updateEnv Nil e _ := e;;
@@ -224,9 +233,14 @@ sBlock (Block names instrs) env0 k s :=
   in sInstrs instrs env1 k s1;;
 
 
--- eval : List Char -> Int;;
+eval : List Char -> Int;;
 eval inp := lookup 0 (sBlock (parseBlock inp) Nil id Nil);;
 
-main := eval
+ifTest := "[x]{x := 0; if x then []{x := 2} else []{x := 3}}";;
+factorialTest :=
 "[res, n]{n := 5; res := 1; while(n)[]{ res := mul(res, n); n := minus(n, 1)}}"
 ;;
+scopeTest := "[x,i]{i := 10; while(i)[x]{x := plus(x,1); i := minus(i,1)}}";; -- should return 0
+scopeTest := "[x,i]{i := 10; while(i)[x]{x := plus(x,1); i := minus(i,1)}}";; -- should return 10
+
+main := eval scopeTest;;

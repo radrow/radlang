@@ -1,8 +1,0 @@
-isSpace x := elem x " \n\t";;
-
-words Nil := Nil;;
-words (Cons c rest) :=
-  if elem c " \n\t"
-  then words rest
-  else Cons (takeWhile (flip notElem " \t\n")) (words (dropWhile (flip notElem)))
-;;
