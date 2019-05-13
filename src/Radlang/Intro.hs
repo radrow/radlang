@@ -159,11 +159,11 @@ extendedPrimitives = primitives ++
 
 -- |Spaces that include all primitives
 primitiveSpace :: (M.Map Name Data, TypeEnv)
-primitiveSpace = (M.empty, TypeEnv M.empty)
--- primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
---   folder (name, typ, def) (ps, ts) =
---     ( M.insert name (Strict def) ps
---     , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
+-- primitiveSpace = (M.empty, TypeEnv M.empty)
+primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
+  folder (name, typ, def) (ps, ts) =
+    ( M.insert name (Strict def) ps
+    , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
 
 
 -- |Library that will be included as a prelludium to any user's program
@@ -207,5 +207,5 @@ mergePrograms r1 r2 = RawProgram
 
 -- |Extend program with Intro
 withIntro :: RawProgram -> RawProgram
--- withIntro = flip mergePrograms intro
-withIntro = id
+withIntro = flip mergePrograms intro
+-- withIntro = id

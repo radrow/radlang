@@ -79,19 +79,21 @@ unionSubst (DataSubst s1) (DataSubst s2) = DataSubst $ M.union s1 s2
 
 
 -- |Build data definition from bindings
-processSingleBindings :: Name -> [([Pattern], Expr, DataSubst)] -> Evaluator Data
+processSingleBindings :: DataId -> Name -> [([Pattern], Expr, DataSubst)] -> Evaluator Data
 processSingleBindings =
   let domainGuard :: Evaluator a
       domainGuard = runtimeError "Out of domain"
 
-      bindings :: Evaluator Data -> Int -> Name -> [([Pattern], Expr, DataSubst)]
+      bindings :: Evaluator Data -> Int -> DataId -> Name -> [([Pattern], Expr, DataSubst)]
                -> Evaluator Data
-      bindings prevGuard level name alts =
+      bindings prevGuard level dataid name alts =
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
             newGuard = if null finalized then prevGuard else do
               let ([], e, dsub) = head finalized
               newns <- applyDataSubst dsub
-              withNamespace newns (lazyExpr e)
+              (st, _) <- getStacktraces
+              withNamespace newns $ eval e
+              -- pure $ Lazy newns st dataid (eval e)
         in if | null functions && null finalized -> prevGuard
               | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
               | null functions -> newGuard
@@ -104,7 +106,7 @@ processSingleBindings =
                                 pure $ fmap (\dsub -> (ps, te, unionSubst dsub s)) mdsub
                               extractor _ = wtf "extractor match fail"
                           in mapMaybe id <$> mapM extractor functions
-                        bindings newGuard (level + 1) name conts
+                        bindings newGuard (level + 1) dataid name conts
                   in pure $ Strict $ DataFunc (name <> "#" <> T.pack (show level)) $ \argd ->
                       withNamespace myNs $ asFunction argd
   in bindings domainGuard 0
@@ -114,6 +116,7 @@ processSingleBindings =
 processBindings :: Bindings -> Evaluator Namespace
 processBindings bnevst = do
   ns <- getNamespace
+  (st, _) <- getStacktraces
 
   let aslist = M.toList bnevst
       names = fmap fst aslist
@@ -123,9 +126,9 @@ processBindings bnevst = do
   let recNs = foldr (uncurry M.insert) ns (zip names ievst)
 
   withNamespace recNs $ do
-    dats <- flip mapM aslist $
-            (\(n, a) -> newLazy $
-              processSingleBindings n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
+    let dats = flip fmap (zip ievst aslist) $
+            (\(i, (n, a)) -> Lazy recNs st i $
+              processSingleBindings i n (fmap (\(ps, te) -> (ps, te, DataSubst M.empty)) a)
             )
 
     forM_ (zip ievst dats) $ uncurry putData
@@ -241,7 +244,7 @@ evalProgram tp = do
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->
       withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
-      gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> traceM ("DATASPACE : " <> show (M.toList ds)) >> traceM ("GLOBAL NAMESPACE : " <> show ns) >> pure d
+      gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> pure d
 
 
 -- |Perform evaluation of the main value from the program
