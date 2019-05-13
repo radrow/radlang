@@ -108,7 +108,10 @@ instance Show StrictData where
   show = \case
     DataInt i -> show i
     DataChar c -> show c
-    DataADT n args -> T.unpack n <> (((" "<>) . show) =<< args)
+    DataADT n args ->
+      (if Prelude.null args then "" else "(") <>
+      T.unpack n <> (((" "<>) . show) =<< args) <>
+      (if Prelude.null args then "" else ")")
     DataFunc n _ -> "<func " <> T.unpack n <> ">"
     DataPolyDict ns -> "<dict containing " <> show (keys ns) <> ">"
 

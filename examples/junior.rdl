@@ -1,5 +1,16 @@
+newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
+newtype Option (~A : Type) := Some ~A | None;;
+
 elem _ [] := False;;
 elem a (Cons x xs) := if eqChar a x then True else elem a xs;;
+
+len [] := 0;;
+len (Cons _ rest) := plusInt 1 (len rest);;
+
+lookup _ [] := error "Empty lookup";;
+lookup x (Cons (Pair a b) rest) :=
+  if bruteEq x a then b else lookup x rest;;
+
 
 concat [] a := a;;
 concat (Cons x xs) a := Cons x (concat xs a);;
@@ -10,21 +21,17 @@ concats (Cons x rest) := concat x (concats rest);;
 
 fst (Pair a _) := a;;
 snd (Pair _ a) := a;;
--- eqStr [] [] := True;;
--- eqStr [] _ := False;;
--- eqStr _ [] := False;;
--- eqStr (Cons a as) (Cons b bs) := and (eqChar a b) (eqStr as bs);;
 comp f g x := f (g x);;
 
 newtype Input := Input Int Int (List Char);;
-newtype Pair (~A : Type) (~B : Type) := Pair ~A ~B;;
-newtype Option (~A : Type) := Some ~A | None;;
 
 newtype Expr
   := EInt Int | Plus (List Expr) | Minus (List Expr) | Mul (List Expr)
   | Paren Expr | Eq (List Expr) | EVar (List Char);;
 
-newtype Instr := Skip | Assg (List Char) Expr | While Expr (List Instr);;
+newtype Instr := Skip | Assg (List Char) Expr | While Expr Block;;
+
+newtype Block := Block (List (List Char)) (List Instr);;
 
 getLine (Input l _ _) := l;;
 getCol (Input _ c _) := c;;
@@ -39,31 +46,14 @@ next (Input l c (Cons s srest)) :=
   let nextL := if eqChar s '\n' then plusInt l 1 else l
     | nextC := if eqChar s '\n' then plusInt c 1 else 0
   in Pair s (Input nextL nextC srest);;
+next (Input _ _ Nil) := error "Next: empty";;
 
 resMap f (Pair a b) := Pair (f a) b;;
 peek (Input _ _ (Cons s _)) := s;;
+peek (Input _ _ Nil) := error "Peek: empty";;
 
 eof (Input _ _ []) := True;;
 eof (Input _ _ _) := False;;
-
-
--- readInt [] := error "Empty input for int parsing";;
--- readInt l :=
---   let go [] acc := acc
---     | go (Cons n r) acc := go r (plusInt (mulInt acc 10) (charToInt n))
---   in go l 0;;
-
--- charToInt '0' := 0;;
--- charToInt '1' := 1;;
--- charToInt '2' := 2;;
--- charToInt '3' := 3;;
--- charToInt '4' := 4;;
--- charToInt '5' := 5;;
--- charToInt '6' := 6;;
--- charToInt '7' := 7;;
--- charToInt '8' := 8;;
--- charToInt '9' := 9;;
--- charToInt _ := error "Char parse error";;
 
 
 readNext s0 :=
@@ -174,19 +164,69 @@ instr s0 :=
 
 block s0 :=
   let s1 := skipSpaces s0
-  in delimiter "{" "}" ";" instr s1;;
+    | r2 := delimiter "[" "]" "," readId s1
+    | r3 := delimiter "{" "}" ";" instr (snd r2)
+  in Pair (Block (fst r2) (fst r3)) (snd r3);;
 
-testInstr inp := fst (instr (Input 0 0 inp));;
-testExpr inp := fst (expr (Input 0 0 inp));;
-testBlock inp := fst (block (Input 0 0 inp));;
-testDup :=
-  fst (between "{" "}" (between "{" "}" (between "{" "}" readNumber))
-      (Input 0 0 "{{{1}}}")
-      );;
-testKup :=
-  fst ( delimiter "[" "]" "," readNumber
-      (Input 0 0 "[]")
-      );;
+parseInstr inp := fst (instr (Input 0 0 inp));;
+parseExpr inp := fst (expr (Input 0 0 inp));;
+parseBlock inp := fst (block (Input 0 0 inp));;
 
-main := testKup;;
 
+sExpr : Expr ->
+       (List (Pair (List Char) Int)) ->
+       (Int -> (List (Pair Int Int)) -> (List (Pair Int Int))) ->
+       ((List (Pair Int Int)) -> (List (Pair Int Int)));;
+sExpr e env k := match e with
+ | EInt i -> k i
+ | EVar v -> \s -> k (lookup (lookup v env) s) s
+ | Plus Nil -> k 0
+ | Plus (Cons a rest) ->
+    sExpr a env (\aa -> sExpr (Plus rest) env (\pp -> k (plusInt aa pp)))
+ | Mul Nil -> k 1
+ | Mul (Cons a rest) ->
+    sExpr a env (\aa -> sExpr (Mul rest) env (\pp -> k (mulInt aa pp)))
+ | Minus Nil -> k 0
+ | Minus (Cons a rest) ->
+    sExpr a env (\aa -> sExpr (Minus rest) env (\pp -> k (minusInt aa pp)))
+ | Eq Nil -> k 1
+ | Eq (Cons a rest) ->
+    sExpr a env (\aa ->
+    sExpr (Eq rest) env (\pp ->
+    k (if or (eqInt aa 0) (eqInt pp 0) then 0 else 1)))
+;;
+
+sInstr : Instr ->
+         (List (Pair (List Char) Int)) ->
+         ((List (Pair Int Int)) -> (List (Pair Int Int))) ->
+         ((List (Pair Int Int)) -> (List (Pair Int Int)));;
+sInstr i env k := match i with
+  | Skip -> k
+  | Assg name e -> sExpr e env (\value s -> k (Cons (Pair (lookup name env) value) s))
+  | While cond bl ->
+    let phi while := sExpr cond env (\bcond -> if eqInt bcond 0 then k else sBlock bl env while)
+    in fix phi
+;;
+
+updateEnv Nil e _ := e;;
+updateEnv (Cons name rest) e n := updateEnv rest (Cons (Pair name n) e) (plusInt n 1);;
+
+allocVars Nil _ s := s;;
+allocVars (Cons n rest) env s :=
+  allocVars rest env (Cons (Pair (lookup n env) 0) s);;
+
+sInstrs Nil _ k := k;;
+sInstrs (Cons i rest) env k := sInstr i env (sInstrs rest env k);;
+
+sBlock (Block names instrs) env0 k s :=
+  let env1 := updateEnv names env0 (len env0)
+    | s1 := allocVars names env1 s
+  in sInstrs instrs env1 k s1;;
+
+
+-- eval : List Char -> Int;;
+eval inp := lookup 0 (sBlock (parseBlock inp) Nil id Nil);;
+
+main := eval
+"[res, n]{n := 5; res := 1; while(n)[]{ res := mul(res, n); n := minus(n, 1)}}"
+;;
