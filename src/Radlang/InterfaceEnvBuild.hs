@@ -5,6 +5,8 @@
 
 module Radlang.InterfaceEnvBuild where
 
+import qualified Data.Text as T
+import           Data.Text(Text)
 import qualified Data.List.NonEmpty as NP
 import Data.List.NonEmpty(NonEmpty)
 import Control.Monad.State.Strict
@@ -49,7 +51,7 @@ addInterface n sups = do
   when nDefined (interfaceEnvError $ "Interface already defined: " <> n)
   notDefs <- filterM (\ss -> not <$> interfaceDefined ss) (S.toList sups)
   when (not (null notDefs)) $
-    interfaceEnvError $ "Superinterfaces not defined: " <> show notDefs
+    interfaceEnvError $ "Superinterfaces not defined: " <> (T.pack $ show notDefs)
   updateInterfaceEnv n (Interface sups S.empty)
 
 
@@ -65,7 +67,7 @@ addInst ps p@(IsIn i it) = do
   filterM (overlaps p) (S.toList qs) >>= \case
     [] -> pure ()
     (IsIn h oit):_ ->
-      interfaceEnvError $ "Impls overlap: " <> show it <> " is " <> i <> " with " <> show oit <> " is " <> h
+      interfaceEnvError $ "Impls overlap: " <> T.pack (show it) <> " is " <> i <> " with " <> T.pack (show oit) <> " is " <> h
   updateInterfaceEnv i (Interface c $ S.insert (ps :=> p) its)
 
 
@@ -107,7 +109,7 @@ buildInterfaceEnv cses' impls = runInterfaceEnvBuilder (InterfaceEnv stdInterfac
       instmap = groupOn impldefInterface impls
 
   onPresent (isCyclic cses) $ \cyc ->
-    interfaceEnvError $ "Found interface cycle: " <> show cyc
+    interfaceEnvError $ "Found interface cycle: " <> T.pack (show cyc)
 
   -- Build superinterface environment
   forM_ cses $ \(InterfaceDef cname _ _ supers _) -> do
@@ -117,12 +119,12 @@ buildInterfaceEnv cses' impls = runInterfaceEnvBuilder (InterfaceEnv stdInterfac
   forM_ cses $ \c -> do
     forM_ (maybe [] id $ M.lookup (interfacedefName c) instmap) $ \i -> do
       onPresentM (checkFoundation i c) $ \m ->
-        interfaceEnvError $ "In implementation of " <> show (impldefType i)
-        <> ": methods " <> show m
+        interfaceEnvError $ "In implementation of " <> T.pack (show (impldefType i))
+        <> ": methods " <> T.pack (show m)
         <> " do not belong to any superinterface of " <> interfacedefName c
 
       onPresent (checkCompletness c instmap) $ \m ->
-        interfaceEnvError $ "Methods " <> show m <> " are missing for " <> interfacedefName c
+        interfaceEnvError $ "Methods " <> T.pack (show m) <> " are missing for " <> interfacedefName c
       let (quals :=> t) = impldefType i
       addInst quals $ IsIn (interfacedefName c) t
 

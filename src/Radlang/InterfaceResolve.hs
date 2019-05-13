@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Radlang.InterfaceResolve where
 
+import Data.Text as T
 import qualified  Data.Map.Strict as M
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -11,7 +12,7 @@ import Radlang.Error
 import Radlang.Typesystem.Typesystem
 
 
-dictName :: Pred -> String
+dictName :: Pred -> Text
 dictName (IsIn c t) = "@dict_" <> c <> "_" <> getName t
 
 
@@ -43,7 +44,7 @@ resolve = \case
     Just (ps :=> to) -> do
       s <- mgu to tv
       let dictArgs = makeArgs s ps
-      pure $ foldl Application (Val v) dictArgs
+      pure $ Prelude.foldl Application (Val v) dictArgs
     Nothing -> pure $ Val v
   TypedLit _ l -> pure $ Lit l
   TypedApplication _ f a -> Application <$> resolve f <*> resolve a

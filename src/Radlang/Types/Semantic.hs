@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE StrictData                 #-}
 
 -- |Types related to internal program definition and evaluation
 
@@ -14,6 +15,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import           Data.Map.Strict            (Map, keys)
 import           Data.Set                   as S
+import           Data.Text as T
 
 import           Radlang.Types.General
 import           Radlang.Types.Syntax
@@ -21,9 +23,9 @@ import           Radlang.Types.Typesystem
 
 
 -- |Stacktrace that follows runtime by definition of the data
-type DefStacktrace = [String]
+type DefStacktrace = [Text]
 -- |Stacktrace that follows runtime by evaluation of the data
-type EvalStacktrace = [String]
+type EvalStacktrace = [Text]
 
 
 -- |Desugared expression tree
@@ -51,14 +53,14 @@ data Expr
 
 instance Show UntypedExpr where
   show = \case
-    UntypedVal v -> v
+    UntypedVal v -> T.unpack v
     UntypedLit l -> show l
     UntypedApplication f a -> "(" <> show f <> " " <> show a <> ")"
     UntypedLet bn e -> "let " <> show bn <> " in " <> show e
 
 instance Show TypedExpr where
   show = \case
-    TypedVal t v -> "(" <> v <> " : " <> show t <> ")"
+    TypedVal t v -> "(" <> T.unpack v <> " : " <> show t <> ")"
     TypedLit t l -> "(" <> show l <> " : " <> show t <> ")"
     TypedApplication _ f a -> "(" <> show f <> ") " <> show a
     TypedLet _ bn e -> "let " <> show bn <> " in " <> show e
@@ -96,7 +98,7 @@ instance Show Data where
 
 -- |Value that is in weak-head-normal-form
 data StrictData
-  = DataInt Integer
+  = DataInt Int
   | DataChar Char
   | DataADT Name [Data]
   | DataFunc Name (Data -> Evaluator Data)
@@ -106,8 +108,8 @@ instance Show StrictData where
   show = \case
     DataInt i -> show i
     DataChar c -> show c
-    DataADT n args -> n <> (((" "<>) . show) =<< args)
-    DataFunc n _ -> "<func " <> n <> ">"
+    DataADT n args -> T.unpack n <> (((" "<>) . show) =<< args)
+    DataFunc n _ -> "<func " <> T.unpack n <> ">"
     DataPolyDict ns -> "<dict containing " <> show (keys ns) <> ">"
 
 

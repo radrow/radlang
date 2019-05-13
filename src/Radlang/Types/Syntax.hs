@@ -3,7 +3,6 @@
 module Radlang.Types.Syntax where
 
 import           Data.List.NonEmpty
-
 import           Data.Set
 import           Radlang.Types.General
 import           Radlang.Types.Typesystem (Kind)
@@ -62,7 +61,7 @@ data ForComphr
 
 -- |Literal like "lol" or 2138 or 0.42
 data Literal
-  = LitInt Integer
+  = LitInt Int
   | LitString String
   | LitChar Char
   deriving (Eq, Show, Ord)

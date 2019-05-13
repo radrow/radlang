@@ -6,6 +6,8 @@ import           Control.Applicative        (liftA2)
 import           Control.Monad
 import           Control.Monad.Identity
 import           Data.Void
+import           Data.Text as T
+import           Data.List as DL
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -20,7 +22,7 @@ type Parser = ParsecT Void String Identity
 
 
 -- |List of ids that cannot be used as variable names
-forbiddenIds :: [Name]
+forbiddenIds :: [String]
 forbiddenIds = ["let", "in", "match", "with", "if", "else", "then", "for"]
 
 
@@ -54,7 +56,7 @@ word w = lex $ try $ string w >> notFollowedBy alphaNumChar >> skipComments
 
 -- |Specific operator
 operator :: String -> Parser ()
-operator o = lex $ try $ string o >> notFollowedBy (oneOf "=+_-*&^%$#@![]{}':\\;\".,<\'>") >> skipComments
+operator o = lex $ try $ string o >> notFollowedBy (oneOf ("=+_-*&^%$#@![]{}':\\;\".,<\'>" :: String)) >> skipComments
 
 
 -- |Surround parser with parentheses
@@ -73,7 +75,7 @@ sqbrac = between (symbol "[") (symbol "]")
 
 
 -- |Identifier starting with lower-case character
-lId :: Parser Name
+lId :: Parser String
 lId = lex $ do
   i <- (:) <$> lowerChar <*> (many alphaNumChar)
   when (i `elem` forbiddenIds) $ fail ("forbidden identifier: " <> i)
@@ -81,7 +83,7 @@ lId = lex $ do
 
 
 -- |Identifier starting with upper-case character
-uId :: Parser Name
+uId :: Parser String
 uId = lex $ do
   i <- (:) <$> upperChar <*> (many alphaNumChar)
   when (i `elem` forbiddenIds) $ fail ("forbidden identifier: " <> i)
@@ -90,14 +92,16 @@ uId = lex $ do
 
 -- Some aliasses
 funArg :: Parser Name
-funArg = lId
+funArg = T.pack <$> lId
 valName :: Parser Name
-valName = lId
+valName = T.pack <$> lId
 constructorName :: Parser Name
-constructorName = uId
+constructorName = T.pack <$> uId
 typeName :: Parser Name
-typeName = uId
+typeName = T.pack <$> uId
+className :: Parser Name
+className = T.pack <$> uId
 interfaceName :: Parser Name
-interfaceName = uId
+interfaceName = T.pack <$> uId
 generalTypeName :: Parser Name
-generalTypeName = liftA2 (:) (char '~') uId
+generalTypeName = T.pack <$> liftA2 (:) (char '~') uId

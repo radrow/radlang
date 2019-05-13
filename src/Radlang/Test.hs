@@ -9,6 +9,7 @@ module Radlang.Test where
 
 import qualified Data.Map as M
 
+import qualified Data.Text as T
 import System.IO.Unsafe
 import Radlang.Types
 import Radlang.Parser
@@ -29,10 +30,10 @@ import Radlang.InterfaceResolve
 
 printTypeEnv :: TypeEnv -> String
 printTypeEnv (TypeEnv te) =
-  let l :: [(String, TypePoly)]
+  let l :: [(T.Text, TypePoly)]
       l = M.toList te
   in
-  unlines $ fmap (\(v, t) -> v <> " : " <> show t) l
+  unlines $ fmap (\(v, t) -> T.unpack v <> " : " <> show t) l
 
 
 

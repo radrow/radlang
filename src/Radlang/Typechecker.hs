@@ -10,6 +10,7 @@ import           Control.Applicative
 import           Control.Monad.State.Strict
 import           Data.Foldable
 import           Data.Functor
+import qualified Data.Text as T
 import           Data.Bifunctor
 import           Data.List                     as DL
 import qualified Data.Map.Strict               as M
@@ -39,7 +40,7 @@ lookupTypeSafe n = M.lookup n . types <$> getTypeEnv
 -- |Find typescheme in type env and throw error if not present
 lookupType :: HasTypeEnv m => Name -> m TypePoly
 lookupType n = getTypeEnv >>= \(TypeEnv te) -> case M.lookup n te of
-  Nothing -> languageError $ "Unbound id: " <> n <> "\nValid ids are: " <> show (M.keys te)
+  Nothing -> languageError $ "Unbound id: " <> n <> "\nValid ids are: " <> T.pack (show (M.keys te))
   Just tp -> pure tp
 
 
@@ -57,10 +58,10 @@ unify t1 t2 = do
 
 
 -- |Returns new type variable
-newVar :: IdSupply m => String -> Kind -> m Type
+newVar :: IdSupply m => Name -> Kind -> m Type
 newVar prefix k = do
   c <- newId
-  pure $ TypeVarWobbly $ TypeVar (prefix <> show c) k
+  pure $ TypeVarWobbly $ TypeVar (prefix <> T.pack (show c)) k
 
 
 -- |Create new type varaibles for each parameter of scheme
@@ -254,7 +255,7 @@ withDefaults f vs ps = do
   let vps = ambiguities vs ps
   tss <- mapM candidates vps
   case find (null . fst) (zip tss vps) of
-    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> show bad <> " are empty"
+    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
     Nothing -> pure $ f vps (fmap head tss)
 
 
@@ -390,8 +391,6 @@ runTypecheckerT ce te tc
   . flip runReaderT (TypecheckerEnv ce te tc)
   . runExceptT . (\(Typechecker t) -> t)
 
-tctest :: UntypedProgram -> TypedProgram
-tctest p = either (error . showError) id $ typecheck (TypecheckerConfig True) p
 
 -- |Toplevel typechecking of a program
 typecheck :: TypecheckerConfig -> UntypedProgram -> Either ErrMsg TypedProgram

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c60d43828971d7454c52015bb612a31e6cb2221cbe08efdc45e68c13eff48c89
+-- hash: 7da016363001f54f42ddc9735cee0556ebb2eecaee63b1d22a4d4f09a1643792
 
 name:           radlang
 version:        2.0.1
@@ -57,8 +57,8 @@ library
       Paths_radlang
   hs-source-dirs:
       src
-  default-extensions: LambdaCase GADTs
-  ghc-options: -Wall -Wextra
+  default-extensions: LambdaCase GADTs OverloadedStrings
+  ghc-options: -Wall -Wextra -O2
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
@@ -71,6 +71,7 @@ library
     , raw-strings-qq
     , syb
     , template-haskell
+    , text
     , transformers
   default-language: Haskell2010
 
@@ -80,7 +81,7 @@ executable rdl
       Paths_radlang
   hs-source-dirs:
       rdl
-  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -O2 -threaded -O2 -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
@@ -94,6 +95,7 @@ executable rdl
     , raw-strings-qq
     , syb
     , template-haskell
+    , text
     , transformers
   default-language: Haskell2010
 
@@ -103,7 +105,7 @@ executable rdli
       Paths_radlang
   hs-source-dirs:
       rdli
-  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
@@ -117,6 +119,7 @@ executable rdli
     , raw-strings-qq
     , syb
     , template-haskell
+    , text
     , transformers
   default-language: Haskell2010
 
@@ -129,7 +132,7 @@ test-suite radlang-test
       Paths_radlang
   hs-source-dirs:
       test
-  ghc-options: -Wall -Wextra -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wextra -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5
@@ -143,5 +146,6 @@ test-suite radlang-test
     , raw-strings-qq
     , syb
     , template-haskell
+    , text
     , transformers
   default-language: Haskell2010

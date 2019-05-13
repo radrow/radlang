@@ -9,6 +9,7 @@ import           Control.Lens               hiding (Lazy, Strict, (<~))
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
+import qualified Data.Text as T
 import           Data.List
 import qualified Data.Map.Strict            as M
 import           Data.Maybe
@@ -104,7 +105,7 @@ processSingleBindings =
                               extractor _ = wtf "extractor match fail"
                           in mapMaybe id <$> mapM extractor functions
                         bindings newGuard (level + 1) name conts
-                  in pure $ Strict $ DataFunc (name <> "#" <> show level) $ \argd ->
+                  in pure $ Strict $ DataFunc (name <> "#" <> T.pack (show level)) $ \argd ->
                       withNamespace myNs $ asFunction argd
   in bindings domainGuard 0
 
@@ -145,7 +146,7 @@ processPolyBindings pb = do
           let dict :: Name
               dict = case getPreds t \\ getPreds qt of
                 [cp] -> dictName cp
-                x -> wtf $ "Class pred failure: " <> show x
+                x -> wtf $ "Class pred failure: " <> T.pack (show x)
 
               impls :: Namespace
               impls = undefined
@@ -153,7 +154,7 @@ processPolyBindings pb = do
               method = DataFunc n $ \ldic -> do
                 force ldic >>= \case
                   DataPolyDict dic -> withNamespace dic $ eval (Val n)
-                  x -> wtf $ "This is not poly dict: " <> show x
+                  x -> wtf $ "This is not poly dict: " <> T.pack (show x)
           i <- newData $ Strict method
 
           pure $ M.insert n i impls
@@ -198,7 +199,7 @@ matchDataToPattern pat dat = case pat of
           msubs <- sequence <$> mapM (uncurry matchDataToPattern) (zip pts args)
           pure $ fmap (foldl (\s s1 -> DataSubst $ M.union (evstubMap s) (evstubMap s1)) (DataSubst M.empty)) msubs
         else pure Nothing
-      _ -> wtf $ "Illegal ADT match:\ndata=" <> show sdat <> ",\nname=" <> n <> ", args=" <> show pts
+      _ -> wtf $ "Illegal ADT match:\ndata=" <> T.pack (show sdat) <> ",\nname=" <> n <> ", args=" <> T.pack (show pts)
 
 
 -- |Apply data substitution to current namespace
@@ -224,9 +225,9 @@ eval = \case
     fd <- force =<< eval f
     alazy <- lazyExpr a
     case fd of
-      DataFunc name func -> do
+      DataFunc name func ->
         withStackElems name $ func alazy
-      _                  -> wtf $ "Call not a function! " <> show fd
+      _                  -> wtf $ "Call not a function! " <> T.pack (show fd)
   Let assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
     withNamespace assgsNs $ withStackElems "let evaluation" $ eval e
@@ -239,7 +240,8 @@ evalProgram tp = do
   case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->
-      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce
+      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
+      gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> traceM ("DATASPACE : " <> show (M.toList ds)) >> traceM ("GLOBAL NAMESPACE : " <> show ns) >> pure d
 
 
 -- |Perform evaluation of the main value from the program

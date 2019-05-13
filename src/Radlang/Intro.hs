@@ -1,8 +1,14 @@
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE QuasiQuotes #-}
 -- |Standard library, prelude, invocation – call it whatever you like,
 --for me it is "intro"
 module Radlang.Intro(primitiveSpace, withIntro) where
 
+import qualified Data.Text as T
+import Control.Monad
+import Control.Monad.Except
+import Data.Functor
+import Data.Char as DC
 import qualified Data.Map                      as M
 
 import           Radlang.Error
@@ -13,6 +19,9 @@ import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
 import           Radlang.EvaluationUtils
 
+
+makeBool :: Bool -> StrictData
+makeBool t = DataADT (T.pack $ show t) []
 
 
 -- |Lift 2 argumented function from Haskell into Radlang
@@ -32,7 +41,6 @@ strictFunc2 name sf2 = DataFunc (name <> "#0") $ \a1 ->
 
 -- |Primitive functions that cannot be defined within the language
 primitives :: [(Name, Qual Type, StrictData)]
--- primitives = const []
 primitives =
   [ ("plusInt"
     , [] :=> fun tInt (fun tInt tInt)
@@ -55,12 +63,12 @@ primitives =
   , ("eqInt"
     , [] :=> fun tInt (fun tInt tBool)
     , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) ->
-        pure $ Strict $ DataADT (if a == b then "True" else "False") []
+        pure $ Strict $ makeBool (a == b)
     )
   , ("eqChar"
     , [] :=> fun tChar (fun tChar tBool)
     , strictFunc2 "eqChar" $ \(DataChar a) (DataChar b) ->
-        pure $ Strict $ DataADT (if a == b then "True" else "False") []
+        pure $ Strict $ makeBool (a == b)
     )
 
 
@@ -70,11 +78,6 @@ primitives =
         func2 "if evaluation" $ \onTrue onFalse ->
                                   pure $ if b == "True" then onTrue else onFalse
     )
-  , ("f", [] :=> fun (tWobbly "~A")
-      (fun (tWobbly "~A")
-       (fun (tWobbly "~A")
-        (fun (tWobbly "~A")
-         (tWobbly "~A")))), undefined)
   , ( "withForced"
     , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
     , DataFunc "manual force" $ \a ->
@@ -88,17 +91,79 @@ primitives =
   , ( "error"
     , [] :=> (fun (tWobbly "~A") (tWobbly "~B"))
     , DataFunc "error" $ \a ->
-        deepForce a >>= \d -> runtimeError ("thrown by the user: " <> show d)
+        deepForce a >>= \d -> runtimeError ("thrown by the user: " <> T.pack (show d))
+    )
+  , ( "catch"
+    , [] :=> fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A"))
+    , func2 "catch" $ \d c -> fmap Strict $ catchError (force d) (const $ force c)
+    )
+  ]
+
+extendedPrimitives :: [(Name, Qual Type, StrictData)]
+extendedPrimitives = primitives ++
+  [ ( "bruteEq"
+    , [] :=> fun (tWobbly "~A") (fun (tWobbly "~A") tBool)
+    , strictFunc2 "bruteEq" $
+      let cmp a b = case (a, b) of
+                    (DataInt q, DataInt w) -> pure . Strict $ makeBool (q == w)
+                    (DataChar q, DataChar w) -> pure . Strict $ makeBool (q == w)
+                    (DataADT q ql, DataADT w wl) -> do
+                      blsD <- mapM (\(x, y) -> do
+                                       xx <- force x
+                                       yy <- force y
+                                       cmp xx yy >>= force) (zip ql wl)
+                      let bls = blsD <&> (\(DataADT bb []) -> bb == "True")
+                      pure . Strict $ makeBool ((q == w) && (length ql == length wl) && and bls)
+                    _ -> runtimeError $ "Invalid comparison: " <> T.pack (show a) <> " == " <> T.pack (show b)
+          cmp :: StrictData -> StrictData -> Evaluator Data
+      in cmp
+    )
+  , ( "charToInt"
+    , [] :=> fun tChar tInt
+    , DataFunc "charToInt" $ \d -> force d >>= \(DataChar c) -> pure $ Strict $ DataInt (DC.ord c)
+    )
+  , ( "isDigit"
+    , [] :=> fun tChar tBool
+    , DataFunc "isDigit" $ \d -> force d >>= \(DataChar c) ->
+        pure $ Strict $ makeBool (c >= '0' && c <= '9')
+    )
+  , ( "isLower"
+    , [] :=> fun tChar tBool
+    , DataFunc "charToInt" $ \d -> force d >>= \(DataChar c) ->
+        pure $ Strict $ makeBool (c >= 'a' && c <= 'z')
+    )
+  , ( "isUpper"
+    , [] :=> fun tChar tBool
+    , DataFunc "charToInt" $ \d -> force d >>= \(DataChar c) ->
+        pure $ Strict $ makeBool (c >= 'A' && c <= 'Z')
+    )
+  , ( "isWhite"
+    , [] :=> fun tChar tBool
+    , DataFunc "charToInt" $ \d -> force d >>= \(DataChar c) ->
+        pure $ Strict $ makeBool (c `elem` (" \t\n" :: String))
+    )
+  , ( "readInt"
+    , [] :=> fun (tListOf tChar) tInt
+    , DataFunc "readInt" $ \l -> do
+        ll <- deepForce l
+        case ll of
+          (DataADT "Nil" []) -> runtimeError "Empty input for int read"
+          _ -> let go (DataADT "Nil" _) acc = acc
+                   go (DataADT "Cons" [Strict (DataChar c), Strict next]) acc =
+                     go next (acc * 10 + DC.ord c - DC.ord '0')
+                   go _ _ = wtf "readInt exploit"
+               in pure $ Strict $ DataInt $ go ll 0
     )
   ]
 
 
 -- |Spaces that include all primitives
 primitiveSpace :: (M.Map Name Data, TypeEnv)
-primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) primitives where
-  folder (name, typ, def) (ps, ts) =
-    ( M.insert name (Strict def) ps
-    , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
+primitiveSpace = (M.empty, TypeEnv M.empty)
+-- primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
+--   folder (name, typ, def) (ps, ts) =
+--     ( M.insert name (Strict def) ps
+--     , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
 
 
 -- |Library that will be included as a prelludium to any user's program
@@ -142,5 +207,5 @@ mergePrograms r1 r2 = RawProgram
 
 -- |Extend program with Intro
 withIntro :: RawProgram -> RawProgram
-withIntro = flip mergePrograms intro
--- withIntro = id
+-- withIntro = flip mergePrograms intro
+withIntro = id

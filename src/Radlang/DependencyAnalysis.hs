@@ -4,8 +4,10 @@ module Radlang.DependencyAnalysis where
 import           Data.Graph
 import           Data.Map.Strict as M
 import           Data.Set        as S
+import qualified Data.Text as T
 
 import           Radlang.Types
+import           Radlang.Error
 
 
 -- |Get names of variables that expression depends on
@@ -51,7 +53,7 @@ sccOfAlts inp =
   let names = zip (fmap fst inp) [1..]
       nameToKey :: Name -> Int
       nameToKey = go names where
-        go [] n = error $ "Indexation failed: " <> n <> " not in " <> show names
+        go [] n = wtf $ "Indexation failed: " <> n <> " not in " <> T.pack (show names)
         go ((h,i):t) n = if n == h
                           then i
                           else go t n

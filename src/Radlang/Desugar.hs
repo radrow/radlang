@@ -6,6 +6,7 @@
 module Radlang.Desugar where
 
 import           Data.List(groupBy, sortBy)
+import qualified Data.Text as T
 import           Control.Monad
 import           Control.Monad.Except
 import           Data.Bitraversable
@@ -38,7 +39,7 @@ constructorBindings final c =
       buildC :: [Data] -> [Type] -> StrictData
       buildC acc [] = DataADT (condefName c) $ reverse acc
       buildC acc (_:rest) = DataFunc (condefName c <> "#" <>
-                                       show (length (condefArgs c) - length rest)) $
+                                       T.pack (show $ length (condefArgs c) - length rest)) $
                              \arg -> pure $ Strict $ buildC (arg:acc) rest
   in (t, Strict d)
 
@@ -177,7 +178,7 @@ checkUniquePatternVars ps = do
         else pure (S.insert n s)
       checkedUnion :: S.Set Name -> S.Set Name -> Kindchecker (S.Set Name)
       checkedUnion s1 s2 = if not (S.null $ S.intersection s1 s2)
-        then typecheckError $ "Pattern vars overlap: " <> show (S.intersection s1 s2)
+        then typecheckError $ "Pattern vars overlap: " <> T.pack (show $ S.intersection s1 s2)
         else pure (S.union s1 s2)
       checkPattern = \case
         PLit _ -> pure S.empty
@@ -244,7 +245,7 @@ makeBindings = groupImplicit . Prelude.foldl ins (M.empty, M.empty, [M.empty]) w
         e = M.insert n (quantifyAll qt, alts) exs
         i = M.delete n imps
         in (int, e, [i])
-      (Just _, _) -> error $ "Typedecl duplicate: " <> n -- FIXME THROWERROR
+      (Just _, _) -> wtf $ "Typedecl duplicate: " <> n -- FIXME THROWERROR
     Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) -> let
         i = M.insert n [(args, body)] imps

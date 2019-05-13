@@ -1,5 +1,7 @@
 module Main where
 
+import qualified Data.Text as T
+import Control.Monad.Except
 import System.Environment
 import System.IO
 
@@ -16,12 +18,17 @@ main = do
         if null args
         then (,) "<stdin>" <$> getContents
         else (,) (head args) <$> readFile (head args)
-  let result = do
-        rprg <- parseRDL fileName sourceCode
-        uprg <- buildProgram $ withIntro rprg
-        tprg <- typecheck (TypecheckerConfig True) uprg
-        prg <- runResolver (resolveProgram tprg)
-        runProgram prg
+  result <- runExceptT $ do
+        liftIO $ putStrLn "Parsing..."
+        rprg <- liftEither $ parseRDL fileName sourceCode
+        liftIO $ putStrLn "Desugaring..."
+        uprg <- liftEither $ buildProgram $ withIntro rprg
+        liftIO $ putStrLn "Typechecking..."
+        tprg <- liftEither $ typecheck (TypecheckerConfig True) uprg
+        liftIO $ putStrLn "Resolving..."
+        prg <- liftEither $ runResolver (resolveProgram tprg)
+        liftIO $ putStrLn "Running...\n"
+        liftEither $ runProgram prg
   case result of
-    Left e -> hPutStrLn stderr $ showError e
+    Left e -> hPutStrLn stderr $ T.unpack $ showError e
     Right d -> print d

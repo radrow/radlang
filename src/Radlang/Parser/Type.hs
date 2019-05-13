@@ -25,7 +25,7 @@ qual aPars = do
 predicate :: Parser RawPred
 predicate = do
   t <- try $ type_ <* word "is"
-  cl <- uId
+  cl <- className
   pure $ RawPred cl t
 
 -- |Parse type expression

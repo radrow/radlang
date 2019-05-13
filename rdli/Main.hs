@@ -1,6 +1,7 @@
 {-#LANGUAGE LambdaCase#-}
 module Main where
 
+import qualified Data.Text as T
 import Data.Char
 import Data.List(find, isPrefixOf)
 import Control.Monad
@@ -32,7 +33,7 @@ processLine l = case find (\(s, _) -> isPrefixOf s l) commandMap of
 printResult :: Either ErrMsg String -> IO ()
 printResult = \case
   Right r -> putStrLn r
-  Left e -> hPutStrLn stderr $ showError e
+  Left e -> hPutStrLn stderr $ T.unpack $ showError e
 
 main :: IO ()
 main = forever $ do pure ()

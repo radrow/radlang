@@ -6,6 +6,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import qualified Data.Map.Strict            as M
 import qualified Data.Set                   as S
+import           Data.Text as T
 
 import           Radlang.Types.General
 import           Radlang.Types.Typesystem   hiding (TypePoly, free, getSubstMap,
@@ -94,7 +95,7 @@ instance Monoid KindSubstitution where
 
 instance Show KindVar where
   show = \case
-    KindVar a -> kstr a
+    KindVar a -> T.unpack $ kstr a
     KindVarType -> "Type"
     KindVarFunc a v ->
       let sa = case a of

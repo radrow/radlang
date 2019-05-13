@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Lens hiding (Strict, Lazy)
 import qualified Data.Map.Strict as M
 import Data.Maybe
+import Data.Text as T
 
 import Radlang.Types
 import Radlang.Error
@@ -18,7 +19,7 @@ force :: Data -> Evaluator StrictData
 force (Strict d) = pure d
 force (Lazy ns st i e) = do
   forced <- force =<< withDefStacktrace st
-    (withEvalStackElem ("forcing " <> show i) $ withNamespace ns e)
+    (withEvalStackElem ("forcing " <> T.pack (show i)) $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
 
@@ -32,8 +33,8 @@ dataById :: DataId -> Evaluator Data
 dataById i = do
   m <- gets _evstDataspace
   case M.lookup i m of
-    Nothing -> wtf $ "dataById: no such id " <> show i <>
-      "\nKnown ids are: " <> show (M.keys m)
+    Nothing -> wtf $ "dataById: no such id " <> T.pack (show i) <>
+      "\nKnown ids are: " <> T.pack (show (M.keys m))
     Just x -> pure x
 
 
@@ -48,8 +49,8 @@ idByName n = asks (M.lookup n . _evenvNamespace) >>= \case
 idByType :: Type -> [(Type, DataId)] -> Maybe DataId
 idByType t propos =
   let matches = mapMaybe (\(tp, i) -> typesMatch t tp <&> flip (,) i) propos
-      best = maximum matches
-  in trace ("MATCHES FOR " <> show t <> " IN\n" <> show (propos) <> " ARE\n" <> show matches <> "\nTOOK " <> show (fst best)) $ if null matches then Nothing
+      best = Prelude.maximum matches
+  in trace ("MATCHES FOR " <> show t <> " IN\n" <> show (propos) <> " ARE\n" <> show matches <> "\nTOOK " <> show (fst best)) $ if Prelude.null matches then Nothing
      else Just (snd best)
 
 
@@ -76,17 +77,17 @@ withNamespace = local . set evenvNamespace
 
 
 -- |Modify action to be ran with updated definition stacktrace
-withStackElem :: String -> Evaluator a -> Evaluator a
+withStackElem :: Text -> Evaluator a -> Evaluator a
 withStackElem s = local $ over evenvDefStacktrace (s:)
 
 
 -- |Modify action to be ran with updated evaluation stacktrace
-withEvalStackElem :: String -> Evaluator a -> Evaluator a
+withEvalStackElem :: Text -> Evaluator a -> Evaluator a
 withEvalStackElem s = local $ over evenvEvalStacktrace (s:)
 
 
 -- |Modify action to be ran with updated stacktrace
-withStackElems :: String -> Evaluator a -> Evaluator a
+withStackElems :: Text -> Evaluator a -> Evaluator a
 withStackElems s = local $ over evenvDefStacktrace (s:) . over evenvEvalStacktrace (s:)
 
 

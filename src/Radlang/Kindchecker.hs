@@ -28,6 +28,8 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import           Data.List.NonEmpty
+import qualified Data.Text as T
+import           Data.Text(Text)
 import qualified Data.Map.Strict            as M
 import qualified Data.Set                   as S
 
@@ -92,11 +94,11 @@ toKindVar = \case
 
 
 -- |Returns new type variable
-newKindVar :: String -> Kindchecker KindVar
+newKindVar :: Text -> Kindchecker KindVar
 newKindVar prefix = do
   c <- gets tsSupply
   modify $ \s -> s{ tsSupply = c + 1 }
-  pure $ KindVar $ KName $ prefix <> show c
+  pure $ KindVar $ KName $ prefix <> T.pack (show c)
 
 
 -- |Creates substitution with kind assigned
@@ -104,7 +106,7 @@ bindKindVar :: KName -> KindVar -> Kindchecker KindSubstitution
 bindKindVar n t = case t of
   KindVar v | v == n -> pure mempty
   _ -> if S.member n (freeKinds t)
-       then kindcheckError $ "Occur check: Cannot create infinite kind: " <> kstr n <> " := " <> show t
+       then kindcheckError $ "Occur check: Cannot create infinite kind: " <> kstr n <> " := " <> T.pack (show t)
        else pure $ KSubst $ M.singleton n t
 
 
@@ -118,7 +120,7 @@ mgu t1 t2 = case (t1, t2) of
     sa <- mgu a1 a2
     sv <- mgu (substituteKinds sa v1) (substituteKinds sa v2)
     pure $ sa <> sv
-  _ -> kindcheckError $ "Cannot unify kinds: " <> show t1 <> " vs " <> show t2
+  _ -> kindcheckError $ "Cannot unify kinds: " <> T.pack (show t1) <> " vs " <> T.pack (show t2)
 
 
 -- |Kind inference along with kindcheck. Returns inferred kind and necessary substitutions
@@ -131,7 +133,7 @@ inferKind = \case
     Just kr -> pure (mempty, kr)
     Nothing -> getKindspace >>= \ks ->
       languageError $ "Undefined type variable " <> tr <> ", valid variables are: "
-      <> show (M.keys . getKindspaceMap $ ks)
+      <> T.pack (show (M.keys . getKindspaceMap $ ks))
   RawTypeApp f (a:|rest) -> do
     (sf, kf) <- inferKind f
     let rollapp :: (KindSubstitution, KindVar) -> RawType -> Kindchecker (KindSubstitution, KindVar)
@@ -190,7 +192,7 @@ kindcheckConstructor c = do
     (_, ktr) <- inferInstantiated tr
     kfin <- toKind ktr  -- We leave no place for variables
     when (kfin /= KType) $ -- Final kind must be Type
-      kindcheckError $ show kfin <> " is not valid contructor argument kind"
+      kindcheckError $ T.pack $ show kfin <> " is not valid contructor argument kind"
 
 
 -- |For every wobbly type not present in kindspace assign kind variable for it

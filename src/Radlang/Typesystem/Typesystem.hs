@@ -1,5 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiWayIf       #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE MultiWayIf        #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- |Utilities to solve tasks related to typechecking, kindchecking and building interface env
 module Radlang.Typesystem.Typesystem where
 
@@ -9,10 +10,10 @@ import           Data.List                  as DL
 import qualified Data.Map.Strict            as M
 import           Data.Set                   (Set)
 import qualified Data.Set                   as S
+import           Data.Text as T
 
 import           Radlang.Error
 import           Radlang.Types
-
 
 -- |Get direct superinterfaces of interface by name
 super :: HasInterfaceEnv m => Name -> m (Set Name)
@@ -25,14 +26,14 @@ super n = getInterfaceEnv >>= \ce -> case M.lookup n (interfaces ce) of
 deepSuper :: HasInterfaceEnv m => Name -> m (Set Name)
 deepSuper n = getInterfaceEnv >>= \ce -> case M.lookup n (interfaces ce) of
   Just (Interface is _) -> do sups <- traverse deepSuper $ S.toList is
-                              pure $ foldr S.union is sups
+                              pure $ DL.foldr S.union is sups
   Nothing -> interfaceEnvError $ "deep superinterface lookup: " <> n <> " not defined"
 
 
 -- |Get direct subinterfaces of interface by name
 sub :: HasInterfaceEnv m => Name -> m (Set Name)
 sub n = getInterfaceEnv >>= \ce ->
-  pure $ S.fromList $ fmap fst $ filter (\(_, Interface is _) -> S.member n is) (M.toList $ interfaces ce)
+  pure $ S.fromList $ fmap fst $ DL.filter (\(_, Interface is _) -> S.member n is) (M.toList $ interfaces ce)
 
 
 -- |Get all subinterfaces of interface by name (slow)
@@ -40,7 +41,7 @@ deepSub :: HasInterfaceEnv m => Name -> m (Set Name)
 deepSub n = do
   shallow <- sub n
   subs <- traverse deepSub $ S.toList shallow
-  pure $ foldr S.union shallow subs
+  pure $ DL.foldr S.union shallow subs
 
 
 -- |Get impls of interface by name
@@ -60,9 +61,9 @@ bindVar :: MonadError ErrMsg m => TypeVar -> Type -> m Substitution
 bindVar tv t = if
     | t == TypeVarWobbly tv -> pure mempty
     | elem tv (free t) ->
-      typecheckError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> show t
-    | kind tv /= kind t -> kindcheckError $ "Kinds don't match for " <> tName tv <> ": " <> show (kind tv)
-      <> " vs " <> show (kind t)
+      typecheckError $ "Occur check: cannot create infinite type: " <> tName tv <> " := " <> T.pack (show t)
+    | kind tv /= kind t -> kindcheckError $ "Kinds don't match for " <> tName tv <> ": " <> T.pack (show (kind tv))
+      <> " vs " <> T.pack (show (kind t))
     | otherwise -> pure $ Subst $ M.singleton (tName tv) t
 
 
@@ -71,7 +72,7 @@ bindVar tv t = if
 merge :: MonadError ErrMsg m => Substitution -> Substitution -> m Substitution
 merge s1 s2 =
   let extract (n, t) = TypeVar n (kind t)
-      agree = all (liftA2 (==) (substitute s1 . TypeVarWobbly) (substitute s2 .TypeVarWobbly))
+      agree = DL.all (liftA2 (==) (substitute s1 . TypeVarWobbly) (substitute s2 .TypeVarWobbly))
         (fmap extract $ M.toList (getSubstMap s1) `intersect` M.toList (getSubstMap s2))
   in if agree then pure (s1 <> s2) else typecheckError "Cannot merge substitutions"
 
@@ -91,10 +92,10 @@ mgu t1 t2 = case (t1, t2) of
     then pure mempty
     else typecheckError $ "Cannot unify rigid different type variables: " <> tName a <> " vs " <> tName b
   (TypeVarRigid (TypeVar a _), b) ->
-    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> a <> " vs " <> T.pack (show b)
   (b, TypeVarRigid (TypeVar a _)) ->
-    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> typecheckError $ "Cannot unify types: " <> show t1 <> " vs " <> show t2
+    typecheckError $ "Cannot unify rigid type variable with non-rigid type: " <> T.pack (show b) <> " vs " <> a
+  _ -> typecheckError $ "Cannot unify types: " <> T.pack (show t1) <> " vs " <> T.pack (show t2)
 
 
 
@@ -112,10 +113,10 @@ match t1 t2 = case (t1, t2) of
     then pure mempty
     else typecheckError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
   (TypeVarRigid (TypeVar a _), b) ->
-    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> show b
+    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> T.pack (show b)
   (b, TypeVarRigid (TypeVar a _)) ->
-    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> show b <> " vs " <> a
-  _ -> typecheckError $ "Cannot merge types: " <> show t1 <> " vs " <> show t2
+    typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> T.pack (show b) <> " vs " <> a
+  _ -> typecheckError $ "Cannot merge types: " <> T.pack (show t1) <> " vs " <> T.pack (show t2)
 
 
 -- |mgu for predicates
@@ -152,7 +153,7 @@ predsByImpls p@(IsIn i _) = do
         u <- matchPred h p
         pure $ u >>= \uu -> Just (fmap (substitute uu) ps)
   d <- msum <$> traverse tryInst insts
-  maybe (typecheckError $ "Could not get valid impl for " <> show p) pure d
+  maybe (typecheckError $ "Could not get valid impl for " <> T.pack (show p)) pure d
 
 
 -- |Check if predicate will hold whenever all of initial predicates are satisfied
@@ -164,9 +165,9 @@ entail ps p = do
   let instCheck = do
         qs <- predsByImpls p
         ents <- mapM (entail ps) qs
-        pure $ all id ents
+        pure $ DL.all id ents
   instc <- catchError instCheck (const $ pure False) -- FIXME this `catch` may cause problems
-  pure $ any (elem p) sups || instc
+  pure $ DL.any (elem p) sups || instc
 
 
 -- |Check if predicate is in head normal form. -- TODO: what does it mean?
@@ -212,7 +213,7 @@ quantify vs qt = Forall ks (substitute s qt) where
   vs' = [v | v <- nub (free qt), v `elem` vs]
   ks = fmap kind vs'
   ns = fmap tName vs'
-  s = Subst $ M.fromList $ zip ns (fmap TypeGeneric [0..])
+  s = Subst $ M.fromList $ DL.zip ns (fmap TypeGeneric [0..])
 
 
 -- |Quantifies type by all of its free variables
@@ -223,4 +224,3 @@ quantifyAll qt = quantify (free qt) qt
 -- |Turn plain type into scheme
 toTypePoly :: Type -> TypePoly
 toTypePoly t = Forall [] ([] :=> t)
-

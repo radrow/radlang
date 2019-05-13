@@ -2,10 +2,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 module Radlang.QQ where
 
 import Data.Generics
+import qualified Data.Text as T
+import Language.Haskell.TH.Syntax hiding (Pred, Type, Kind)
 import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote
 import Text.Megaparsec hiding (State)
@@ -56,10 +59,6 @@ rawrdl :: QuasiQuoter
 rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
 
 
--- rdl :: QuasiQuoter
--- rdl = QuasiQuoter { quoteExp = quoteRdlExp }
-
-
 -- |Parser for QuasiQuoting
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, line, col) s =
@@ -72,6 +71,15 @@ parseRawrdl (file, line, col) s =
     Right p -> pure p
 
 
+
+liftText :: T.Text -> Q Exp
+liftText txt = AppE (VarE 'T.pack) <$> lift (T.unpack txt)
+
+
+liftDataWithText :: Data a => a -> Q Exp
+liftDataWithText = dataToExpQ (\a -> liftText <$> cast a)
+
+
 -- |RawProgram Exp for QuasiQuoting
 quoteRawrdlExp :: String -> TH.ExpQ
 quoteRawrdlExp s = do
@@ -81,36 +89,5 @@ quoteRawrdlExp s = do
             , snd (TH.loc_start loc)
             )
   e <- parseRawrdl pos s
-  dataToExpQ (const Nothing) e
-
--- {-# NOINLINE parseRdl #-}
--- parseRdl :: Monad m => (String, Int, Int) -> String -> m Program
--- parseRdl (file, line, col) s =
---   let parser = do
---         -- let newpos = SourcePos file (mkPos line) (mkPos col)
---         -- updateParserState $ \st ->
---         --   st{statePosState = (statePosState st){
---         --       pstateSourcePos = newpos
---         --       }}
---         skipMany controlChar
---         rawProgram <* eof
---   in case parse parser file s of
---     Left e -> fail $ let
---       x :: String
---       x = concat (fmap parseErrorPretty $ bundleErrors e)
---       in fmap (\c -> if c == '\n' then ' ' else c) x
---     Right p -> either (fail . show) pure $ buildProgram p
-
-
-
-
--- quoteRdlExp :: String -> TH.ExpQ
--- quoteRdlExp s = do
---   loc <- TH.location
---   let pos = ( TH.loc_filename loc
---             , fst (TH.loc_start loc)
---             , snd (TH.loc_start loc)
---             )
---   e <- parseRdl pos s
---   dataToExpQ (const Nothing) e
+  liftDataWithText e
 

@@ -7,15 +7,13 @@ concat (Cons x xs) a := Cons x (concat xs a);;
 concats [] := [];;
 concats (Cons x rest) := concat x (concats rest);;
 
-isDigit c := elem c "0123456789";;
-isLower c := elem c "qwertyuiopasdfghjklzxcvbnm";;
-isWhite c := elem c " \t\n";;
+
 fst (Pair a _) := a;;
 snd (Pair _ a) := a;;
-eqStr [] [] := True;;
-eqStr [] _ := False;;
-eqStr _ [] := False;;
-eqStr (Cons a as) (Cons b bs) := and (eqChar a b) (eqStr as bs);;
+-- eqStr [] [] := True;;
+-- eqStr [] _ := False;;
+-- eqStr _ [] := False;;
+-- eqStr (Cons a as) (Cons b bs) := and (eqChar a b) (eqStr as bs);;
 comp f g x := f (g x);;
 
 newtype Input := Input Int Int (List Char);;
@@ -49,23 +47,23 @@ eof (Input _ _ []) := True;;
 eof (Input _ _ _) := False;;
 
 
-readInt [] := error "Empty input for int parsing";;
-readInt l :=
-  let go [] acc := acc
-    | go (Cons n r) acc := go r (plusInt (mulInt acc 10) (charToInt n))
-  in go l 0;;
+-- readInt [] := error "Empty input for int parsing";;
+-- readInt l :=
+--   let go [] acc := acc
+--     | go (Cons n r) acc := go r (plusInt (mulInt acc 10) (charToInt n))
+--   in go l 0;;
 
-charToInt '0' := 0;;
-charToInt '1' := 1;;
-charToInt '2' := 2;;
-charToInt '3' := 3;;
-charToInt '4' := 4;;
-charToInt '5' := 5;;
-charToInt '6' := 6;;
-charToInt '7' := 7;;
-charToInt '8' := 8;;
-charToInt '9' := 9;;
-charToInt _ := error "Char parse error";;
+-- charToInt '0' := 0;;
+-- charToInt '1' := 1;;
+-- charToInt '2' := 2;;
+-- charToInt '3' := 3;;
+-- charToInt '4' := 4;;
+-- charToInt '5' := 5;;
+-- charToInt '6' := 6;;
+-- charToInt '7' := 7;;
+-- charToInt '8' := 8;;
+-- charToInt '9' := 9;;
+-- charToInt _ := error "Char parse error";;
 
 
 readNext s0 :=
@@ -90,9 +88,9 @@ readId s := if eof s then error "Empty id (eof)" else
                   in Pair (Cons (fst res) (fst res1)) (snd res1)
         else Pair [] s0
      | i := go s
-  in if or (eqStr (fst i) "while") (eqStr (fst i) "fun")
+  in if or (bruteEq (fst i) "while") (bruteEq (fst i) "fun")
   then error (concat "Forbidden id " (fst i))
-  else if eqStr [] (fst i) then error "Empty id" else i
+  else if bruteEq [] (fst i) then error "Empty id" else i
 ;;
 
 readNumber s0 :=
@@ -118,15 +116,17 @@ delimiter beg end sep pars s0 :=
   let s1 := skipWord beg s0
 
     | go s0 :=
-        let s := skipSpaces s0
-          | r := pars s
-        in if isWord end (snd r)
-           then Pair [fst r] (skipWord end (snd r))
-           else let s1 := skipWord sep (snd r)
-                  | r2 := go s1
-                in Pair (Cons (fst r) (fst r2)) (snd r2)
+        let s1 := skipSpaces s0
+        in if isWord end s1
+        then Pair [] (skipWord end s1)
+        else let s2 := skipWord sep s1
+               | r3 := pars (skipSpaces s2)
+             in resMap (Cons (fst r3)) (go (snd r3))
 
-  in if isWord end s1 then Pair [] (skipWord end s1) else go s1;;
+  in if isWord end s1
+  then Pair [] (skipWord end s1)
+  else let r2 := pars s1
+       in resMap (Cons (fst r2)) (go (snd r2));;
 
 
 between beg end pars s0 :=
@@ -177,7 +177,16 @@ block s0 :=
   in delimiter "{" "}" ";" instr s1;;
 
 testInstr inp := fst (instr (Input 0 0 inp));;
+testExpr inp := fst (expr (Input 0 0 inp));;
+testBlock inp := fst (block (Input 0 0 inp));;
+testDup :=
+  fst (between "{" "}" (between "{" "}" (between "{" "}" readNumber))
+      (Input 0 0 "{{{1}}}")
+      );;
+testKup :=
+  fst ( delimiter "[" "]" "," readNumber
+      (Input 0 0 "[]")
+      );;
 
-
-main := testInstr "x:=1";;
+main := testKup;;
 

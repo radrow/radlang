@@ -12,4 +12,4 @@ fromList := fix ( \rec l -> match l with
 
 fac := fix (\ rec n -> if eqInt n 0 then 1 else mulInt n (rec (minusInt n 1)));;
 
-main := fromList [1,2,3,4,5];;
+main := fromList [12,3,3];;

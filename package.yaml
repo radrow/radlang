@@ -32,16 +32,19 @@ dependencies:
 - template-haskell
 - syb
 - lens
+- text
 
 ghc-options:
   - -Wall
   - -Wextra
+  - -O2
 
 library:
   source-dirs: src
   default-extensions:
     - LambdaCase
     - GADTs
+    - OverloadedStrings
 
 executables:
   rdl:
@@ -49,6 +52,7 @@ executables:
     source-dirs:         rdl
     ghc-options:
     - -threaded
+    - -O2
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:

@@ -2,6 +2,7 @@
 -- |Collection of some useful aliasses and predefined environments
 module Radlang.Typedefs where
 
+import           Data.Text as T
 import           Data.Map.Strict       as M
 import           Data.Set              as S
 
@@ -39,12 +40,12 @@ a `fun` b = TypeApp (TypeApp tFunc a) b
 
 
 stdPreds :: [Qual Pred]
-stdPreds = concat $ fmap unpack (M.toList stdInterfaces) where
-  unpack (_, (Interface _ insts)) = (S.toList insts)
+stdPreds = Prelude.concat $ fmap unpackPreds (M.toList stdInterfaces) where
+  unpackPreds (_, (Interface _ insts)) = (S.toList insts)
 ofInterface :: Name -> Set (Qual Pred)
 ofInterface n = S.fromList $ Prelude.filter (\(_ :=> IsIn k _) -> k == n) stdPreds
 envPart :: b -> [Char] -> ([Char], b, Set (Qual Pred))
-envPart s n = (n, s, ofInterface n)
+envPart s n = (n, s, ofInterface $ T.pack n)
 
 
 num :: Interface

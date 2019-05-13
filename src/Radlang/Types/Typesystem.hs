@@ -12,6 +12,9 @@
 module Radlang.Types.Typesystem where
 
 import           Data.Foldable
+import           Data.Bifunctor
+import           Data.Text as T
+import           Data.List as DL
 import           Control.Monad.Identity
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -128,7 +131,7 @@ newtype TypeEnv = TypeEnv {types :: Map Name TypePoly}
 
 
 instance Show TypeEnv where
-  show (TypeEnv te) = showTypes (M.toList te) where
+  show (TypeEnv te) = showTypes (fmap (first T.unpack) $ M.toList te) where
     showTypes [] = ""
     showTypes ((n, t):tl) = n <> " :\t" <> show t <> "\n" <> showTypes tl
 
@@ -213,8 +216,8 @@ instance HasKind Type where
 
 instance Show Type where
   show = \case
-    TypeVarWobbly (TypeVar a _) -> a -- <> if k == KType then "" else " : " <> show k
-    TypeVarRigid (TypeVar a _) -> a -- <> if k == KType then "" else " : " <> show k
+    TypeVarWobbly (TypeVar a _) -> T.unpack a -- <> if k == KType then "" else " : " <> show k
+    TypeVarRigid (TypeVar a _) -> T.unpack a -- <> if k == KType then "" else " : " <> show k
     TypeApp (TypeApp (TypeVarRigid (TypeVar "Func" _)) arg)
       val -> let aa = case arg of
                    TypeVarRigid _ -> show arg
@@ -224,7 +227,7 @@ instance Show Type where
     TypeApp a b -> show a <> " " <> show b
     TypeGeneric n ->
       let (prims, letter) = divMod n 25
-      in "~" <> pure (['A'..] !! letter) <> foldr (<>) "" (take prims (repeat "'"))
+      in "~" <> pure (['A'..] !! letter) <> DL.foldr (<>) "" (DL.take prims (repeat "'"))
 
 
 instance Instantiate Type where
@@ -278,7 +281,7 @@ data Pred = IsIn Name Type
 
 
 instance Show Pred where
-  show (IsIn c t) = show t <> " is " <> c
+  show (IsIn c t) = show t <> " is " <> (T.unpack c)
 
 
 instance IsType Pred where
@@ -327,7 +330,8 @@ data TypePoly = Forall [Kind] (Qual Type)
 instance Show TypePoly where
   show (Forall [] t) = show t
   show (Forall ks t) = show t <> " where " <>
-    concatMap (\i -> "\n  " <> show (TypeGeneric i) <> " : " <> show (ks !! i)) [0..length ks -1]
+    DL.concatMap (\i -> "\n  " <> show (TypeGeneric i) <> " : " <> show (ks !! i))
+    [0..DL.length ks - 1]
 
 instance IsType TypePoly where
   substitute s (Forall ks qt) = Forall ks (substitute s qt)
