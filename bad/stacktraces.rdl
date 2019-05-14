@@ -1,0 +1,30 @@
+main :=
+  let x := f 1
+  in g x;;
+
+f x := divInt x 0;; -- division by zero!
+
+g x := deepForced x;;
+
+{-
+
+Runtime error: Division by zero
+
+-- Why (read from bottom to top):
+
+Definition Stacktrace:
+1. divInt#1            -- the error was thrown by partially applied divInt
+2. f#0                 -- the error was thrown from inside of f
+3. let expression      -- x was defined in let expression
+
+Evaluation stacktrace:
+1. divInt#1            -- the error was thrown by partially applied divInt
+2. f#0                 -- the error was thrown by evaluation of f
+3. manual deep force   -- manual deep force of lazy thunk
+4. deepForced#0        -- argument of g was manually forced at this moment
+5. g#0                 -- g is called
+6. let evaluation      -- let's "in" is evaluated
+7. let expression      -- enter let expression
+8. main                -- call main
+
+-}

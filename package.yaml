@@ -4,11 +4,10 @@ github:              "radrow/radlang"
 license:             BSD2
 author:              "Radosław Rowicki"
 maintainer:          "rr386088@students.mimuw.edu.pl"
-copyright:           "2018 Radosław Rowicki"
+copyright:           "2019 Radosław Rowicki"
 
 extra-source-files:
 - README.org
-- ChangeLog.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -47,7 +46,7 @@ library:
     - OverloadedStrings
 
 executables:
-  rdl:
+  interpreter:
     main:                Main.hs
     source-dirs:         rdl
     ghc-options:

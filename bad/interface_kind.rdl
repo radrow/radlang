@@ -1,0 +1,4 @@
+interface I (~A : Type) {};;
+impl Option for I {};;
+
+main := ":)";;
