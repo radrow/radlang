@@ -341,15 +341,16 @@ inferTypeBindingGroup (ints, es, iss) = do
   as <- getTypeEnv
   let as' = -- assumptions made out of explicit bindings and interface declarations
         TypeEnv $ foldr (\(v, sc) m -> M.insert v sc m)
-        M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (t, _)) -> (n, t)) (M.toList ints))
+        M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (_, t, _)) -> (n, t)) (M.toList ints))
   (ps :=> (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
 
+  let map3t f (a, b, c) = (a, b, f c)
   (fromExpls :: [Qual (Type, [TypedAlt])]) <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
-  (tbindsPoly :: PolyBindings) <- fmap (fmap (fmap (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence
-    $ M.toList ints <&> \(n, (tp, dds)) -> do
+  (tbindsPoly :: PolyBindings) <- fmap (fmap (map3t (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence
+    $ M.toList ints <&> \(n, (cn, tp, dds)) -> do
     tpinst <- freshInst tp
     implems <- forM dds $ \(t, alts) -> (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (n, (t, alts))
-    pure (n, (tpinst, implems))
+    pure (n, (cn, tpinst, implems))
 
   let qss = fmap getPreds fromExpls
       tbindsExp :: TypedBindings
@@ -412,4 +413,5 @@ typecheck tc p =
           , tprgNamespace = pns
           , tprgPolyBindings = pb
           , tprgBindings = tb
+          , tprgInterfaceEnv = uprgInterfaceEnv p
           }

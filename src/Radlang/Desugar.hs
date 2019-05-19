@@ -70,14 +70,15 @@ newtypeData nts =
 -- |Extract type declarations from interface definition
 interfaceBindings :: InterfaceDef -> BindingGroup
 interfaceBindings cd =
-  let clspred = IsIn (interfacedefName cd) (TypeVarWobbly $ TypeVar (interfacedefArg cd) (interfacedefKind cd) )
+  let clspred@(IsIn cname _) = IsIn (interfacedefName cd) (TypeVarWobbly $ TypeVar (interfacedefArg cd) (interfacedefKind cd) )
 
-      methodproc :: TypeDecl -> (Name, Qual Type)
+      methodproc :: TypeDecl -> (Name, Name, Qual Type)
       methodproc td =
         let (prds :=> t) = tdeclType td
-        in (tdeclName td, (clspred : prds) :=> t)
+        in (tdeclName td, cname, (clspred : prds) :=> t)
 
-      bnds = M.fromList $ fmap ((\(n, qt) -> (n, (quantifyAll qt, []))) . methodproc) (interfacedefMethods cd)
+      bnds :: InterfaceBindings
+      bnds = M.fromList $ fmap ((\(n, cn, qt) -> (n, (cn, quantifyAll qt, []))) . methodproc) (interfacedefMethods cd)
   in (bnds, M.empty, [])
 
 
@@ -111,7 +112,8 @@ implBindings cl idef = -- Strategy: write once, forget what the fuck is going on
       bnds = M.fromList
         $ fmap (\(n, l) ->
                   (n
-                  , ( quantifyAll $ qtypeByName n
+                  , ( impldefInterface idef
+                    , quantifyAll $ qtypeByName n
                     , [( quantifyAll $ typeMod $ qtypeByName n
                        , fmap (\dd -> (datadefArgs dd, datadefVal dd)) l)
                       ])))
@@ -157,10 +159,10 @@ unionExplBindings e1 e2 =
 -- |Merge two interface binding sets
 unionInterBindings :: InterfaceBindings -> InterfaceBindings -> InterfaceBindings
 unionInterBindings i1 i2 =
-  let unionIns :: InterfaceBindings -> Name -> (TypePoly, [(TypePoly, [Alt])]) -> InterfaceBindings
-      unionIns m k v = case M.lookup k m of
+  let unionIns :: InterfaceBindings -> Name -> (Name, TypePoly, [(TypePoly, [Alt])]) -> InterfaceBindings
+      unionIns m k v@(_, _, prevAlts) = case M.lookup k m of
         Nothing        -> M.insert k v m
-        Just (t, altss) -> M.insert k (t, snd v ++ altss) m
+        Just (cn, t, altss) -> M.insert k (cn, t, prevAlts ++ altss) m
   in foldr (\(n, d) e -> unionIns e n d) i1 (M.toList i2)
 
 

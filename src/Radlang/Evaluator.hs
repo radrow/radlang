@@ -136,35 +136,35 @@ processBindings bnevst = do
 
 
 -- |Build dataspace and namespace from set of polymorphic bindings
-processPolyBindings :: PolyBindings -> Evaluator Namespace
-processPolyBindings pb = do
-  let polylist :: [(Name, (Qual Type, [(Qual Type, [TypedAlt])]))]
-      polylist = M.toList pb
+-- processPolyBindings :: PolyBindings -> Evaluator Namespace
+-- processPolyBindings pb = do
+--   let polylist :: [(Name, (Qual Type, [(Qual Type, [TypedAlt])]))]
+--       polylist = M.toList pb
 
-      -- Get single method definition and create dictionary reader for it
-      makeMethod :: (Name, Qual Type, [(Qual Type, [TypedAlt])]) -> Evaluator Namespace
-      makeMethod (n, t, defs) = do
-        -- For each method instance (its type, its alts)
-        prens <- forM defs $ \(qt, alts) -> do
-          let dict :: Name
-              dict = case getPreds t \\ getPreds qt of
-                [cp] -> dictName cp
-                x -> wtf $ "Class pred failure: " <> T.pack (show x)
+--       -- Get single method definition and create dictionary reader for it
+--       makeMethod :: (Name, Qual Type, [(Qual Type, [TypedAlt])]) -> Evaluator Namespace
+--       makeMethod (n, t, defs) = do
+--         -- For each method instance (its type, its alts)
+--         prens <- forM defs $ \(qt, alts) -> do
+--           let dict :: Name
+--               dict = case getPreds t \\ getPreds qt of
+--                 [cp] -> dictName cp
+--                 x -> wtf $ "Class pred failure: " <> T.pack (show x)
 
-              impls :: Namespace
-              impls = undefined
+--               impls :: Namespace
+--               impls = undefined
 
-              method = DataFunc n $ \ldic -> do
-                force ldic >>= \case
-                  DataPolyDict dic -> withNamespace dic $ eval (Val n)
-                  x -> wtf $ "This is not poly dict: " <> T.pack (show x)
-          i <- newData $ Strict method
+--               method = DataFunc n $ \ldic -> do
+--                 force ldic >>= \case
+--                   DataPolyDict dic -> withNamespace dic $ eval (Val n)
+--                   x -> wtf $ "This is not poly dict: " <> T.pack (show x)
+--           i <- newData $ Strict method
 
-          pure $ M.insert n i impls
-        pure $ foldr M.union M.empty prens
+--           pure $ M.insert n i impls
+--         pure $ foldr M.union M.empty prens
 
-  methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) polylist
-  pure $ foldr M.union M.empty methodNss
+--   methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) polylist
+--   pure $ foldr M.union M.empty methodNss
 
 
 
@@ -239,7 +239,7 @@ eval = \case
 evalProgram :: Program -> Evaluator StrictData
 evalProgram tp = do
   ns <- processBindings $ prgBindings tp
-  ps <- withNamespace ns $ processPolyBindings $ prgPolyBindings tp
+  -- ps <- withNamespace ns $ processPolyBindings $ prgPolyBindings tp
   case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->

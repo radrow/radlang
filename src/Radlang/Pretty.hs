@@ -13,8 +13,8 @@ prettyBnds ident p = DL.unlines $ flip fmap (M.toList p) $ \(n, (t, talts)) ->
   prefix ident <> T.unpack n <> " : " <> show t <> "\n" <> ((prettyTAlt ident n) =<< talts)
 
 prettyPBnds :: PolyBindings -> String
-prettyPBnds p = DL.unlines $ flip fmap (M.toList p) $ \(n, dl) ->
-  (("FOR " <> T.unpack n <> " : " <> show (fst dl) <> "\n")<>) $ DL.unlines $ flip fmap (snd dl) $ \(t, talts) ->
+prettyPBnds p = DL.unlines $ flip fmap (M.toList p) $ \(n, (_, snddl, thddl)) ->
+  (("FOR " <> T.unpack n <> " : " <> show (snddl) <> "\n")<>) $ DL.unlines $ flip fmap (thddl) $ \(t, talts) ->
   "POLY " <> T.unpack n <> " : " <> show t <> "\n" <> ((prettyTAlt 0 n) =<< talts)
 
 prettyTAlt :: Int -> Name -> TypedAlt -> String
@@ -40,4 +40,19 @@ prettyE :: Int -> UntypedExpr -> String
 prettyE ident = \case
   UntypedLet (_, _, [bnds]) te -> prefix ident <> "let\n" <> prettyBndsE (ident + 4) bnds
     <> prefix ident <> "in\n" <> prettyE ident te
+  a -> prefix ident <> show a <> "\n"
+
+prettyBndsKok :: Int -> Bindings -> String
+prettyBndsKok ident p = DL.unlines $ flip fmap (M.toList p) $ \(n, alts) ->
+  prefix ident <> T.unpack n <> "\n" <> ((prettyAltKok ident n) =<< alts)
+
+
+prettyAltKok :: Int -> Name -> ([Pattern], Expr) -> String
+prettyAltKok ident n (args, e) = prefix ident <> T.unpack n <> " " <> show args <> " :=\n" <>
+  prettyKok (ident + 4) e
+
+prettyKok :: Int -> Expr -> String
+prettyKok ident = \case
+  Let bnds te -> prefix ident <> "let\n" <> prettyBndsKok (ident + 4) bnds
+    <> prefix ident <> "in\n" <> prettyKok ident te
   a -> prefix ident <> show a <> "\n"

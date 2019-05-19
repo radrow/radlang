@@ -22,7 +22,7 @@ exprDependencies = go S.empty where
       exs = S.fromList $ M.keys e
       pos = S.fromList $ M.keys p
       fromP :: [S.Set Name]
-      fromP = fmap (S.unions . fmap (altsDeps . snd) . snd) $ M.elems p
+      fromP = fmap (S.unions . fmap (altsDeps . snd) . (\(_, _, x) -> x)) $ M.elems p
       fromE = fmap (altsDeps . snd) $ M.elems e
       fromI = fmap (S.unions . fmap altsDeps . M.elems) i
 

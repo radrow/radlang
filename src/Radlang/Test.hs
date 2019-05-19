@@ -17,6 +17,7 @@ import Radlang.Desugar
 import Radlang.Typechecker
 import Radlang.Pretty
 import Radlang.InterfaceResolve
+import Radlang.Intro
 
 -- tt :: IO ()
 -- tt = runTypecheckerT $ void . inferTypeExpr $
@@ -108,6 +109,10 @@ printEither (Left e) = show e
 printEither (Right r) = prettyBnds 0 $ tprgBindings r
 
 
-ttest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
-ptest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyPBnds . tprgPolyBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
--- etest = readFile "examples/dup.rdl" >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsE 0 . \(_, _, [a]) -> a) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True) >>= \tp -> runResolver (fmap fst (tprgBindings tp) `M.union` fmap fst (tprgPolyBindings tp)) (fmap fst $ resolveAssgs $ tprgBindings tp)
+ttest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram . withIntro >>= typecheck (TypecheckerConfig True)
+ptest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyPBnds . tprgPolyBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
+etest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsKok 0) $ do
+  parsed <- parseRDL "XD" f
+  built <- buildProgram . withIntro $ parsed
+  tched <- typecheck (TypecheckerConfig True) $ built
+  prgBindings <$> resolveProgram tched

@@ -175,13 +175,15 @@ newtype Bool := True | False;;
 newtype Option (~A : Type) := None | Some ~A;;
 
 head (Cons h _) := h;;
+tail (Cons _ t) := t;;
+
 bot : ~A;;
 id t := t;;
 const c _ := c;;
 minusInt a b := plusInt a (negInt b);;
-fix f := let x := f x in x;;
 
-tail (Cons _ t) := t;;
+fix : (~A -> ~A) -> ~A;;
+-- fix f := let x := f x in x;;
 
 or False False := False;;
 or _ _ := True;;

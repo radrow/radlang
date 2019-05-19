@@ -101,7 +101,7 @@ mgu t1 t2 = case (t1, t2) of
 
 -- |Unifier that uses `merge` instead of `<>`
 match :: (MonadError ErrMsg m, MonadIO m)
-  => Type -> Type -> m Substitution
+      => Type -> Type -> m Substitution
 match t1 t2 = case (t1, t2) of
   (TypeApp f1 a1, TypeApp f2 a2) -> do
     sf <- match f1 f2
@@ -111,12 +111,26 @@ match t1 t2 = case (t1, t2) of
   (TypeVarRigid a, TypeVarRigid b) ->
     if a == b
     then pure mempty
-    else typecheckError $ "Cannot merge rigid different type variables: " <> tName a <> " vs " <> tName b
+    else typecheckError $ "Cannot merge different rigid type variables: " <> tName a <> " vs " <> tName b
   (TypeVarRigid (TypeVar a _), b) ->
     typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> a <> " vs " <> T.pack (show b)
   (b, TypeVarRigid (TypeVar a _)) ->
     typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> T.pack (show b) <> " vs " <> a
   _ -> typecheckError $ "Cannot merge types: " <> T.pack (show t1) <> " vs " <> T.pack (show t2)
+
+generalizeTo :: (MonadError ErrMsg m)
+             => Type -> Type -> m Substitution
+generalizeTo t1 t2 = case (t1, t2) of
+  (_, TypeVarWobbly tv) | kind t1 == kind tv -> bindVar tv t1
+  (TypeVarRigid a, TypeVarRigid b) ->
+    if a == b
+    then pure mempty
+    else typecheckError $ "Cannot generalize rigid type variable: " <> tName a <> " vs " <> tName b
+  (TypeApp f1 a1, TypeApp f2 a2) -> do
+    s1 <- generalizeTo f1 f2
+    s2 <- generalizeTo a1 a2
+    merge s1 s2 -- TODO merge or mgu?
+  _ -> typecheckError $ "Cannot generalize " <> T.pack (show t1) <> " to " <> T.pack (show t2)
 
 
 -- |mgu for predicates

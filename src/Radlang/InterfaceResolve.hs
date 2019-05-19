@@ -1,12 +1,18 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Radlang.InterfaceResolve where
 
-import Data.Text as T
+import qualified Data.Text as T
+import Data.Text(Text)
 import qualified  Data.Map.Strict as M
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.List
+import qualified Data.Set as S
+import Data.Maybe
+import Data.Bifunctor
 
 import Radlang.Types
+import Radlang.Pretty
 import Radlang.Typedefs
 import Radlang.Error
 import Radlang.Typesystem.Typesystem
@@ -16,9 +22,9 @@ dictName :: Pred -> Text
 dictName (IsIn c t) = "@dict_" <> c <> "_" <> getName t
 
 
-resolveAssgs :: TypedBindings -> ExceptT ErrMsg (Reader Typespace) (Bindings, Typespace)
+resolveAssgs :: TypedBindings -> Resolver (Bindings, Typespace)
 resolveAssgs tb = do
-  ts <- ask
+  ts <- asks fst
   let newts = fmap fst tb <> ts
   (mapped :: Bindings) <- flip mapM tb $ \((prds :=> _), talts) ->
     flip mapM talts $ \(targs, te) -> do
@@ -26,24 +32,46 @@ resolveAssgs tb = do
       pure (fmap (PVar . dictName) prds ++ targs, tre)
   pure (mapped, newts)
 
+resolvePolyBindings :: PolyBindings -> Resolver Bindings
+resolvePolyBindings = fmap M.fromList . mapM resolvePolyBinding . M.toList
+
+resolvePolyBinding :: (Name, (Name, Qual Type, [(Qual Type, [TypedAlt])])) -> Resolver (Name, [([Pattern], Expr)])
+resolvePolyBinding (name, (iname, (ps :=> t), bimpls)) = do
+  let args = fmap (PVar . dictName) ps
+  pure $ (name, [(args, Application (Val $ dictName $ IsIn iname t) (Val name))])
 
 getName :: Type -> Name
-getName (TypeVarWobbly (TypeVar n KType)) = n
-getName _ = wtf "Non wobbly interface constraint"
+getName (TypeVarWobbly (TypeVar n _)) = n
+getName (TypeVarRigid (TypeVar n _)) = n
+getName (TypeApp t _) = getName t
+getName t = wtf $ "Generic name? " <> T.pack (show t)
 
-makeArgs :: Substitution -> [Pred] -> [Expr]
-makeArgs (Subst s) = fmap $ \(IsIn cname tp) ->
-  Val $ dictName (IsIn cname $ maybe tp id (M.lookup (getName tp) s))
 
-withTypespace :: Typespace -> ExceptT ErrMsg (Reader Typespace) a -> ExceptT ErrMsg (Reader Typespace) a
-withTypespace = local . const
+type Resolver = ExceptT ErrMsg (Reader (Typespace, InterfaceEnv))
 
-resolve :: TypedExpr -> ExceptT ErrMsg (Reader Typespace) Expr
+
+solvePreds :: [Pred] -> Resolver [Expr]
+solvePreds = mapM solvePred
+
+
+solvePred :: Pred -> Resolver Expr
+solvePred p@(IsIn c t) = asks snd >>= \cl ->
+  fmap (fromMaybe (Val $ dictName p) . msum) $ flip mapM (fmap (\(prds :=> (IsIn _ pt)) -> prds :=> pt) $ S.toList $ interfaceImpls $ interfaces cl M.! c) $
+  \(pr :=> itp) -> flip catchError (const $ pure Nothing) $ do
+    s <- generalizeTo t itp
+    dicts <- solvePreds $ substitute s pr
+    pure $ Just $ foldl' Application (Val $ dictName p) dicts
+
+
+withTypespace :: Typespace -> Resolver a -> Resolver a
+withTypespace ts = local (first (const ts))
+
+resolve :: TypedExpr -> Resolver Expr
 resolve = \case
-  TypedVal (_ :=> tv) v -> asks (M.lookup v) >>= \case
+  TypedVal (_ :=> tv) v -> asks (M.lookup v . fst) >>= \case
     Just (ps :=> to) -> do
       s <- mgu to tv
-      let dictArgs = makeArgs s ps
+      dictArgs <- solvePreds $ substitute s ps
       pure $ Prelude.foldl Application (Val v) dictArgs
     Nothing -> pure $ Val v
   TypedLit _ l -> pure $ Lit l
@@ -54,16 +82,24 @@ resolve = \case
     pure $ Let eassgs eine
 
 
-resolveProgram :: TypedProgram -> ExceptT ErrMsg (Reader Typespace) Program
-resolveProgram tp = do
-  (bnds, _) <- resolveAssgs (tprgBindings tp)
+resolveProgram :: TypedProgram -> Either ErrMsg Program
+resolveProgram tp = runResolver M.empty (tprgInterfaceEnv tp) $ do
+  ibnds <- resolvePolyBindings $ tprgPolyBindings tp
+  (bnds, _) <- resolveAssgs (tprgBindings tp `M.union` fmap (\(_, t, _) -> (t, [])) (tprgPolyBindings tp))
   pure Program
-    { prgBindings = bnds
+    { prgBindings = ibnds `M.union` bnds
     , prgDataspace = tprgDataspace tp
     , prgNamespace = tprgNamespace tp
     , prgPolyBindings = tprgPolyBindings tp
     }
 
+ci = M.fromList
+  [ ("D", [ [] :=> tRigid "Int"
+          , [IsIn "D" (tWobbly "~A")] :=> TypeApp (TypeVarRigid $ TypeVar "Option" (KFunc KType KType)) (tWobbly "~A")])
+  , ("C", [ [] :=> tRigid "Int"
+          , [IsIn "C" (tWobbly "~A")] :=> TypeApp (TypeVarRigid $ TypeVar "Option" (KFunc KType KType)) (tWobbly "~A")])
+  , ("W", [[] :=> (TypeVarRigid $ TypeVar "Option" (KFunc KType KType))])
+  ]
 
 ex :: TypedExpr
 ex =
@@ -74,5 +110,5 @@ ex =
   )
   (TypedVal ([IsIn "D" (tWobbly "d1")] :=> tWobbly "d1") "a")
 
-runResolver :: ExceptT ErrMsg (Reader Typespace) a -> Either ErrMsg a
-runResolver = flip runReader M.empty .  runExceptT
+runResolver :: Typespace -> InterfaceEnv -> Resolver a -> Either ErrMsg a
+runResolver ts ie = flip runReader (ts, ie) .  runExceptT

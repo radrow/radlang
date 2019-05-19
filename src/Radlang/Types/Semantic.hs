@@ -49,7 +49,6 @@ data Expr
   | Lit Literal
   | Application Expr Expr
   | Let Bindings Expr
-  deriving (Show)
 
 instance Show UntypedExpr where
   show = \case
@@ -64,6 +63,20 @@ instance Show TypedExpr where
     TypedLit t l -> "(" <> show l <> " : " <> show t <> ")"
     TypedApplication _ f a -> "(" <> show f <> ") " <> show a
     TypedLet _ bn e -> "let " <> show bn <> " in " <> show e
+
+complex :: Expr -> Bool
+complex = \case
+  Application _ _ -> True
+  Let _ _ -> True
+  _ -> False
+instance Show Expr where
+  show = \case
+    Val v -> T.unpack v
+    Lit l -> show l
+    Application f a ->
+      (if complex f then "(" <> show f <> ")" else show f) <> " " <>
+      (if complex a then "(" <> show a <> ")" else show a)
+    Let bn e -> "let " <> show bn <> " in " <> show e
 
 instance IsType TypedExpr where
   free = free . getExprType
@@ -140,7 +153,7 @@ type ImplBindings = Map Name [Alt]
 
 -- |Collection of bindings that belong to interface. First `TypePoly` describes general type of method,
 -- the other ones are about the specific implementations
-type InterfaceBindings = Map Name (TypePoly, [(TypePoly, [Alt])])
+type InterfaceBindings = Map Name (Name, TypePoly, [(TypePoly, [Alt])])
 
 
 -- |Collection of bindings splitted into explicitly typed and implicitly typed
@@ -154,7 +167,7 @@ type TypedBindings = Map Name (Qual Type, [TypedAlt])
 
 
 -- |Typed bindings for polymorphic data
-type PolyBindings = Map Name (Qual Type, [(Qual Type, [TypedAlt])])
+type PolyBindings = Map Name (Name, Qual Type, [(Qual Type, [TypedAlt])])
 
 
 type Bindings = Map Name [([Pattern], Expr)]
@@ -171,10 +184,11 @@ data UntypedProgram = UntypedProgram
 
 -- |Program decorated with type annotations
 data TypedProgram = TypedProgram
-  { tprgDataspace    :: Dataspace
-  , tprgNamespace    :: Namespace
-  , tprgPolyBindings :: PolyBindings
-  , tprgBindings     :: TypedBindings
+  { tprgDataspace     :: Dataspace
+  , tprgNamespace     :: Namespace
+  , tprgPolyBindings  :: PolyBindings
+  , tprgBindings      :: TypedBindings
+  , tprgInterfaceEnv  :: InterfaceEnv
   } deriving (Show)
 
 
