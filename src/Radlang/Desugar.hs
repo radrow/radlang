@@ -226,7 +226,7 @@ processProgram prg = do
         allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [intbnds, impbnds, topbnds]
 
     pure $ UntypedProgram
-      { uprgDatamap = newtypeData newtypes
+      { uprgDataMap = newtypeData newtypes
       , uprgBindings = [allbnds]
       , uprgInterfaceEnv = intenv
       , uprgTypeEnv = newtypeTypeEnv newtypes

@@ -246,11 +246,14 @@ evalProgram tp = do
       withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
       gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> pure d
 
+buildSpace :: DataMap -> Evaluator Namespace
+buildSpace = mapM newData
+
 
 -- |Perform evaluation of the main value from the program
 runProgram :: Program -> Either ErrMsg StrictData
-runProgram tp =
-  runEvaluator (prgNamespace tp) (prgDataspace tp) $ evalProgram tp
+runProgram p =
+  runEvaluator M.empty M.empty $ buildSpace (prgDataMap p) >>= \ns -> withNamespace ns (evalProgram p)
 
 
 -- |Run evaluator and extract the result

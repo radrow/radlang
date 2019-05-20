@@ -402,15 +402,9 @@ typecheck tc p =
                           (TypeEnv $ M.union (types ts) (types $ uprgTypeEnv p))
                           tc (inferTypeBindingGroups $ uprgBindings p)
 
-        let psl = M.toList ps ++ M.toList (uprgDatamap p)
-            pids = take (length psl) [0..]
-
-            pns = M.fromList $ zip (fmap fst psl) pids
-            pds = M.fromList $ zip pids (fmap snd psl)
-
+        let psl = ps `M.union` (uprgDataMap p)
         pure $ TypedProgram
-          { tprgDataspace = pds
-          , tprgNamespace = pns
+          { tprgDataMap = psl
           , tprgPolyBindings = pb
           , tprgBindings = tb
           , tprgInterfaceEnv = uprgInterfaceEnv p

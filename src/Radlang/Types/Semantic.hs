@@ -173,9 +173,12 @@ type PolyBindings = Map Name (Name, Qual Type, [(Qual Type, [TypedAlt])])
 type Bindings = Map Name [([Pattern], Expr)]
 
 
+type DataMap = Map Name Data
+
+
 -- |Full program representation
 data UntypedProgram = UntypedProgram
-  { uprgDatamap      :: Map Name Data
+  { uprgDataMap      :: DataMap
   , uprgBindings     :: [BindingGroup]
   , uprgInterfaceEnv :: InterfaceEnv
   , uprgTypeEnv      :: TypeEnv
@@ -184,8 +187,7 @@ data UntypedProgram = UntypedProgram
 
 -- |Program decorated with type annotations
 data TypedProgram = TypedProgram
-  { tprgDataspace     :: Dataspace
-  , tprgNamespace     :: Namespace
+  { tprgDataMap       :: DataMap
   , tprgPolyBindings  :: PolyBindings
   , tprgBindings      :: TypedBindings
   , tprgInterfaceEnv  :: InterfaceEnv
@@ -193,8 +195,7 @@ data TypedProgram = TypedProgram
 
 
 data Program = Program
-  { prgDataspace    :: Dataspace
-  , prgNamespace    :: Namespace
+  { prgDataMap      :: DataMap
   , prgPolyBindings :: PolyBindings
   , prgBindings     :: Bindings
   } deriving (Show)

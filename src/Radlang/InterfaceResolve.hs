@@ -21,15 +21,17 @@ import Radlang.Typesystem.Typesystem
 dictName :: Pred -> Text
 dictName (IsIn c t) = "@dict_" <> c <> "_" <> getName t
 
+resolveAssg :: (Qual Type, [TypedAlt]) -> Resolver [([Pattern], Expr)]
+resolveAssg ((prds :=> _), talts) =
+  flip mapM talts $ \(targs, te) -> do
+    tre <- resolve te
+    pure (fmap (PVar . dictName) prds ++ targs, tre)
 
 resolveAssgs :: TypedBindings -> Resolver (Bindings, Typespace)
 resolveAssgs tb = do
   ts <- asks fst
   let newts = fmap fst tb <> ts
-  (mapped :: Bindings) <- flip mapM tb $ \((prds :=> _), talts) ->
-    flip mapM talts $ \(targs, te) -> do
-      tre <- withTypespace newts $ resolve te
-      pure (fmap (PVar . dictName) prds ++ targs, tre)
+  (mapped :: Bindings) <- withTypespace newts $ flip mapM tb $ resolveAssg
   pure (mapped, newts)
 
 resolvePolyBindings :: PolyBindings -> Resolver Bindings
@@ -39,6 +41,17 @@ resolvePolyBinding :: (Name, (Name, Qual Type, [(Qual Type, [TypedAlt])])) -> Re
 resolvePolyBinding (name, (iname, (ps :=> t), bimpls)) = do
   let args = fmap (PVar . dictName) ps
   pure $ (name, [(args, Application (Val $ dictName $ IsIn iname t) (Val name))])
+
+resolveImpls :: PolyBindings -> Resolver (Bindings, DataMap)
+resolveImpls pb = let asList = M.toList pb in (,) <$> fmap M.unions (mapM implBind asList) <*> fmap M.fromList (mapM implDict asList)
+
+implBind :: (Name, (Name, Qual Type, [(Qual Type, [TypedAlt])])) -> Resolver Bindings
+implBind (n, (_, _, impls)) = fmap M.fromList $ flip mapM impls $ \impl@(qt, _) -> do
+  rimpl <- resolveAssg impl
+  pure (n <> "AAAA" <> T.pack (show qt), rimpl)
+
+implDict :: (Name, (Name, Qual Type, [(Qual Type, [TypedAlt])])) -> Resolver (Name, Data)
+implDict (n, _) = pure (n, Strict $ DataPolyDict M.empty)
 
 getName :: Type -> Name
 getName (TypeVarWobbly (TypeVar n _)) = n
@@ -53,6 +66,16 @@ type Resolver = ExceptT ErrMsg (Reader (Typespace, InterfaceEnv))
 solvePreds :: [Pred] -> Resolver [Expr]
 solvePreds = mapM solvePred
 
+{-
+class A a where dupa :: a -> a
+instance A (Option Int) where dupa :: Option Int -> Option Int
+
+a
+
+s <- mgu (Option Int) a
+
+subst s a
+-}
 
 solvePred :: Pred -> Resolver Expr
 solvePred p@(IsIn c t) = asks snd >>= \cl ->
@@ -86,10 +109,10 @@ resolveProgram :: TypedProgram -> Either ErrMsg Program
 resolveProgram tp = runResolver M.empty (tprgInterfaceEnv tp) $ do
   ibnds <- resolvePolyBindings $ tprgPolyBindings tp
   (bnds, _) <- resolveAssgs (tprgBindings tp `M.union` fmap (\(_, t, _) -> (t, [])) (tprgPolyBindings tp))
+  (imps, polyDmap) <- resolveImpls $ tprgPolyBindings tp
   pure Program
-    { prgBindings = ibnds `M.union` bnds
-    , prgDataspace = tprgDataspace tp
-    , prgNamespace = tprgNamespace tp
+    { prgBindings = imps `M.union` ibnds `M.union` bnds
+    , prgDataMap = polyDmap `M.union` tprgDataMap tp
     , prgPolyBindings = tprgPolyBindings tp
     }
 
