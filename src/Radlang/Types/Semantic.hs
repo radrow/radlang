@@ -102,11 +102,13 @@ getExprType = \case
 data Data
   = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
+  | PolyDict (Map Name Name)
 
 instance Show Data where
   show = \case
     Lazy _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
+    PolyDict ns -> "<dict containing " <> show (keys ns) <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -115,7 +117,7 @@ data StrictData
   | DataChar Char
   | DataADT Name [Data]
   | DataFunc Name (Data -> Evaluator Data)
-  | DataPolyDict Namespace
+  | DataPolyDict (Map Name Name)
 
 instance Show StrictData where
   show = \case
@@ -153,7 +155,7 @@ type ImplBindings = Map Name [Alt]
 
 -- |Collection of bindings that belong to interface. First `TypePoly` describes general type of method,
 -- the other ones are about the specific implementations
-type InterfaceBindings = Map Name (Name, TypePoly, [(TypePoly, [Alt])])
+type InterfaceBindings = Map Name (Name, (TypeVar, Qual Type), TypePoly, [(TypePoly, [Alt])])
 
 
 -- |Collection of bindings splitted into explicitly typed and implicitly typed
@@ -167,7 +169,7 @@ type TypedBindings = Map Name (Qual Type, [TypedAlt])
 
 
 -- |Typed bindings for polymorphic data
-type PolyBindings = Map Name (Name, Qual Type, [(Qual Type, [TypedAlt])])
+type PolyBindings = Map Name (Name, (TypeVar, Qual Type), Qual Type, [(Qual Type, [TypedAlt])])
 
 
 type Bindings = Map Name [([Pattern], Expr)]

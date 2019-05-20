@@ -68,7 +68,7 @@ newtypeData nts =
 
 
 -- |Extract type declarations from interface definition
-interfaceBindings :: InterfaceDef -> BindingGroup
+interfaceBindings :: InterfaceDef -> InterfaceBindings
 interfaceBindings cd =
   let clspred@(IsIn cname _) = IsIn (interfacedefName cd) (TypeVarWobbly $ TypeVar (interfacedefArg cd) (interfacedefKind cd) )
 
@@ -78,8 +78,15 @@ interfaceBindings cd =
         in (tdeclName td, cname, (clspred : prds) :=> t)
 
       bnds :: InterfaceBindings
-      bnds = M.fromList $ fmap ((\(n, cn, qt) -> (n, (cn, quantifyAll qt, []))) . methodproc) (interfacedefMethods cd)
-  in (bnds, M.empty, [])
+      bnds = M.fromList $ fmap ((\(n, cn, qt) -> ( n
+                                                 , ( cn
+                                                   , (TypeVar (interfacedefArg cd) (interfacedefKind cd), qt)
+                                                   , quantifyAll qt
+                                                   , []
+                                                   )
+                                                 )
+                                ) . methodproc) (interfacedefMethods cd)
+  in bnds
 
 
 -- |Substitute all name occurences by certain type in a qualified type
@@ -94,34 +101,39 @@ replaceTypeVar n repl (prd :=> tp) =
   in newprd :=> newt tp
 
 
--- |Extract bindings from impl definition
-implBindings :: InterfaceDef -> ImplDef -> BindingGroup
-implBindings cl idef = -- Strategy: write once, forget what the fuck is going on here and never go back
-  let typeMod :: Qual Type -> Qual Type
-      typeMod qt =
-        let (iprd :=> itp) = impldefType idef  -- get instance predicates and type
-            (rprd :=> rtp) = replaceTypeVar (interfacedefArg cl) itp qt  -- replace original type with instance
+implBindings :: InterfaceBindings -> ImplDef -> BindingGroup
+implBindings ib idef = -- Strategy: write once, forget what the fuck is going on here and never go back
+  let typeMod :: Name -> Qual Type
+      typeMod mname =
+        let (TypeVar iarg _, qt) = qtypeByName mname
+            (iprd :=> itp) = impldefType idef  -- get instance predicates and type
+            (rprd :=> rtp) = replaceTypeVar iarg itp qt  -- replace original type with instance
         in ((iprd ++ rprd) :=> rtp)  -- join predicates from typedecl and impl contraints
 
-      qtypeByName :: Name -> Qual Type
-      qtypeByName n =
-        maybe (wtf "implbindings lookup fail") id
-        $ lookup n (fmap (\mt -> (tdeclName mt, tdeclType mt)) $ interfacedefMethods cl)
+      getDecl n = maybe (wtf "implbindings lookup fail") id $ M.lookup n ib
 
-      bnds :: InterfaceBindings
-      bnds = M.fromList
-        $ fmap (\(n, l) ->
+      qtypeByName :: Name -> (TypeVar, Qual Type)
+      qtypeByName = (\(_, res, _, _) -> res) . getDecl
+
+      implbnds :: [(Name, (TypePoly, [Alt]))]
+      implbnds =
+        fmap (\(n, l) ->
                   (n
-                  , ( impldefInterface idef
-                    , quantifyAll $ qtypeByName n
-                    , [( quantifyAll $ typeMod $ qtypeByName n
-                       , fmap (\dd -> (datadefArgs dd, datadefVal dd)) l)
-                      ])))
+                  , ( quantifyAll $ typeMod n
+                    , l
+                    )
+                  ))-- add types
+        $ fmap (\(n, dds) -> (n, fmap (\dd -> (datadefArgs dd, datadefVal dd)) dds)) -- turn defs into alts
         $ fmap (\l -> (fst $ head l, fmap snd l)) -- extract names, ie. [[(Name, Defs)]] -> [(Name, [Defs])]
         $ groupBy ((.fst) . (==) . fst) -- group by names
         $ sortBy ((.fst) . compare . fst) -- sort by names
         $ fmap (\dd -> (datadefName dd, dd)) -- expose names
         $ impldefMethods idef -- get method definitions
+
+      bnds = let folder (n, impl) prev =
+                   let (cname, (argname, methodtype), itype, impls) = maybe (wtf "implbind exploded 2") id $ M.lookup n prev
+                   in M.insert n (cname, (argname, methodtype), itype, (impl):impls) prev
+             in foldr folder ib implbnds
 
   in (bnds, M.empty, [])
 
@@ -159,10 +171,10 @@ unionExplBindings e1 e2 =
 -- |Merge two interface binding sets
 unionInterBindings :: InterfaceBindings -> InterfaceBindings -> InterfaceBindings
 unionInterBindings i1 i2 =
-  let unionIns :: InterfaceBindings -> Name -> (Name, TypePoly, [(TypePoly, [Alt])]) -> InterfaceBindings
-      unionIns m k v@(_, _, prevAlts) = case M.lookup k m of
+  let unionIns :: InterfaceBindings -> Name -> (Name, (TypeVar, Qual Type), TypePoly, [(TypePoly, [Alt])]) -> InterfaceBindings
+      unionIns m k v@(_, _, _, prevAlts) = case M.lookup k m of
         Nothing        -> M.insert k v m
-        Just (cn, t, altss) -> M.insert k (cn, t, prevAlts ++ altss) m
+        Just (cn, tt, t, altss) -> M.insert k (cn, tt, t, prevAlts ++ altss) m
   in foldr (\(n, d) e -> unionIns e n d) i1 (M.toList i2)
 
 
@@ -216,14 +228,13 @@ processProgram prg = do
     intenv <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
       (buildInterfaceEnv intdefs impldefs)
 
-    let interfacedefmap = M.fromList $ fmap (\cd -> (interfacedefName cd, cd)) intdefs
-        impbnds = foldr unionBindingGroups (M.empty, M.empty, []) [uncurry implBindings $ (interfacedefmap M.! impldefInterface im, im) | im <- impldefs]
+    let intbnds = foldr unionInterBindings M.empty [interfaceBindings i | i <- intdefs]
 
-        intbnds = foldr unionBindingGroups (M.empty, M.empty, []) [interfaceBindings i | i <- intdefs]
+        impbnds = foldr unionBindingGroups (M.empty, M.empty, []) [implBindings intbnds im | im <- impldefs]
 
         topbnds = makeBindings $ fmap Left tdecls ++ fmap Right ddefs
 
-        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [intbnds, impbnds, topbnds]
+        allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [impbnds, topbnds]
 
     pure $ UntypedProgram
       { uprgDataMap = newtypeData newtypes

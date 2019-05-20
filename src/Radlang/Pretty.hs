@@ -13,7 +13,7 @@ prettyBnds ident p = DL.unlines $ flip fmap (M.toList p) $ \(n, (t, talts)) ->
   prefix ident <> T.unpack n <> " : " <> show t <> "\n" <> ((prettyTAlt ident n) =<< talts)
 
 prettyPBnds :: PolyBindings -> String
-prettyPBnds p = DL.unlines $ flip fmap (M.toList p) $ \(n, (_, snddl, thddl)) ->
+prettyPBnds p = DL.unlines $ flip fmap (M.toList p) $ \(n, (_, _, snddl, thddl)) ->
   (("FOR " <> T.unpack n <> " : " <> show (snddl) <> "\n")<>) $ DL.unlines $ flip fmap (thddl) $ \(t, talts) ->
   "POLY " <> T.unpack n <> " : " <> show t <> "\n" <> ((prettyTAlt 0 n) =<< talts)
 

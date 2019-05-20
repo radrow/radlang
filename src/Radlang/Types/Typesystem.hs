@@ -326,7 +326,6 @@ type Impl = Qual Pred
 data TypePoly = Forall [Kind] (Qual Type)
   deriving (Eq, Ord)
 
-
 instance Show TypePoly where
   show (Forall [] t) = show t
   show (Forall ks t) = show t <> " where " <>
