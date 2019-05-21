@@ -110,9 +110,10 @@ printEither (Right r) = prettyBnds 0 $ tprgBindings r
 
 
 ttest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBnds 0 . tprgBindings) $ parseRDL "XD" f >>= buildProgram . withIntro >>= typecheck (TypecheckerConfig True)
-ptest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyPBnds . tprgPolyBindings) $ parseRDL "XD" f >>= buildProgram >>= typecheck (TypecheckerConfig True)
+ptest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyPBnds . tprgPolyBindings) $ parseRDL "XD" f >>= buildProgram . withIntro >>= typecheck (TypecheckerConfig True)
 etest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsKok 0) $ do
   parsed <- parseRDL "XD" f
   built <- buildProgram . withIntro $ parsed
   tched <- typecheck (TypecheckerConfig True) $ built
   prgBindings <$> resolveProgram tched
+rtest f = readFile ("examples/" <> f <> ".rdl") >>= \f -> either (putStrLn . Prelude.show) (putStrLn . prettyBndsE 0 . M.unions . (fmap $ \(_, _, is) -> M.unions is) . uprgBindings) $ parseRDL "XD" f >>= buildProgram . withIntro

@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecursiveDo #-}
 module Radlang.InterfaceResolve where
 
 import qualified Data.Text as T
@@ -15,6 +16,7 @@ import Radlang.Types
 import Radlang.Pretty
 import Radlang.Typedefs
 import Radlang.Error
+import Radlang.DependencyAnalysis
 import Radlang.Typesystem.Typesystem
 
 import Debug.Trace
@@ -23,17 +25,23 @@ dictName :: Pred -> Text
 dictName (IsIn c t) = "@dict_" <> c <> "_" <> getName t
 
 resolveAssg :: (Qual Type, [TypedAlt]) -> Resolver [([Pattern], Expr)]
-resolveAssg ((prds :=> _), talts) =
+resolveAssg ((prds :=> _), talts) = do
+  ts <- asks fst
   flip mapM talts $ \(targs, te) -> do
-    tre <- resolve te
-    pure (fmap (PVar . dictName) prds ++ targs, tre)
+    let frees = S.unions $ fmap patternFree targs
+    withTypespace (foldr (\n m -> M.delete n m) ts frees)$ do
+      tre <- resolve te
+      pure (fmap (PVar . dictName) prds ++ targs, tre)
 
 resolveAssgs :: TypedBindings -> Resolver (Bindings, Typespace)
 resolveAssgs tb = do
   ts <- asks fst
   let newts = fmap fst tb <> ts
-  (mapped :: Bindings) <- withTypespace newts $ flip mapM tb $ resolveAssg
+  (mapped :: Bindings) <- withTypespace newts $ mapM resolveAssg tb
   pure (mapped, newts)
+
+polyTypespace :: PolyBindings -> Typespace
+polyTypespace = fmap (\(_, _, qt, _) -> qt)
 
 resolvePolyBindings :: PolyBindings -> Resolver Bindings
 resolvePolyBindings = fmap M.fromList . mapM resolvePolyBinding . M.toList
@@ -44,8 +52,6 @@ resolvePolyBinding (name, (iname, (iarg, _ :=> itype), (ps :=> t), _)) = do
   s <- mgu itype t
   let args = fmap (PVar . dictName) ps
       dtype = substitute s $ TypeVarWobbly iarg
-  traceM $ "SUBSTING " <> show t <> " AND " <> show itype <> " GOT " <> show s
-  traceM $ "MOVING " <> show iarg <> " TO " <> show (substitute s (TypeVarWobbly iarg))
   pure $ (name, [(args, Application (Val $ dictName $ IsIn iname dtype) (Val name))])
 
 resolveImpls :: PolyBindings -> Resolver (Bindings, DataMap)
@@ -54,9 +60,9 @@ resolveImpls pb = let asList = M.toList pb
 
 mergeDictMap :: [(Name, Data)] -> DataMap
 mergeDictMap = foldr folder M.empty where
-  folder (n, pd@(PolyDict dm)) prev = case M.lookup n prev of
+  folder (n, pd@(PolyDict _ dm)) prev = case M.lookup n prev of
     Nothing -> M.insert n pd prev
-    Just (PolyDict dm2) -> M.insert n (PolyDict $ M.union dm dm2) prev
+    Just (PolyDict _ dm2) -> M.insert n (PolyDict [] $ M.union dm dm2) prev
     Just boi -> wtf $ "dict map prev had this boi: " <> T.pack (show boi)
   folder (_, boi) _ = wtf $ "dict map had this boi: " <> T.pack (show boi)
 
@@ -73,7 +79,7 @@ implDict :: (Name, (Name, (TypeVar, Qual Type), Qual Type, [(Qual Type, [TypedAl
 implDict (n, (iname, (iarg, _ :=> itype), _, mimpls)) = flip mapM mimpls $ \(_ :=> qt, _) -> do
   s <- mgu qt itype
   let dictArg = substitute s $ TypeVarWobbly iarg
-  pure $ (dictName (IsIn iname dictArg), PolyDict $ M.singleton n (methodDictName (IsIn iname dictArg) n))
+  pure $ (dictName (IsIn iname dictArg), PolyDict [] $ M.singleton n (methodDictName (IsIn iname dictArg) n))
 
 getName :: Type -> Name
 getName (TypeVarWobbly (TypeVar n _)) = n
@@ -88,16 +94,6 @@ type Resolver = ExceptT ErrMsg (Reader (Typespace, InterfaceEnv))
 solvePreds :: [Pred] -> Resolver [Expr]
 solvePreds = mapM solvePred
 
-{-
-class A a where dupa :: a -> a
-instance A (Option Int) where dupa :: Option Int -> Option Int
-
-a
-
-s <- mgu (Option Int) a
-
-subst s a
--}
 
 solvePred :: Pred -> Resolver Expr
 solvePred p@(IsIn c t) = asks snd >>= \cl ->
@@ -129,31 +125,16 @@ resolve = \case
 
 resolveProgram :: TypedProgram -> Either ErrMsg Program
 resolveProgram tp = runResolver M.empty (tprgInterfaceEnv tp) $ do
-  ibnds <- resolvePolyBindings $ tprgPolyBindings tp
-  (bnds, _) <- resolveAssgs (tprgBindings tp `M.union` fmap (\(_, _, t, _) -> (t, [])) (tprgPolyBindings tp))
-  (imps, polyDmap) <- resolveImpls $ tprgPolyBindings tp
+  let tsp = polyTypespace (tprgPolyBindings tp)
+  rec
+    (bnds, ts) <- resolveAssgs (tprgBindings tp `M.union` fmap (\(_, _, t, _) -> (t, [])) (tprgPolyBindings tp))
+    ibnds <- withTypespace (M.union ts tsp) $ resolvePolyBindings $ tprgPolyBindings tp
+    (imps, polyDmap) <- withTypespace (M.union ts tsp) $ resolveImpls $ tprgPolyBindings tp
   pure Program
     { prgBindings = imps `M.union` ibnds `M.union` bnds
     , prgDataMap = polyDmap `M.union` tprgDataMap tp
     , prgPolyBindings = tprgPolyBindings tp
     }
-
-ci = M.fromList
-  [ ("D", [ [] :=> tRigid "Int"
-          , [IsIn "D" (tWobbly "~A")] :=> TypeApp (TypeVarRigid $ TypeVar "Option" (KFunc KType KType)) (tWobbly "~A")])
-  , ("C", [ [] :=> tRigid "Int"
-          , [IsIn "C" (tWobbly "~A")] :=> TypeApp (TypeVarRigid $ TypeVar "Option" (KFunc KType KType)) (tWobbly "~A")])
-  , ("W", [[] :=> (TypeVarRigid $ TypeVar "Option" (KFunc KType KType))])
-  ]
-
-ex :: TypedExpr
-ex =
-  TypedApplication ([IsIn "D" (tWobbly "d1")] :=> (tWobbly "d1"))
-  (TypedApplication ([IsIn "D" (tWobbly "d1")] :=> (fun (tWobbly "d1") (tRigid "Int")))
-    (TypedVal ([IsIn "D" (tWobbly "d1")] :=> fun (tRigid "Int") (fun (tWobbly "d1") (tRigid "Int"))) "f")
-    (TypedLit ([] :=> tRigid "Int") (LitInt 1))
-  )
-  (TypedVal ([IsIn "D" (tWobbly "d1")] :=> tWobbly "d1") "a")
 
 runResolver :: Typespace -> InterfaceEnv -> Resolver a -> Either ErrMsg a
 runResolver ts ie = flip runReader (ts, ie) .  runExceptT

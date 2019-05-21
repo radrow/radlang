@@ -230,6 +230,11 @@ eval = \case
     case fd of
       DataFunc name func ->
         withStackElems name $ func alazy
+      DataPolyDict load p -> case a of
+        Val v -> case M.lookup v p of
+          Just nv -> eval $ foldl Application (Val nv) (fmap Val $ reverse load)
+          Nothing -> pure $ PolyDict (v:load) p
+        b -> wtf $ "This is not method name: " <> T.pack (show b)
       _                  -> wtf $ "Call not a function! " <> T.pack (show fd)
   Let assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs

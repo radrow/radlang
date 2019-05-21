@@ -349,7 +349,10 @@ inferTypeBindingGroup (ints, es, iss) = do
   (tbindsPoly :: PolyBindings) <- fmap (fmap (map4f (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence
     $ M.toList ints <&> \(n, (cn, idata, tp, dds)) -> do
     tpinst <- freshInst tp
-    implems <- forM dds $ \(t, alts) -> (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (n, (t, alts))
+    implems <- forM dds $ \(t, alts) -> do
+      (prds :=> res) <- (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (n, (t, alts))
+      predsred <- reduce prds
+      pure (predsred :=> res)
     pure (n, (cn, idata, tpinst, implems))
 
   let qss = fmap getPreds fromExpls

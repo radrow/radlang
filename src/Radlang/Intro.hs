@@ -183,7 +183,7 @@ const c _ := c;;
 minusInt a b := plusInt a (negInt b);;
 
 fix : (~A -> ~A) -> ~A;;
--- fix f := let x := f x in x;;
+fix f := let x := f x in x;;
 
 or False False := False;;
 or _ _ := True;;

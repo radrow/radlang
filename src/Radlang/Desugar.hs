@@ -131,8 +131,8 @@ implBindings ib idef = -- Strategy: write once, forget what the fuck is going on
         $ impldefMethods idef -- get method definitions
 
       bnds = let folder (n, impl) prev =
-                   let (cname, (argname, methodtype), itype, impls) = maybe (wtf "implbind exploded 2") id $ M.lookup n prev
-                   in M.insert n (cname, (argname, methodtype), itype, (impl):impls) prev
+                   let (cname, (argname, methodtype), itype, mimpls) = maybe (wtf "implbind exploded 2") id $ M.lookup n prev
+                   in M.insert n (cname, (argname, methodtype), itype, (impl):mimpls) prev
              in foldr folder ib implbnds
 
   in (bnds, M.empty, [])
