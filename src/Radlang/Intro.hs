@@ -83,16 +83,16 @@ primitives =
     , DataFunc "manual force" $ \a ->
         force a >> pure (Strict $ DataFunc "return after manual force" pure)
     )
-  , ( "withDeepForced"
-    , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
-    , DataFunc "manual deep force" $ \a ->
-        deepForce a >> pure (Strict $ DataFunc "return after manual deep force" pure)
-    )
-  , ( "error"
-    , [] :=> (fun (tWobbly "~A") (tWobbly "~B"))
-    , DataFunc "error" $ \a ->
-        deepForce a >>= \d -> runtimeError ("thrown by the user: " <> T.pack (show d))
-    )
+  -- , ( "withDeepForced"
+  --   , [] :=> fun (tWobbly "~A") (fun (tWobbly "~B") (tWobbly "~B"))
+  --   , DataFunc "manual deep force" $ \a ->
+  --       deepForce a >> pure (Strict $ DataFunc "return after manual deep force" pure)
+  --   )
+  -- , ( "error"
+  --   , [] :=> (fun (tWobbly "~A") (tWobbly "~B"))
+  --   , DataFunc "error" $ \a ->
+  --       deepForce a >>= \d -> runtimeError ("thrown by the user: " <> T.pack (show d))
+  --   )
   , ( "catch"
     , [] :=> fun (tWobbly "~A") (fun (tWobbly "~A") (tWobbly "~A"))
     , func2 "catch" $ \d c -> fmap Strict $ catchError (force d) (const $ force c)
@@ -142,25 +142,26 @@ extendedPrimitives = primitives ++
     , DataFunc "charToInt" $ \d -> force d >>= \(DataChar c) ->
         pure $ Strict $ makeBool (c `elem` (" \t\n" :: String))
     )
-  , ( "readInt"
-    , [] :=> fun (tListOf tChar) tInt
-    , DataFunc "readInt" $ \l -> do
-        ll <- deepForce l
-        case ll of
-          (DataADT "Nil" []) -> runtimeError "Empty input for int read"
-          _ -> let go (DataADT "Nil" _) acc = acc
-                   go (DataADT "Cons" [Strict (DataChar c), Strict next]) acc =
-                     go next (acc * 10 + DC.ord c - DC.ord '0')
-                   go _ _ = wtf "readInt exploit"
-               in pure $ Strict $ DataInt $ go ll 0
-    )
+  -- , ( "readInt"
+  --   , [] :=> fun (tListOf tChar) tInt
+  --   , DataFunc "readInt" $ \l -> do
+  --       ll <- deepForce l
+  --       case ll of
+  --         (DataADT "Nil" []) -> runtimeError "Empty input for int read"
+  --         _ -> let go (DataADT "Nil" _) acc = acc
+  --                  go (DataADT "Cons" [Strict (DataChar c), Strict next]) acc =
+  --                    go next (acc * 10 + DC.ord c - DC.ord '0')
+  --                  go _ _ = wtf "readInt exploit"
+  --              in pure $ Strict $ DataInt $ go ll 0
+  --   )
   ]
 
 
 -- |Spaces that include all primitives
 primitiveSpace :: (M.Map Name Data, TypeEnv)
--- primitiveSpace = (M.empty, TypeEnv M.empty)
-primitiveSpace = foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
+-- primitiveSpace = const (M.empty, TypeEnv M.empty) $
+primitiveSpace =
+  foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
   folder (name, typ, def) (ps, ts) =
     ( M.insert name (Strict def) ps
     , TypeEnv $ M.insert name (quantifyAll typ) (types ts))
@@ -192,7 +193,7 @@ and True True := True;;
 and _ _ := False;;
 
 forced a := withForced a a;;
-deepForced a := withDeepForced a a;;
+-- deepForced a := withDeepForced a a;;
 |]
 
 

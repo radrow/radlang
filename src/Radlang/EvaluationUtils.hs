@@ -22,7 +22,7 @@ force (Lazy ns st i e) = do
     (withEvalStackElem ("forcing " <> T.pack (show i)) $ withNamespace ns e)
   putData i (Strict forced)
   pure forced
-force (PolyDict acc p) = pure $ DataPolyDict acc p
+force (PolyDict acc sup p) = pure $ DataPolyDict acc sup p
 
 -- |Get value by name and desired type
 dataByName :: Name -> Evaluator Data

@@ -61,13 +61,13 @@ unify t1 t2 = do
 newVar :: IdSupply m => Name -> Kind -> m Type
 newVar prefix k = do
   c <- newId
-  pure $ TypeVarWobbly $ TypeVar (prefix <> T.pack (show c)) k
+  pure $ TypeVarWobbly $ TypeVar ("#" <> prefix <> "_" <> T.pack (show c)) k
 
 
 -- |Create new type varaibles for each parameter of scheme
 freshInst :: IdSupply m => TypePoly -> m (Qual Type)
 freshInst (Forall ks qt) = do
-  ts <- mapM (newVar "_Inst_") ks
+  ts <- mapM (newVar "inst") ks
   pure $ instantiate ts qt
 
 
@@ -91,7 +91,7 @@ inferTypeExpr = \case
   UntypedApplication f a -> do
     (ps :=> tf) <- inferTypeExpr f
     (qs :=> ta) <- inferTypeExpr a
-    t <- newVar "_FunRes" KType
+    t <- newVar "funres" KType
     unify (fun ta t) tf
     pure (ps ++ qs :=> t)
 
@@ -146,9 +146,9 @@ inferTypeLiteral = \case
 -- |Infer pattern and get it's type and updated type env
 inferTypePattern :: Infer Pattern (TypeEnv, Type)
 inferTypePattern = \case
-  PVar i -> newVar "_PV_" KType >>= \v ->
+  PVar i -> newVar "var" KType >>= \v ->
     pure ([] :=> (TypeEnv $ M.singleton i (toTypePoly v), v))
-  PWildcard -> newVar "_PW" KType >>= \v -> pure ([] :=> (TypeEnv M.empty, v))
+  PWildcard -> newVar "w" KType >>= \v -> pure ([] :=> (TypeEnv M.empty, v))
   PAs i patt -> do
     (ps :=> ((TypeEnv ts), t)) <- inferTypePattern patt
     pure (ps :=> (TypeEnv $ M.insert i (toTypePoly t) ts, t))
@@ -156,7 +156,7 @@ inferTypePattern = \case
   PConstructor cname pats -> do
     sc <- lookupType cname
     (ps :=> (tspace, ts)) <- inferTypePatterns pats
-    t' <- newVar "_PC" KType
+    t' <- newVar "constr" KType
     (qs :=> t) <- freshInst sc
     unify t (foldr fun t' ts)
     pure (ps ++ qs :=> (tspace, t'))
@@ -247,29 +247,16 @@ candidates (v, qs) = getInterfaceEnv >>= \ce ->
      else pure []
 
 
--- |Check whether all ambiguities can be solved. If so, apply given function to ambiguities
---and first found candidates set
-withDefaults :: (HasInterfaceEnv m, MonadIO m)
-             => ([Ambiguity] -> [Type] -> b) -> [TypeVar] -> [Pred] -> m b
-withDefaults f vs ps = do
-  let vps = ambiguities vs ps
-  tss <- mapM candidates vps
-  case find (null . fst) (zip tss vps) of
-    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
-    Nothing -> pure $ f vps (fmap head tss)
-
-
 -- |Predicates that can be removed after ambiguities are solved
 defaultedPreds :: (HasInterfaceEnv m,
                    MonadIO m)
                => [TypeVar] -> [Pred] -> m [Pred]
-defaultedPreds = withDefaults (\vps _ -> join (fmap snd vps))
-
-
--- |Substitution to remove ambiguities used in toplevel inference
-defaultSubst :: (HasInterfaceEnv m, MonadIO m)
-             => [TypeVar] -> [Pred] -> m Substitution
-defaultSubst = withDefaults (\vps ts -> Subst $ M.fromList $ zip (fmap (tName . fst) vps) ts)
+defaultedPreds vs ps = do
+  let vps = ambiguities vs ps
+  tss <- mapM candidates vps
+  case find (null . fst) (zip tss vps) of
+    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
+    Nothing -> pure $ join (fmap snd vps)
 
 
 -- |Typecheck explicitly typed binding
@@ -289,7 +276,7 @@ inferTypeExpl (name, (typeDeclared, alts)) = do
   if | typeDeclared /= typeQuantified ->
          typecheckError $ "Signature is too general for " <> name
      | not (null rs) -> typecheckError $ "Context is too weak for " <> name
-     | otherwise -> pure ( predsUnified -- TODO Why was it ds originally?
+     | otherwise -> pure ( predsUnified
                           :=> (typeUnified, talts))
 
 
@@ -302,7 +289,7 @@ restricted bs = any simple bs where
 -- |Infer type of binding without type declaration
 inferTypeImpl :: Infer ImplBindings (TypeEnv, TypedBindings, PolyBindings)
 inferTypeImpl bs = do
-  ts <- mapM (\(n, _) -> newVar ("_impl_" <> n) KType) $ M.toList bs
+  ts <- mapM (\(n, _) -> newVar ("infer" <> n) KType) $ M.toList bs
   as <- getTypeEnv
   let is = M.keys bs
       scs = fmap toTypePoly ts
@@ -343,7 +330,6 @@ inferTypeBindingGroup (ints, es, iss) = do
         TypeEnv $ foldr (\(v, sc) m -> M.insert v sc m)
         M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (_, _, t, _)) -> (n, t)) (M.toList ints))
   (ps :=> (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
-
   let map4f f (a, b, c, d) = (a, b, c, f d)
   (fromExpls :: [Qual (Type, [TypedAlt])]) <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
   (tbindsPoly :: PolyBindings) <- fmap (fmap (map4f (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence

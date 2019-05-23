@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
--- |This module is responsible for evaluation of Expr tree into Data
+-- |This module is responsible for evaluation of EvalExpr tree into Data
 module Radlang.Evaluator where
 
 import           Control.Applicative
@@ -37,7 +37,7 @@ newLazy e = do
 
 
 -- |Create new lazy thunk from expression and return id assigned to it
-lazyExpr :: Expr -> Evaluator Data
+lazyExpr :: EvalExpr -> Evaluator Data
 lazyExpr e = do
   newLazy (eval e)
 
@@ -59,14 +59,15 @@ newData d = do
 
 
 -- |Perform deep evaluation and remove all thunks from the data
-deepForce :: Data -> Evaluator StrictData
-deepForce (Strict d) = case d of
-  DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
-  _              -> pure d
-deepForce (Lazy ns st i e) = do
-  forced <- deepForce =<< (withDefStacktrace st $ withNamespace ns e)
-  putData i (Strict forced)
-  pure forced
+-- deepForce :: Data -> Evaluator StrictData
+-- deepForce (Strict d) = case d of
+--   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
+--   _              -> pure d
+-- deepForce (Lazy ns st i e) = do
+--   forced <- deepForce =<< (withDefStacktrace st $ withNamespace ns e)
+--   putData i (Strict forced)
+--   pure forced
+-- deepForce (PolyDict load sup ns) = pure $ DataPolyDict load sup ns
 
 
 -- |Data substitution used to resolve pattern matching
@@ -79,12 +80,12 @@ unionSubst (DataSubst s1) (DataSubst s2) = DataSubst $ M.union s1 s2
 
 
 -- |Build data definition from bindings
-processSingleBindings :: DataId -> Name -> [([Pattern], Expr, DataSubst)] -> Evaluator Data
+processSingleBindings :: DataId -> Name -> [([Pattern], EvalExpr, DataSubst)] -> Evaluator Data
 processSingleBindings =
   let domainGuard :: Evaluator a
       domainGuard = runtimeError "Out of domain"
 
-      bindings :: Evaluator Data -> Int -> DataId -> Name -> [([Pattern], Expr, DataSubst)]
+      bindings :: Evaluator Data -> Int -> DataId -> Name -> [([Pattern], EvalExpr, DataSubst)]
                -> Evaluator Data
       bindings prevGuard level dataid name alts =
         let (finalized, functions) = partition (\(ps, _, _) -> null ps) alts
@@ -100,7 +101,7 @@ processSingleBindings =
               | otherwise -> getNamespace >>= \myNs ->
                   let asFunction :: Data -> Evaluator Data
                       asFunction d = do
-                        (conts :: [([Pattern], Expr, DataSubst)]) <-
+                        (conts :: [([Pattern], EvalExpr, DataSubst)]) <-
                           let extractor ((p:ps), te, s) = do
                                 mdsub <- matchDataToPattern p d
                                 pure $ fmap (\dsub -> (ps, te, unionSubst dsub s)) mdsub
@@ -133,39 +134,6 @@ processBindings bnevst = do
 
     forM_ (zip ievst dats) $ uncurry putData
   pure recNs
-
-
--- |Build dataspace and namespace from set of polymorphic bindings
--- processPolyBindings :: PolyBindings -> Evaluator Namespace
--- processPolyBindings pb = do
---   let polylist :: [(Name, (Qual Type, [(Qual Type, [TypedAlt])]))]
---       polylist = M.toList pb
-
---       -- Get single method definition and create dictionary reader for it
---       makeMethod :: (Name, Qual Type, [(Qual Type, [TypedAlt])]) -> Evaluator Namespace
---       makeMethod (n, t, defs) = do
---         -- For each method instance (its type, its alts)
---         prens <- forM defs $ \(qt, alts) -> do
---           let dict :: Name
---               dict = case getPreds t \\ getPreds qt of
---                 [cp] -> dictName cp
---                 x -> wtf $ "Class pred failure: " <> T.pack (show x)
-
---               impls :: Namespace
---               impls = undefined
-
---               method = DataFunc n $ \ldic -> do
---                 force ldic >>= \case
---                   DataPolyDict dic -> withNamespace dic $ eval (Val n)
---                   x -> wtf $ "This is not poly dict: " <> T.pack (show x)
---           i <- newData $ Strict method
-
---           pure $ M.insert n i impls
---         pure $ foldr M.union M.empty prens
-
---   methodNss <- traverse makeMethod $ fmap (\(a,(b,c)) -> (a,b,c)) polylist
---   pure $ foldr M.union M.empty methodNss
-
 
 
 -- |Try to match data to pattern and return unifying substitution if possible
@@ -215,9 +183,10 @@ applyDataSubst (DataSubst sub) = do
 
 
 -- |Evaluate typed expression
-eval :: Expr -> Evaluator Data
+eval :: EvalExpr -> Evaluator Data
 eval = \case
   Val n -> dataByName n
+  Dict n -> dataByName n
   Lit l -> case l of
     LitInt i -> pure $ Strict $ DataInt i
     LitString s ->
@@ -230,11 +199,18 @@ eval = \case
     case fd of
       DataFunc name func ->
         withStackElems name $ func alazy
-      DataPolyDict load p -> case a of
-        Val v -> case M.lookup v p of
-          Just nv -> eval $ foldl Application (Val nv) (fmap Val $ reverse load)
-          Nothing -> pure $ PolyDict (v:load) p
-        b -> wtf $ "This is not method name: " <> T.pack (show b)
+      DataPolyDict load sups p -> case a of
+        Val v ->
+          let searchMethod load' sups' p' =
+                case M.lookup v p' of
+                  Just nv -> fmap Just $ eval $ foldl Application (Val nv) (fmap Val $ reverse load')
+                  Nothing -> fmap msum $ flip mapM sups' $ \s ->
+                    dataByName s >>= \case
+                    PolyDict load'' sups'' p'' -> searchMethod load'' sups'' p''
+                    bad -> wtf $ "Not poly dict: " <> T.pack (show bad)
+          in fromMaybe (wtf $ "Method not found " <> v) <$> searchMethod load sups p
+        Dict d -> pure $ PolyDict (d:load) [] p
+        b -> wtf $ "This is not method name nor a dict: " <> T.pack (show b)
       _                  -> wtf $ "Call not a function! " <> T.pack (show fd)
   Let assgs e -> withStackElems "let expression" $ do
     assgsNs <- processBindings assgs
@@ -244,11 +220,10 @@ eval = \case
 evalProgram :: Program -> Evaluator StrictData
 evalProgram tp = do
   ns <- processBindings $ prgBindings tp
-  -- ps <- withNamespace ns $ processPolyBindings $ prgPolyBindings tp
   case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->
-      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
+      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= force >>= \d->
       gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> pure d
 
 buildSpace :: DataMap -> Evaluator Namespace

@@ -47,11 +47,11 @@ prettyBndsKok ident p = DL.unlines $ flip fmap (M.toList p) $ \(n, alts) ->
   prefix ident <> T.unpack n <> "\n" <> ((prettyAltKok ident n) =<< alts)
 
 
-prettyAltKok :: Int -> Name -> ([Pattern], Expr) -> String
+prettyAltKok :: Int -> Name -> ([Pattern], EvalExpr) -> String
 prettyAltKok ident n (args, e) = prefix ident <> T.unpack n <> " " <> show args <> " :=\n" <>
   prettyKok (ident + 4) e
 
-prettyKok :: Int -> Expr -> String
+prettyKok :: Int -> EvalExpr -> String
 prettyKok ident = \case
   Let bnds te -> prefix ident <> "let\n" <> prettyBndsKok (ident + 4) bnds
     <> prefix ident <> "in\n" <> prettyKok ident te

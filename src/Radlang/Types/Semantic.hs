@@ -44,11 +44,12 @@ data TypedExpr
   | TypedLet (Qual Type) (Map Name (Qual Type, [([Pattern], TypedExpr)])) TypedExpr
   deriving (Eq, Ord)
 
-data Expr
+data EvalExpr
   = Val Name
   | Lit Literal
-  | Application Expr Expr
-  | Let Bindings Expr
+  | Application EvalExpr EvalExpr
+  | Let Bindings EvalExpr
+  | Dict Name
 
 instance Show UntypedExpr where
   show = \case
@@ -64,12 +65,12 @@ instance Show TypedExpr where
     TypedApplication _ f a -> "(" <> show f <> ") " <> show a
     TypedLet _ bn e -> "let " <> show bn <> " in " <> show e
 
-complex :: Expr -> Bool
+complex :: EvalExpr -> Bool
 complex = \case
   Application _ _ -> True
   Let _ _ -> True
   _ -> False
-instance Show Expr where
+instance Show EvalExpr where
   show = \case
     Val v -> T.unpack v
     Lit l -> show l
@@ -77,6 +78,7 @@ instance Show Expr where
       (if complex f then "(" <> show f <> ")" else show f) <> " " <>
       (if complex a then "(" <> show a <> ")" else show a)
     Let bn e -> "let " <> show bn <> " in " <> show e
+    Dict d -> "@" <> T.unpack d
 
 instance IsType TypedExpr where
   free = free . getExprType
@@ -102,13 +104,13 @@ getExprType = \case
 data Data
   = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
-  | PolyDict [Name] (Map Name Name)
+  | PolyDict [Name] [Name] (Map Name Name)
 
 instance Show Data where
   show = \case
     Lazy _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
-    PolyDict _ ns -> "<dict containing " <> show (keys ns) <> ">"
+    PolyDict _ _ ns -> "<dict containing " <> show (keys ns) <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -117,7 +119,7 @@ data StrictData
   | DataChar Char
   | DataADT Name [Data]
   | DataFunc Name (Data -> Evaluator Data)
-  | DataPolyDict [Name] (Map Name Name)
+  | DataPolyDict [Name] [Name] (Map Name Name)
 
 instance Show StrictData where
   show = \case
@@ -128,7 +130,7 @@ instance Show StrictData where
       T.unpack n <> (((" "<>) . show) =<< args) <>
       (if Prelude.null args then "" else ")")
     DataFunc n _ -> "<func " <> T.unpack n <> ">"
-    DataPolyDict _ ns -> "<dict containing " <> show (keys ns) <> ">"
+    DataPolyDict _ _ ns -> "<dict containing " <> show (keys ns) <> ">"
 
 
 -- |Left and right side of a value/function definition
@@ -172,7 +174,7 @@ type TypedBindings = Map Name (Qual Type, [TypedAlt])
 type PolyBindings = Map Name (Name, (TypeVar, Qual Type), Qual Type, [(Qual Type, [TypedAlt])])
 
 
-type Bindings = Map Name [([Pattern], Expr)]
+type Bindings = Map Name [([Pattern], EvalExpr)]
 
 
 type DataMap = Map Name Data
