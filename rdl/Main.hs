@@ -26,7 +26,7 @@ main = do
         liftIO $ putStrLn "Typechecking..."
         tprg <- liftEither $ typecheck (TypecheckerConfig True) uprg
         liftIO $ putStrLn "Resolving..."
-        prg <- liftEither $ runResolver (resolveProgram tprg)
+        prg <- liftEither $ resolveProgram tprg
         liftIO $ putStrLn "Running...\n"
         liftEither $ runProgram prg
   case result of

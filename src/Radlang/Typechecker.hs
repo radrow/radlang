@@ -264,7 +264,7 @@ defaultSubst vs ps = do
   let vps = ambiguities vs ps
   tss <- mapM candidates vps
   case find (null . fst) (zip tss vps) of
-    Just (_, bad) -> typecheckError $ "DefSubst: Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
+    Just (_, bad) -> typecheckError $ "Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
     Nothing -> pure $
       Subst $ M.fromList $ zip (map ((\(TypeVar n _) -> n) . fst) vps) (map head tss)
 
@@ -284,11 +284,6 @@ inferTypeExpl (name, (typeDeclared, alts)) = do
   ps' <- filterM (\x -> not <$> entail predsUnified x) (substitute s inferredPreds)
   (ds, rs) <- split freeOutside freeInside ps'
   predsUnifiedReduced <- reduce predsUnified
-  -- dbg $ "FOR : " <> T.unpack name
-  -- dbg $ "PS: " <> show ps'
-  -- dbg $ "INFERRED: " <> show (substitute s inferredPreds)
-  -- dbg $ "DS: " <> show ds
-  -- dbg $ "RS: " <> show rs
   if | typeDeclared /= typeQuantified ->
          typecheckError $ "Signature is too general for " <> name
      | not (null rs) -> typecheckError $ "Context is too weak for " <> name
