@@ -259,8 +259,18 @@ defaultedPreds vs ps = do
     Nothing -> pure $ join (fmap snd vps)
 
 
+defaultSubst :: (HasInterfaceEnv m, MonadIO m) => [TypeVar] -> [Pred] -> m Substitution
+defaultSubst vs ps = do
+  let vps = ambiguities vs ps
+  tss <- mapM candidates vps
+  case find (null . fst) (zip tss vps) of
+    Just (_, bad) -> typecheckError $ "DefSubst: Cannot resolve ambiguity: candidates for " <> T.pack (show bad) <> " are empty"
+    Nothing -> pure $
+      Subst $ M.fromList $ zip (map ((\(TypeVar n _) -> n) . fst) vps) (map head tss)
+
+
 -- |Typecheck explicitly typed binding
-inferTypeExpl :: Infer ExplBinding (Type, [TypedAlt])
+inferTypeExpl :: Infer ExplBinding (Qual Type, [TypedAlt])
 inferTypeExpl (name, (typeDeclared, alts)) = do
   qt@(tpreds :=> t) <- freshInst typeDeclared
   (inferredPreds :=> (_, talts)) <- inferTypeAlts qt alts
@@ -272,12 +282,17 @@ inferTypeExpl (name, (typeDeclared, alts)) = do
       freeInside = free typeUnified \\ freeOutside
       typeQuantified = quantify freeInside (predsUnified :=> typeUnified)
   ps' <- filterM (\x -> not <$> entail predsUnified x) (substitute s inferredPreds)
-  (_, rs) <- split freeOutside freeInside ps'
+  (ds, rs) <- split freeOutside freeInside ps'
+  predsUnifiedReduced <- reduce predsUnified
+  -- dbg $ "FOR : " <> T.unpack name
+  -- dbg $ "PS: " <> show ps'
+  -- dbg $ "INFERRED: " <> show (substitute s inferredPreds)
+  -- dbg $ "DS: " <> show ds
+  -- dbg $ "RS: " <> show rs
   if | typeDeclared /= typeQuantified ->
          typecheckError $ "Signature is too general for " <> name
      | not (null rs) -> typecheckError $ "Context is too weak for " <> name
-     | otherwise -> pure ( predsUnified
-                          :=> (typeUnified, talts))
+     | otherwise -> pure ( ds :=> (predsUnifiedReduced :=> typeUnified, talts))
 
 
 -- |Implicit binding set is restricted when any of its members has alt with no explicit arguments
@@ -331,8 +346,8 @@ inferTypeBindingGroup (ints, es, iss) = do
         M.empty (fmap (\(n, (t, _)) -> (n, t)) (M.toList es) ++ fmap (\(n, (_, _, t, _)) -> (n, t)) (M.toList ints))
   (ps :=> (as'', tbindsImp, _)) <- withTypeEnv (as' <> as) $ inferTypeSeq inferTypeImpl iss
   let map4f f (a, b, c, d) = (a, b, c, f d)
-  (fromExpls :: [Qual (Type, [TypedAlt])]) <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
-  (tbindsPoly :: PolyBindings) <- fmap (fmap (map4f (fmap (\(q :=> (t, a)) -> (q :=> t, a)))) . M.fromList) $ sequence
+  (fromExpls :: [Qual (Qual Type, [TypedAlt])]) <- mapM (withTypeEnv (as'' <> as' <> as) . inferTypeExpl) (M.toList es)
+  (tbindsPoly :: PolyBindings) <- fmap (fmap (map4f (fmap getQualified)) . M.fromList) $ sequence
     $ M.toList ints <&> \(n, (cn, idata, tp, dds)) -> do
     tpinst <- freshInst tp
     implems <- forM dds $ \(t, alts) -> do
@@ -343,7 +358,7 @@ inferTypeBindingGroup (ints, es, iss) = do
 
   let qss = fmap getPreds fromExpls
       tbindsExp :: TypedBindings
-      tbindsExp = M.fromList $ zipWith (\(n, _) (q :=> (t, talt)) -> (n, (q :=> t, talt))) (M.toList es) fromExpls
+      tbindsExp = M.fromList $ zipWith (\(n, _) (_ :=> ttt) -> (n, ttt)) (M.toList es) fromExpls
 
   pure (ps ++ join qss
        :=> (as'' <> as'
@@ -366,8 +381,16 @@ inferTypeSeq ti = \case
 -- |Infer types of multiple independent binding groups
 inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO (TypedBindings, PolyBindings)
 inferTypeBindingGroups bgs = do
-  (_ :=> (_, tb, pb)) <- inferTypeSeq inferTypeBindingGroup bgs
-  pure (tb, pb)
+  (ps :=> (_, tb, pb)) <- inferTypeSeq inferTypeBindingGroup bgs
+  s <- getSubst
+  rs <- reduce (substitute s ps)
+  s' <- defaultSubst [] rs
+  let dsub :: IsType t => t -> t
+      dsub = substitute (s' <> s)
+      stb = fmap (\(a, b) -> (dsub a, fmap (fmap dsub) b)) tb
+      spb = fmap (\(a, (b1, b2), c, d) ->
+                     (a, (b1, b2), dsub c, fmap (\(qt, im) -> (dsub qt, fmap (fmap dsub) im)) d)) pb
+  pure (stb, spb)
 
 
 -- |Evaluation of typechecker

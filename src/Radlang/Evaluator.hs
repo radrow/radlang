@@ -59,15 +59,15 @@ newData d = do
 
 
 -- |Perform deep evaluation and remove all thunks from the data
--- deepForce :: Data -> Evaluator StrictData
--- deepForce (Strict d) = case d of
---   DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
---   _              -> pure d
--- deepForce (Lazy ns st i e) = do
---   forced <- deepForce =<< (withDefStacktrace st $ withNamespace ns e)
---   putData i (Strict forced)
---   pure forced
--- deepForce (PolyDict load sup ns) = pure $ DataPolyDict load sup ns
+deepForce :: Data -> Evaluator StrictData
+deepForce (Strict d) = case d of
+  DataADT n args -> DataADT n . fmap Strict <$> mapM deepForce args
+  _              -> pure d
+deepForce (Lazy ns st i e) = do
+  forced <- deepForce =<< (withDefStacktrace st $ withNamespace ns e)
+  putData i (Strict forced)
+  pure forced
+deepForce (PolyDict load sup ns) = pure $ DataPolyDict load sup ns
 
 
 -- |Data substitution used to resolve pattern matching
@@ -195,7 +195,8 @@ eval = \case
     LitChar c -> pure $ Strict $ DataChar c
   Application f a -> do
     fd <- force =<< eval f
-    alazy <- lazyExpr a
+    alazy <- fmap Strict $force =<< eval a -- lazyExpr a
+    traceM $ "APPLYING " <> show fd <> " TO " <> show alazy
     case fd of
       DataFunc name func ->
         withStackElems name $ func alazy
@@ -203,13 +204,18 @@ eval = \case
         Val v ->
           let searchMethod load' sups' p' =
                 case M.lookup v p' of
-                  Just nv -> fmap Just $ eval $ foldl Application (Val nv) (fmap Val $ reverse load')
+                  Just nv -> fmap Just $ do
+                    ns <- getNamespace
+                    withNamespace (M.fromList load' <> ns) $ eval $ foldl Application (Val nv) (fmap Val $ reverse (map fst load'))
                   Nothing -> fmap msum $ flip mapM sups' $ \s ->
                     dataByName s >>= \case
-                    PolyDict load'' sups'' p'' -> searchMethod load'' sups'' p''
+                    PolyDict _ sups'' p'' -> searchMethod load' sups'' p''
                     bad -> wtf $ "Not poly dict: " <> T.pack (show bad)
-          in fromMaybe (wtf $ "Method not found " <> v) <$> searchMethod load sups p
-        Dict d -> pure $ PolyDict (d:load) [] p
+          in fromMaybe (wtf $ "Method not found: \"" <> v <> "\" in " <> T.pack (show fd) <> " known as " <> T.pack (show f))
+             <$> searchMethod load sups p
+        Dict d -> do
+          i <- idByName d
+          pure $ PolyDict ((d, i):load) sups p
         b -> wtf $ "This is not method name nor a dict: " <> T.pack (show b)
       _                  -> wtf $ "Call not a function! " <> T.pack (show fd)
   Let assgs e -> withStackElems "let expression" $ do
@@ -223,7 +229,7 @@ evalProgram tp = do
   case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->
-      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= force >>= \d->
+      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
       gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> pure d
 
 buildSpace :: DataMap -> Evaluator Namespace

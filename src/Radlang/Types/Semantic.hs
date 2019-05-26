@@ -104,13 +104,13 @@ getExprType = \case
 data Data
   = Lazy Namespace DefStacktrace DataId (Evaluator Data)
   | Strict StrictData
-  | PolyDict [Name] [Name] (Map Name Name)
+  | PolyDict [(Name, DataId)] [Name] (Map Name Name)
 
 instance Show Data where
   show = \case
     Lazy _ _ i _ -> "<lazy " <> show i <> ">"
     Strict d -> show d
-    PolyDict _ _ ns -> "<dict containing " <> show (keys ns) <> ">"
+    PolyDict _ sup ns -> "<dict containing " <> show (keys ns) <> " sups: " <> show sup <> ">"
 
 
 -- |Value that is in weak-head-normal-form
@@ -119,7 +119,7 @@ data StrictData
   | DataChar Char
   | DataADT Name [Data]
   | DataFunc Name (Data -> Evaluator Data)
-  | DataPolyDict [Name] [Name] (Map Name Name)
+  | DataPolyDict [(Name, DataId)] [Name] (Map Name Name)
 
 instance Show StrictData where
   show = \case
@@ -130,7 +130,7 @@ instance Show StrictData where
       T.unpack n <> (((" "<>) . show) =<< args) <>
       (if Prelude.null args then "" else ")")
     DataFunc n _ -> "<func " <> T.unpack n <> ">"
-    DataPolyDict _ _ ns -> "<dict containing " <> show (keys ns) <> ">"
+    DataPolyDict load _ ns -> "<dict containing " <> show (keys ns) <> " load: " <> show load <> ">"
 
 
 -- |Left and right side of a value/function definition

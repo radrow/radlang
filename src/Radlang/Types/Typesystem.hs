@@ -268,7 +268,7 @@ data TypeVar = TypeVar {tName :: Name, tKind :: Kind}
 
 instance Show TypeVar where
   show (TypeVar t KType) = show t
-  show (TypeVar t k) = "(" <> show t <> " : " <> show k <> ")"
+  show (TypeVar t k) = "(" <> T.unpack t <> " : " <> show k <> ")"
 
 
 instance HasKind TypeVar where

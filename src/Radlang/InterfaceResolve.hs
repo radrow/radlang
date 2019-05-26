@@ -49,6 +49,10 @@ dictName :: Pred -> Text
 dictName (IsIn c t) = "dict_" <> c <> "_" <> getName t
 
 
+methodDictName :: Pred -> Name -> Name
+methodDictName (IsIn c t) n = "@impl_" <> n <> "_for_" <> c <> "_" <> getName t
+
+
 resolveAssg :: (Qual Type, [TypedAlt]) -> Resolver [([Pattern], EvalExpr)]
 resolveAssg ((prds :=> _), talts) = do
   ts <- getTypespace
@@ -96,10 +100,6 @@ mergeDictMap = foldr folder M.empty where
     Just (PolyDict _ _ dm2) -> M.insert n (PolyDict [] sups $ M.union dm dm2) prev
     Just boi -> wtf $ "dict map prev had this boi: " <> T.pack (show boi)
   folder (_, boi) _ = wtf $ "dict map had this boi: " <> T.pack (show boi)
-
-
-methodDictName :: Pred -> Name -> Name
-methodDictName p n = dictName p <> "_" <> n
 
 
 implBind :: (Name, (Name, (TypeVar, Qual Type), Qual Type, [(Qual Type, [TypedAlt])])) -> Resolver Bindings

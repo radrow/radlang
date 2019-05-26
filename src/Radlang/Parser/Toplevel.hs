@@ -88,7 +88,7 @@ patternSimple :: Parser Pattern
 patternSimple = msum $
   [ PLit <$> literal
   , pure PWildcard <* operator "_"
-  , try $ PAs <$> valName <*> (char '@' >> brac pattern)
+  , try $ PAs <$> valName <*> (char '=' >> brac pattern)
   , PVar <$> valName
   , flip PConstructor [] <$> constructorName
   , patternList
