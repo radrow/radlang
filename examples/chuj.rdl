@@ -1,0 +1,7 @@
+interface I (~F : Type -> Type) {
+  i : ~A -> ~F ~A;;
+};;
+
+impl Option for I {
+  i x := Some x;;
+};;

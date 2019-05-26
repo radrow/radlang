@@ -1,33 +1,14 @@
-interface C (~C : Type) {
-  c : ~C -> ~C;;
+interface A (~A : Type) {
+  a : ~A -> ~A;;
 };;
-impl Int for C {
-  c x := x;;
+
+interface B (~A : Type) implies A {
+  b : ~A -> ~A;;
 };;
-interface D (~C : Type) {
-  d : ~C -> ~C;;
-};;
-impl Int for D {
-  d x := x;;
-};;
-newtype Option (~A : Type) := Some ~A | None;;
-impl ~A is D | Option ~A for D {d x := x;;
-}
-;;
-impl ~A is C | Option ~A for C {c x := x;;
-}
-;;
 
-const a b := a;;
+impl Int for A { a x := 1;; };;
+impl Int for B { b x := 2;; };;
 
-dd x y := d (const (c x) (c y));;
+f x := plusInt (a x) (b x);;
 
-g x := dd 1 x;;
-
-zz := d (Some 1);;
-
-{-
-
-zz [] :=
-    ((d (@dict_D_Option @dict_D_Int)) (Some LitInt 1))
--}
+main := f 1;;

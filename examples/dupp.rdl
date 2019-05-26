@@ -1,0 +1,69 @@
+
+
+interface Endofunctor (~F : Type -> Type) {
+  map : (~A -> ~B) -> ~F ~A -> ~F ~B;;
+};;
+
+interface AppFunctor (~F : Type -> Type) {
+  unit : ~A -> ~F ~A;;
+  ap : ~F (~A -> ~B) -> ~F ~A -> ~F ~B;;
+};;
+
+interface Monad (~F : Type -> Type) {
+  bind : ~F ~A -> (~A -> ~F ~B) -> ~F ~B;;
+};;
+
+
+comp f g x := f (g x);;
+fst (Pair a _) := a;;
+snd (Pair _ a) := a;;
+
+newtype State (~S : Type) (~A : Type) := State (~S -> Pair ~S ~A);;
+runState (State s) := s;;
+evalState fs s := snd (runState fs s);;
+execState fs s := fst (runState fs s);;
+
+impl State ~S for Endofunctor {
+  map f (State sf) :=
+    State ( \s -> match (sf s) with
+      | Pair s a -> (Pair s (f a))
+      );;
+};;
+
+impl State ~S for AppFunctor {
+  unit x :=  State (\s -> (Pair s x));;
+  ap (State f) (State k) := State (\s ->
+    let fp := f s
+      | kp := k (fst fp)
+    in (Pair (fst kp) ((snd fp) (snd kp)))
+    );;
+};;
+
+impl State ~S for Monad {
+  bind (State m) f := State (\s ->
+    let mp := m s
+    in runState (f (snd mp)) (fst mp)
+    );;
+};;
+
+lift2 : ~M is Endofunctor, ~M is AppFunctor | (~A -> ~B -> ~C) -> ~M ~A -> ~M ~B -> ~M ~C;;
+lift2 f a b := ap (map f a) b;;
+get := State (\s -> (Pair s s));;
+put x := State (\s -> (Pair x 0));;
+forM Nil _ := unit Nil;;
+forM (Cons h t) f := lift2 Cons (f h) (forM t f);;
+range 0 := Nil;;
+range n := Cons n (range (minusInt n 1));;
+
+fib : Int -> State (Pair Int Int) Int;;
+fib n := for
+{ void <- forM (range n) (const (for
+  { p <- get
+  | void <- put (Pair (snd p) (plusInt (fst p) (snd p)))
+  } unit 0
+  ))
+} map fst get
+;;
+
+main : Int;;
+main := evalState (fib 10) (Pair 0 1);;
