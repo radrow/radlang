@@ -195,7 +195,7 @@ eval = \case
     LitChar c -> pure $ Strict $ DataChar c
   Application f a -> do
     fd <- force =<< eval f
-    alazy <- fmap Strict $force =<< eval a -- lazyExpr a
+    alazy <- lazyExpr a
     traceM $ "APPLYING " <> show fd <> " TO " <> show alazy
     case fd of
       DataFunc name func ->
@@ -216,6 +216,11 @@ eval = \case
         Dict d -> do
           i <- idByName d
           pure $ PolyDict ((d, i):load) sups p
+        Application d1 d2 -> case alazy of
+          Lazy _ _ i _ -> do
+            let newname = T.pack (show d1 <> show d2)
+            pure $ PolyDict ((newname, i):load) sups p
+          _ -> wtf "Totally impossible lazy exploit"
         b -> wtf $ "This is not method name nor a dict: " <> T.pack (show b)
       _                  -> wtf $ "Call not a function! " <> T.pack (show fd)
   Let assgs e -> withStackElems "let expression" $ do

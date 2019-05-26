@@ -65,6 +65,12 @@ primitives =
     , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) ->
         pure $ Strict $ makeBool (a == b)
     )
+  , ("ltInt"
+    , [] :=> fun tInt (fun tInt tBool)
+    , strictFunc2 "eqInt" $ \(DataInt a) (DataInt b) ->
+        pure $ Strict $ makeBool (a < b)
+    )
+
   , ("eqChar"
     , [] :=> fun tChar (fun tChar tBool)
     , strictFunc2 "eqChar" $ \(DataChar a) (DataChar b) ->
