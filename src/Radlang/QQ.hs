@@ -4,7 +4,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-module Radlang.QQ where
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Radlang.QQ(rawrdl) where
 
 import Data.Generics
 import qualified Data.Text as T
@@ -17,7 +18,6 @@ import Text.Megaparsec.Char
 import Radlang.Parser
 import Radlang.Types hiding (Data)
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 deriving instance Data RawProgram
 deriving instance Data ErrMsg
 deriving instance Data TypedExpr
@@ -56,12 +56,12 @@ deriving instance (Data a) => Data (Qual a)
 
 -- |Qoter of RawProgram
 rawrdl :: QuasiQuoter
-rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp }
+rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp, quotePat = undefined, quoteDec = undefined, quoteType = undefined}
 
 
 -- |Parser for QuasiQuoting
 parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
-parseRawrdl (file, line, col) s =
+parseRawrdl (file, _line, _col) s =
   let parser = skipMany controlChar *> rawProgram <* eof
   in case parse parser file s of
     Left e -> fail $ let
@@ -71,11 +71,12 @@ parseRawrdl (file, line, col) s =
     Right p -> pure p
 
 
-
+-- |Resolving QQ problems with Text part 1
 liftText :: T.Text -> Q Exp
 liftText txt = AppE (VarE 'T.pack) <$> lift (T.unpack txt)
 
 
+-- |Resolving QQ problems with Text part 2
 liftDataWithText :: Data a => a -> Q Exp
 liftDataWithText = dataToExpQ (\a -> liftText <$> cast a)
 

@@ -1,6 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
 -- |Types-related parsing
-
+{-# LANGUAGE FlexibleContexts #-}
 module Radlang.Parser.Type where
 
 import           Control.Monad

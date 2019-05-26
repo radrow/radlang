@@ -1,3 +1,4 @@
+-- |Ugly printing modules. Useful for debugging
 module Radlang.Pretty where
 
 import Radlang.Types

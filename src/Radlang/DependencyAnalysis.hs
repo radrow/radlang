@@ -1,4 +1,4 @@
--- |This module provides utilities to discover dependencies between objects in the program
+-- |Utilities to discover dependencies between objects in the program
 module Radlang.DependencyAnalysis where
 
 import           Data.Graph

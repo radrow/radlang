@@ -1,3 +1,4 @@
+-- |Parsers of objects that appear in toplevel
 module Radlang.Parser.Toplevel where
 
 import           Control.Monad

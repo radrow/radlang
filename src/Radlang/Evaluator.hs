@@ -2,7 +2,7 @@
 {-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- |This module is responsible for evaluation of EvalExpr tree into Data
-module Radlang.Evaluator where
+module Radlang.Evaluator(runProgram, force, deepForce) where
 
 import           Control.Applicative
 import           Control.Lens               hiding (Lazy, Strict, (<~))
@@ -10,6 +10,7 @@ import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State.Strict
 import qualified Data.Text as T
+import           Data.Text(Text)
 import           Data.List
 import qualified Data.Map.Strict            as M
 import           Data.Maybe
@@ -17,12 +18,63 @@ import           Prelude                    hiding (lookup)
 
 import           Radlang.Error
 import           Radlang.Types
-import           Radlang.Pretty
-import           Radlang.InterfaceResolve
-import           Radlang.EvaluationUtils
-import           Radlang.Typesystem.Typesystem (mgu)
 
-import Debug.Trace
+
+-- |Get value by name and desired type
+dataByName :: Name -> Evaluator Data
+dataByName = idByName >=> dataById
+
+
+-- |Get value by store id
+dataById :: DataId -> Evaluator Data
+dataById i = do
+  m <- gets _evstDataspace
+  case M.lookup i m of
+    Nothing -> wtf $ "dataById: no such id " <> T.pack (show i) <>
+      "\nKnown ids are: " <> T.pack (show (M.keys m))
+    Just x -> pure x
+
+
+-- |Get store id of a variable by name and desired type
+idByName :: Name -> Evaluator DataId
+idByName n = asks (M.lookup n . _evenvNamespace) >>= \case
+  Nothing -> wtf $ "idByName: no such name " <> n
+  Just i -> pure i
+
+
+-- |Modify action to be ran in different namespace
+withNamespace :: Namespace -> Evaluator a -> Evaluator a
+withNamespace = local . set evenvNamespace
+
+
+-- |Modify action to be ran with updated evaluation stacktrace
+withEvalStackElem :: Text -> Evaluator a -> Evaluator a
+withEvalStackElem s = local $ over evenvEvalStacktrace (s:)
+
+
+-- |Modify action to be ran with updated stacktrace
+withStackElems :: Text -> Evaluator a -> Evaluator a
+withStackElems s = local $ over evenvDefStacktrace (s:) . over evenvEvalStacktrace (s:)
+
+
+-- |Modify action to be ran with different stacktrace
+withDefStacktrace :: DefStacktrace -> Evaluator a -> Evaluator a
+withDefStacktrace st = local $ set evenvDefStacktrace st
+
+
+-- |Get stacktraces from current evenvironment
+getStacktraces :: Evaluator (DefStacktrace, EvalStacktrace)
+getStacktraces = liftA2 (,) (asks _evenvDefStacktrace) (asks _evenvEvalStacktrace)
+
+
+-- |Insert data over certain id
+putData :: DataId -> Data -> Evaluator ()
+putData i d = modify $ over evstDataspace (M.insert i d)
+
+
+-- |Get current namespace
+getNamespace :: Evaluator Namespace
+getNamespace = asks _evenvNamespace
 
 
 -- |Create new lazy thunk from evaluator and return id assigned to it
@@ -42,20 +94,23 @@ lazyExpr e = do
   newLazy (eval e)
 
 
--- |Insert strict data into dataspace and return its id
-newStrict :: StrictData -> Evaluator DataId
-newStrict d = do
-  i <- newId
-  putData i $ Strict $ d
-  pure i
-
-
 -- |Insert data into fresh place and return its id
 newData :: Data -> Evaluator DataId
 newData d = do
   i <- newId
   putData i d
   pure i
+
+
+-- |Evaluate thunk into weak-head normal form
+force :: Data -> Evaluator StrictData
+force (Strict d) = pure d
+force (Lazy ns st i e) = do
+  forced <- force =<< withDefStacktrace st
+    (withEvalStackElem ("forcing " <> T.pack (show i)) $ withNamespace ns e)
+  putData i (Strict forced)
+  pure forced
+force (PolyDict acc sup p) = pure $ DataPolyDict acc sup p
 
 
 -- |Perform deep evaluation and remove all thunks from the data
@@ -71,7 +126,7 @@ deepForce (PolyDict load sup ns) = pure $ DataPolyDict load sup ns
 
 
 -- |Data substitution used to resolve pattern matching
-newtype DataSubst = DataSubst {evstubMap :: M.Map Name Data} deriving Show
+newtype DataSubst = DataSubst {evstubMap :: M.Map Name Data}
 
 
 -- |Union two data substitutions
@@ -92,9 +147,7 @@ processSingleBindings =
             newGuard = if null finalized then prevGuard else do
               let ([], e, dsub) = head finalized
               newns <- applyDataSubst dsub
-              (st, _) <- getStacktraces
               withNamespace newns $ eval e
-              -- pure $ Lazy newns st dataid (eval e)
         in if | null functions && null finalized -> prevGuard
               | not (null functions) && not (null finalized) -> wtf "pattern number exploited"
               | null functions -> newGuard
@@ -196,7 +249,6 @@ eval = \case
   Application f a -> do
     fd <- force =<< eval f
     alazy <- lazyExpr a
-    traceM $ "APPLYING " <> show fd <> " TO " <> show alazy
     case fd of
       DataFunc name func ->
         withStackElems name $ func alazy
@@ -234,17 +286,10 @@ evalProgram tp = do
   case M.lookup "main" (prgBindings tp) of
     Nothing -> languageError "No `main` function defined!"
     Just (_) ->
-      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce >>= \d->
-      gets _evstDataspace >>= \ds -> traceM ("MEM USE: " <> show (M.size ds)) >> pure d
+      withNamespace ns $ withStackElems "main" $ eval (Val "main") >>= deepForce
 
 buildSpace :: DataMap -> Evaluator Namespace
 buildSpace = mapM newData
-
-
--- |Perform evaluation of the main value from the program
-runProgram :: Program -> Either ErrMsg StrictData
-runProgram p =
-  runEvaluator M.empty M.empty $ buildSpace (prgDataMap p) >>= \ns -> withNamespace ns (evalProgram p)
 
 
 -- |Run evaluator and extract the result
@@ -256,3 +301,9 @@ runEvaluator ns ds (Evaluator e)
   = flip evalState (EvaluationState ds (if M.null ds then 0 else fst (M.findMax ds) + 1))
   $ flip runReaderT (EvaluationEnv ns [] [])
   $ runExceptT e
+
+
+-- |Perform evaluation of the main value from the program
+runProgram :: Program -> Either ErrMsg StrictData
+runProgram p =
+  runEvaluator M.empty M.empty $ buildSpace (prgDataMap p) >>= \ns -> withNamespace ns (evalProgram p)

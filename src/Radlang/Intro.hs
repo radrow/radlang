@@ -5,10 +5,9 @@
 module Radlang.Intro(primitiveSpace, withIntro) where
 
 import qualified Data.Text as T
-import Control.Monad
-import Control.Monad.Except
-import Data.Functor
-import Data.Char as DC
+import           Control.Monad.Except
+import           Data.Functor
+import           Data.Char as DC
 import qualified Data.Map                      as M
 
 import           Radlang.Error
@@ -17,9 +16,9 @@ import           Radlang.QQ
 import           Radlang.Typedefs
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
-import           Radlang.EvaluationUtils
 
 
+-- |Turns Haskell Bool into Radlang Bool
 makeBool :: Bool -> StrictData
 makeBool t = DataADT (T.pack $ show t) []
 
@@ -105,6 +104,7 @@ primitives =
     )
   ]
 
+-- |More primitives = better performance
 extendedPrimitives :: [(Name, Qual Type, StrictData)]
 extendedPrimitives = primitives ++
   [ ( "bruteEq"
@@ -165,7 +165,6 @@ extendedPrimitives = primitives ++
 
 -- |Spaces that include all primitives
 primitiveSpace :: (M.Map Name Data, TypeEnv)
--- primitiveSpace = const (M.empty, TypeEnv M.empty) $
 primitiveSpace =
   foldr folder (M.empty, TypeEnv M.empty) extendedPrimitives where
   folder (name, typ, def) (ps, ts) =
@@ -217,4 +216,3 @@ mergePrograms r1 r2 = RawProgram
 -- |Extend program with Intro
 withIntro :: RawProgram -> RawProgram
 withIntro = flip mergePrograms intro
--- withIntro = id

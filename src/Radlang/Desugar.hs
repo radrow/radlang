@@ -1,9 +1,10 @@
--- |tl;dr this module turns "raw" things into "just" things.
+{-# LANGUAGE FlexibleContexts #-}
+-- |tl;dr this module turns "raw" things into "untyped" things.
 --
 --Here are all utils related to kindcheck applying and desugaring work.
 --This module builds ready to typecheck program from raw collection of
 --definitions and declarations.
-module Radlang.Desugar where
+module Radlang.Desugar(buildProgram) where
 
 import           Data.List(groupBy, sortBy)
 import qualified Data.Text as T
@@ -20,14 +21,7 @@ import           Radlang.Error
 import           Radlang.Kindchecker as K
 import           Radlang.Typedefs
 import           Radlang.Types
-import           Radlang.EvaluationUtils
 import           Radlang.Typesystem.Typesystem
-
-import Debug.Trace
-
--- |Innsert element into dataspace and increment the counter
-dataspaceInsert :: Data -> EvaluationState -> EvaluationState
-dataspaceInsert d (EvaluationState ds next) = (EvaluationState (M.insert next d ds) (next+1))
 
 
 -- |Generate bindings from constructor definition
@@ -45,11 +39,11 @@ constructorBindings final c =
 
 
 -- |Extracts informations about its constructors
-newtypeConstructorsBindings :: NewType
-                            -> [(Name, Qual Type, Data)]
-newtypeConstructorsBindings nt = fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
-                                              in (condefName cd, ([] :=> t), d))
-                                 $ (ntContrs nt)
+newtypeConstructorsBindings :: NewType -> [(Name, Qual Type, Data)]
+newtypeConstructorsBindings nt =
+  fmap (\cd -> let (t,d) = constructorBindings (ntType nt) cd
+               in (condefName cd, ([] :=> t), d))
+  $ (ntContrs nt)
 
 
 -- |Generate bindings from newtypes definition
@@ -101,6 +95,7 @@ replaceTypeVar n repl (prd :=> tp) =
   in newprd :=> newt tp
 
 
+-- |Fill interface type declarations with explicit bindings of impls
 implBindings :: InterfaceBindings -> ImplDef -> BindingGroup
 implBindings ib idef = -- Strategy: write once, forget what the fuck is going on here and never go back
   let typeMod :: Name -> Qual Type
@@ -228,11 +223,11 @@ processProgram prg = do
     intenv <- either throwError (pure :: InterfaceEnv -> Kindchecker InterfaceEnv)
       (buildInterfaceEnv intdefs impldefs)
 
+    topbnds <- makeBindings $ fmap Left tdecls ++ fmap Right ddefs
+
     let intbnds = foldr unionInterBindings M.empty [interfaceBindings i | i <- intdefs]
 
         impbnds = foldr unionBindingGroups (M.empty, M.empty, []) [implBindings intbnds im | im <- impldefs]
-
-        topbnds = makeBindings $ fmap Left tdecls ++ fmap Right ddefs
 
         allbnds = foldr unionBindingGroups (M.empty, M.empty, []) [impbnds, topbnds]
 
@@ -245,30 +240,29 @@ processProgram prg = do
 
 
 -- |Wraps bunch of type and value bindings into a binding group
-makeBindings :: [Either TypeDecl DataDef] -> BindingGroup
-makeBindings = groupImplicit . Prelude.foldl ins (M.empty, M.empty, [M.empty]) where
+makeBindings :: MonadError ErrMsg m => [Either TypeDecl DataDef] -> m BindingGroup
+makeBindings = fmap groupImplicit . foldM ins (M.empty, M.empty, [M.empty]) where
   groupImplicit :: BindingGroup -> BindingGroup
   groupImplicit (int, e, is) = (int, e, groupBindings =<< is)
-  ins :: BindingGroup -> Either TypeDecl DataDef -> BindingGroup
   ins (int, exs, [imps]) tl = case tl of
     Left (TypeDecl n qt) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) ->
-        (int, M.insert n (quantifyAll qt, []) exs, [imps])
+        pure (int, M.insert n (quantifyAll qt, []) exs, [imps])
       (Nothing, Just alts) -> let
         e = M.insert n (quantifyAll qt, alts) exs
         i = M.delete n imps
-        in (int, e, [i])
-      (Just _, _) -> wtf $ "Typedecl duplicate: " <> n -- FIXME THROWERROR
+        in pure (int, e, [i])
+      (Just _, _) -> languageError $ "Typedecl duplicate: " <> n
     Right (DataDef n args body) -> case (M.lookup n exs, M.lookup n imps) of
       (Nothing, Nothing) -> let
         i = M.insert n [(args, body)] imps
-        in (int, exs, [i])
+        in pure (int, exs, [i])
       (Just (t, alts), Nothing) -> let
         e = M.insert n (t, (args, body):alts) exs
-        in (int, e, [imps])
+        in pure (int, e, [imps])
       (Nothing, Just alts) -> let
         i = M.insert n ((args, body):alts) imps
-        in (int, exs, [i])
+        in pure (int, exs, [i])
       _ -> wtf "Impossible happened: binding both explicit and implicit"
   ins _ _ = wtf "toplevelBindings process error: imps not a singleton"
 
@@ -294,7 +288,7 @@ processRawExpr = \case
     pure $ Prelude.foldl1 UntypedApplication sq
   RawExprLet assgs inWhat -> do
     passgs <- traverse (bitraverse processTypeDecl processDataDef) assgs
-    let bnds = makeBindings (reverse $ toList passgs)
+    bnds <- makeBindings (reverse $ toList passgs)
     ex <- processRawExpr inWhat
     pure $ UntypedLet bnds ex
   RawExprLambda (a:|rest) val -> processRawExpr $
@@ -317,7 +311,6 @@ processRawExpr = \case
   RawExprList [] -> pure $ UntypedVal "Nil"
   RawExprList (h:t) ->
       processRawExpr $ RawExprApplication (RawExprVal "Cons") (h:|[RawExprList t])
-
 
 
 -- |Extracts kinds of interface' arguments

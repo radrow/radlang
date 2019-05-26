@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedLists #-}
 -- |Collection of some useful aliasses and predefined environments
+{-# LANGUAGE OverloadedLists #-}
 module Radlang.Typedefs where
 
 import           Data.Text as T

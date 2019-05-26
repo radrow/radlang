@@ -6,7 +6,6 @@
 module Radlang.InterfaceEnvBuild where
 
 import qualified Data.Text as T
-import           Data.Text(Text)
 import qualified Data.List.NonEmpty as NP
 import Data.List.NonEmpty(NonEmpty)
 import Control.Monad.State.Strict
@@ -86,7 +85,7 @@ runInterfaceEnvBuilder ce cb = runIdentity $ runInterfaceEnvBuilderT ce cb
 
 -- |Evaluate action when `Maybe` is a `Just`
 onPresent :: MonadError ErrMsg m => Maybe e -> (e -> m ()) -> m ()
-onPresent = forM_ -- TODO: Replace with Control.Monad.Extra
+onPresent = forM_
 
 
 -- |Evaluate action when `Maybe` withing the context is a `Just`
@@ -96,7 +95,7 @@ onPresentM cond handle = cond >>= void . traverse handle
 
 -- |Main builder action that builds interface environment from interface definitions and implementations set
 buildInterfaceEnv :: [InterfaceDef] -> [ImplDef] -> Either ErrMsg InterfaceEnv
-buildInterfaceEnv cses' impls = runInterfaceEnvBuilder (InterfaceEnv stdInterfaces []) $ do
+buildInterfaceEnv cses' implds = runInterfaceEnvBuilder (InterfaceEnv stdInterfaces []) $ do
   let cses = interfaceHierarchySort cses'
   let groupOn :: Ord b => (a -> b) -> [a] -> M.Map b [a]
       groupOn f =
@@ -106,7 +105,7 @@ buildInterfaceEnv cses' impls = runInterfaceEnvBuilder (InterfaceEnv stdInterfac
         in foldl fld M.empty
 
       -- Map from interface name to all of its impls
-      instmap = groupOn impldefInterface impls
+      instmap = groupOn impldefInterface implds
 
   onPresent (isCyclic cses) $ \cyc ->
     interfaceEnvError $ "Found interface cycle: " <> T.pack (show cyc)

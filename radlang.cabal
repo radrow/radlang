@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7da016363001f54f42ddc9735cee0556ebb2eecaee63b1d22a4d4f09a1643792
+-- hash: e79b1cc053640e0ca8d5e7d7b269eec56e3a89c5dec80855070f3c26b235cca7
 
 name:           radlang
 version:        2.0.1
@@ -31,7 +31,6 @@ library
       Radlang.DependencyAnalysis
       Radlang.Desugar
       Radlang.Error
-      Radlang.EvaluationUtils
       Radlang.Evaluator
       Radlang.InterfaceEnvBuild
       Radlang.InterfaceResolve
@@ -82,57 +81,6 @@ executable rdl
   hs-source-dirs:
       rdl
   ghc-options: -Wall -Wextra -O2 -threaded -O2 -rtsopts -with-rtsopts=-N
-  build-depends:
-      ansi-terminal >=0.8.1
-    , base >=4.7 && <5
-    , containers >=0.6.0.1
-    , hashtables
-    , lens
-    , megaparsec >=6.5
-    , mtl
-    , parser-combinators
-    , radlang
-    , raw-strings-qq
-    , syb
-    , template-haskell
-    , text
-    , transformers
-  default-language: Haskell2010
-
-executable rdli
-  main-is: Main.hs
-  other-modules:
-      Paths_radlang
-  hs-source-dirs:
-      rdli
-  ghc-options: -Wall -Wextra -O2 -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      ansi-terminal >=0.8.1
-    , base >=4.7 && <5
-    , containers >=0.6.0.1
-    , hashtables
-    , lens
-    , megaparsec >=6.5
-    , mtl
-    , parser-combinators
-    , radlang
-    , raw-strings-qq
-    , syb
-    , template-haskell
-    , text
-    , transformers
-  default-language: Haskell2010
-
-test-suite radlang-test
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
-  other-modules:
-      Test
-      TT
-      Paths_radlang
-  hs-source-dirs:
-      test
-  ghc-options: -Wall -Wextra -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       ansi-terminal >=0.8.1
     , base >=4.7 && <5

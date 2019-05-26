@@ -1,7 +1,7 @@
+-- |Utilities to solve tasks related to typechecking, kindchecking and building interface env
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
--- |Utilities to solve tasks related to typechecking, kindchecking and building interface env
 module Radlang.Typesystem.Typesystem where
 
 import           Control.Applicative
@@ -100,7 +100,7 @@ mgu t1 t2 = case (t1, t2) of
 
 
 -- |Unifier that uses `merge` instead of `<>`
-match :: (MonadError ErrMsg m, MonadIO m)
+match :: MonadError ErrMsg m
       => Type -> Type -> m Substitution
 match t1 t2 = case (t1, t2) of
   (TypeApp f1 a1, TypeApp f2 a2) -> do
@@ -118,7 +118,7 @@ match t1 t2 = case (t1, t2) of
     typecheckError $ "Cannot merge rigid type variable with non-rigid type: " <> T.pack (show b) <> " vs " <> a
   _ -> typecheckError $ "Cannot merge types: " <> T.pack (show t1) <> " vs " <> T.pack (show t2)
 
-generalizeTo :: (MonadError ErrMsg m)
+generalizeTo :: MonadError ErrMsg m
              => Type -> Type -> m Substitution
 generalizeTo t1 t2 = case (t1, t2) of
   (_, TypeVarWobbly tv) | kind t1 == kind tv -> bindVar tv t1
@@ -129,7 +129,7 @@ generalizeTo t1 t2 = case (t1, t2) of
   (TypeApp f1 a1, TypeApp f2 a2) -> do
     s1 <- generalizeTo f1 f2
     s2 <- generalizeTo a1 a2
-    merge s1 s2 -- TODO merge or mgu?
+    merge s1 s2
   _ -> typecheckError $ "Cannot generalize " <> T.pack (show t1) <> " to " <> T.pack (show t2)
 
 
@@ -141,7 +141,7 @@ mguPred (IsIn i1 t1) (IsIn i2 t2) =
 
 
 -- |match for predicates
-matchPred :: (MonadError ErrMsg m, MonadIO m) => Pred -> Pred -> m (Maybe Substitution)
+matchPred :: MonadError ErrMsg m => Pred -> Pred -> m (Maybe Substitution)
 matchPred (IsIn i1 t1) (IsIn i2 t2) =
   if i1 == i2 then catchError (Just <$> match t1 t2) (const $ pure Nothing)
   else typecheckError $ "Interfaces don't match: " <> i1 <> " vs " <> i2
@@ -158,7 +158,7 @@ predsBySuper p@(IsIn i t) = do
 
 
 -- |Deep search for all matching impls' predicates
-predsByImpls :: (MonadIO m, HasInterfaceEnv m) => Pred -> m [Pred]
+predsByImpls :: HasInterfaceEnv m => Pred -> m [Pred]
 predsByImpls p@(IsIn i _) = do
   -- list of impls of i
   insts <- S.toList <$> impls i
@@ -171,7 +171,7 @@ predsByImpls p@(IsIn i _) = do
 
 
 -- |Check if predicate will hold whenever all of initial predicates are satisfied
-entail :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> Pred -> m Bool
+entail :: HasInterfaceEnv m => [Pred] -> Pred -> m Bool
 entail ps p = do
   -- all sets of superinterfaces of `ps`
   sups <- mapM predsBySuper ps
@@ -194,21 +194,21 @@ inHNF (IsIn _ t) = case t of
 
 
 -- |Turn predicate into head normal form
-toHNF :: (HasInterfaceEnv m, MonadIO m) => Pred -> m [Pred]
+toHNF :: HasInterfaceEnv m => Pred -> m [Pred]
 toHNF p =
   if inHNF p
     then pure [p]
     else predsByImpls p >>= toHNFs
 
 -- |Turn a set of predicates into hnf
-toHNFs :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
+toHNFs :: HasInterfaceEnv m => [Pred] -> m [Pred]
 toHNFs ps = do
   pss <- mapM toHNF ps
   pure $ join pss
 
 
 -- |Remove predicates that are entailed by others
-simplify :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
+simplify :: HasInterfaceEnv m => [Pred] -> m [Pred]
 simplify pps = loop [] pps where
   loop rs [] = pure rs
   loop rs (p:ps) = do
@@ -217,7 +217,7 @@ simplify pps = loop [] pps where
 
 
 -- |Turns predicates into head normal form and then simplifies
-reduce :: (HasInterfaceEnv m, MonadIO m) => [Pred] -> m [Pred]
+reduce :: HasInterfaceEnv m => [Pred] -> m [Pred]
 reduce ps = toHNFs ps >>= simplify
 
 

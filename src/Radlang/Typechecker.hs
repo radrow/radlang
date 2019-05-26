@@ -1,3 +1,4 @@
+-- |Type checker and type inferer. Decorates UntypedExpr with type annotations and resovles ambiguitites.
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -14,17 +15,12 @@ import qualified Data.Text as T
 import           Data.Bifunctor
 import           Data.List                     as DL
 import qualified Data.Map.Strict               as M
-import System.IO.Unsafe
 
 import           Radlang.Error
 import           Radlang.Intro
 import           Radlang.Typedefs
 import           Radlang.Types
 import           Radlang.Typesystem.Typesystem
-
-
-dbg :: MonadIO m => String -> m ()
-dbg s = liftIO $ putStrLn ("DEBUG: " <> s)
 
 
 -- |Run Typechecker in different type env
@@ -50,7 +46,7 @@ extendSubst s = getSubst >>= \ts -> setSubst $ s <> ts
 
 
 -- |Unify types and update substitution
-unify :: (Substitutor m, MonadIO m) => Type -> Type -> m ()
+unify :: Substitutor m => Type -> Type -> m ()
 unify t1 t2 = do
   s <- getSubst
   u <- mgu (substitute s t1) (substitute s t2)
@@ -72,7 +68,7 @@ freshInst (Forall ks qt) = do
 
 
 -- |Given argument infer qualified result
-type Infer e t = e -> TypecheckerT IO (Qual t)
+type Infer e t = e -> Typechecker (Qual t)
 
 
 -- |Get type of UntypedExpr
@@ -97,7 +93,7 @@ inferTypeExpr = \case
 
 
 -- |Decorate 'UntypedExpr' tree with types to match given type
-setExprType :: Qual Type -> UntypedExpr -> TypecheckerT IO TypedExpr
+setExprType :: Qual Type -> UntypedExpr -> Typechecker TypedExpr
 setExprType t@(pt :=> tt) = \case
   UntypedVal v -> do
     pure $ TypedVal t v
@@ -116,7 +112,7 @@ setExprType t@(pt :=> tt) = \case
     typeda <- setExprType (pt :=> substitute s ta) a
     pure $ TypedApplication (substitute s t) typedf typeda
 
-reduceExprPreds :: TypedExpr -> TypecheckerT IO TypedExpr
+reduceExprPreds :: TypedExpr -> Typechecker TypedExpr
 reduceExprPreds = \case
   TypedVal (p :=> t) v -> reduce p >>= \rp -> pure $ TypedVal (rp :=> t) v
   TypedLit (p :=> t) v -> reduce p >>= \rp -> pure $ TypedLit (rp :=> t) v
@@ -131,7 +127,7 @@ reduceExprPreds = \case
       pure (rbp :=> bt, rbalts)
     pure $ TypedLet (rp :=> t) rbnds re
 
-reduceAltsPreds :: [TypedAlt] -> TypecheckerT IO [TypedAlt]
+reduceAltsPreds :: [TypedAlt] -> Typechecker [TypedAlt]
 reduceAltsPreds = mapM (\(pats, be) -> reduceExprPreds be >>= \rbe -> pure (pats, rbe))
 
 -- |Infer type of literal value
@@ -183,7 +179,7 @@ inferTypeAlt (pats, e) = do
 
 
 -- |Decorate alt with type annotations
-setAltType :: Qual Type -> Alt -> TypecheckerT IO TypedAlt
+setAltType :: Qual Type -> Alt -> Typechecker TypedAlt
 setAltType t (pts, expr) = do
   as <- getTypeEnv
   let dropFun (TypeApp _ resType) = resType
@@ -218,7 +214,7 @@ inferTypeAlts t alts = do
 
 
 -- |Split predicates on deferred and contraints. fs are fixed variables and gs are varaibles over which we want to quantify
-split :: (HasInterfaceEnv m, MonadIO m)
+split :: HasInterfaceEnv m
       => [TypeVar] -> [TypeVar] -> [Pred] -> m ([Pred], [Pred])
 split fs gs ps = do
   ps' <- reduce ps
@@ -233,7 +229,7 @@ ambiguities vs ps = fmap (\v -> (v, filter (elem v . free) ps)) $ free ps \\ vs
 
 
 -- |Get all candidates that may resolve ambiguity
-candidates :: (HasInterfaceEnv m, MonadIO m) => Ambiguity -> m [Type]
+candidates :: HasInterfaceEnv m => Ambiguity -> m [Type]
 candidates (v, qs) = getInterfaceEnv >>= \ce ->
   let is = fmap (\(IsIn i _) -> i) qs
       ts = fmap (\(IsIn _ t) -> t) qs
@@ -248,8 +244,7 @@ candidates (v, qs) = getInterfaceEnv >>= \ce ->
 
 
 -- |Predicates that can be removed after ambiguities are solved
-defaultedPreds :: (HasInterfaceEnv m,
-                   MonadIO m)
+defaultedPreds :: HasInterfaceEnv m
                => [TypeVar] -> [Pred] -> m [Pred]
 defaultedPreds vs ps = do
   let vps = ambiguities vs ps
@@ -259,7 +254,8 @@ defaultedPreds vs ps = do
     Nothing -> pure $ join (fmap snd vps)
 
 
-defaultSubst :: (HasInterfaceEnv m, MonadIO m) => [TypeVar] -> [Pred] -> m Substitution
+-- |Substitution that solves ambiguities using defaults
+defaultSubst :: HasInterfaceEnv m => [TypeVar] -> [Pred] -> m Substitution
 defaultSubst vs ps = do
   let vps = ambiguities vs ps
   tss <- mapM candidates vps
@@ -374,7 +370,7 @@ inferTypeSeq ti = \case
 
 
 -- |Infer types of multiple independent binding groups
-inferTypeBindingGroups :: [BindingGroup] -> TypecheckerT IO (TypedBindings, PolyBindings)
+inferTypeBindingGroups :: [BindingGroup] -> Typechecker (TypedBindings, PolyBindings)
 inferTypeBindingGroups bgs = do
   (ps :=> (_, tb, pb)) <- inferTypeSeq inferTypeBindingGroup bgs
   s <- getSubst
@@ -389,25 +385,26 @@ inferTypeBindingGroups bgs = do
 
 
 -- |Evaluation of typechecker
-runTypecheckerT :: InterfaceEnv
-                -> TypeEnv
-                -> TypecheckerConfig
-                -> TypecheckerT IO a
-                -> IO (Either ErrMsg a)
-runTypecheckerT ce te tc
-  = flip evalStateT (TypecheckerState 0 mempty)
-  . flip runReaderT (TypecheckerEnv ce te tc)
-  . runExceptT . (\(Typechecker t) -> t)
+runTypechecker :: InterfaceEnv
+               -> TypeEnv
+               -> TypecheckerConfig
+               -> Typechecker a
+               -> Either ErrMsg a
+runTypechecker ie te tc
+  = flip evalState (TypecheckerState 0 mempty)
+  . flip runReaderT (TypecheckerEnv ie te tc)
+  . runExceptT
+  . (\(Typechecker t) -> t)
 
 
 -- |Toplevel typechecking of a program
 typecheck :: TypecheckerConfig -> UntypedProgram -> Either ErrMsg TypedProgram
 typecheck tc p =
   let (ps, ts) = primitiveSpace
-  in do (tb, pb) <- unsafePerformIO $ runTypecheckerT
-                          (uprgInterfaceEnv p)
-                          (TypeEnv $ M.union (types ts) (types $ uprgTypeEnv p))
-                          tc (inferTypeBindingGroups $ uprgBindings p)
+  in do (tb, pb) <- runTypechecker
+                    (uprgInterfaceEnv p)
+                    (TypeEnv $ M.union (types ts) (types $ uprgTypeEnv p))
+                    tc (inferTypeBindingGroups $ uprgBindings p)
 
         let psl = ps `M.union` (uprgDataMap p)
         pure $ TypedProgram
