@@ -1,7 +1,0 @@
-let fix f :=
-      let x := f x in x;
-    fact rec n := 
-       if eq n 0
-       then 1
-       else mult n (rec (minus n 1))
-in fix fact 4

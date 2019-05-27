@@ -17,13 +17,23 @@ interface Monad (~F : Type -> Type) implies AppFunctor {
   bind : ~F ~A -> (~A -> ~F ~B) -> ~F ~B;;
 };;
 
+
 newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) := State (~S -> ~M (Pair ~S ~A));;
+
 runStateT : ~M is Monad | StateT ~S ~M ~A -> ~S -> ~M (Pair ~S ~A);;
 runStateT (State sss) := sss;;
+
 evalStateT : ~M is Monad | StateT ~S ~M ~A -> ~S -> ~M ~A;;
 evalStateT s xst := map snd (runStateT s xst);;
+
 execStateT : ~M is Monad | StateT ~S ~M ~A -> ~S -> ~M ~S;;
 execStateT s xsc := map fst (runStateT s xsc);;
+
+get : ~M is Monad | StateT ~S ~M ~S;;
+get := State (\s -> unit (Pair s s));;
+
+put : ~M is Monad | ~S -> StateT ~S ~M Unit;;
+put px := State (\s -> unit (Pair px Unit));;
 
 impl ~M is Monad | StateT ~S ~M for Endofunctor {
   map f (State sf) :=
@@ -47,25 +57,34 @@ impl ~M is Monad | StateT ~S ~M for Monad {
 };;
 
 
+
 newtype Id (~A : Type) := Id ~A;;
 runId (Id xr) := xr;;
-newtype IdT (~M : Type -> Type) (~A : Type) := IdT (~M ~A);;
-runIdT : ~M is Monad | IdT ~M ~A -> ~M ~A;;
-runIdT (IdT i) := i;;
+
 impl Id for Endofunctor { map f (Id imx) := Id (f imx);; };;
 impl Id for AppFunctor { unit := Id;; ap (Id f) (Id xaa) := Id (f xaa);; };;
 impl Id for Monad { bind (Id ibx) f := f ibx;; };;
 
+
+newtype IdT (~M : Type -> Type) (~A : Type) := IdT (~M ~A);;
+
+runIdT : ~M is Monad | IdT ~M ~A -> ~M ~A;;
+runIdT (IdT i) := i;;
+
 impl ~M is Monad | IdT ~M for Endofunctor { map f (IdT mx) := IdT (map f mx);; };;
+
 impl ~M is Monad | IdT ~M for AppFunctor {
   unit ux := IdT (unit ux);;
   ap (IdT f) (IdT ax) := IdT (for {ff <- f | xx <- ax} unit (ff xx));;
 };;
+
 impl ~M is Monad | IdT ~M for Monad {
   bind (IdT bx) f := IdT (bind bx (\xx -> runIdT (f xx)));;
 };;
 
+
 newtype OptionT (~M : Type -> Type) (~A : Type) := OptionT (~M (Option ~A));;
+
 runOptionT (OptionT x) := x;;
 
 impl Option for Endofunctor {
@@ -76,6 +95,7 @@ impl Option for Endofunctor {
 impl ~M is Monad | OptionT ~M for Endofunctor {
   map f (OptionT m) := OptionT (map (map f) m);;
 };;
+
 impl ~M is Monad | OptionT ~M for AppFunctor {
   unit := comp (comp OptionT unit) Some;;
   ap f a := OptionT ( bind (runOptionT f) (\ff -> match ff with
@@ -87,6 +107,7 @@ impl ~M is Monad | OptionT ~M for AppFunctor {
     )
   );;
 };;
+
 impl ~M is Monad | OptionT ~M for Monad {
   bind m f := OptionT ( bind (runOptionT m) (\mm -> match mm with
     | None -> unit None
@@ -97,11 +118,6 @@ impl ~M is Monad | OptionT ~M for Monad {
 
 failStateT : ~M is Monad | StateT ~S (OptionT ~M) ~A;;
 failStateT := State (\s -> OptionT (unit None));;
-
-get : ~M is Monad | StateT ~S ~M ~S;;
-get := State (\s -> unit (Pair s s));;
-put : ~M is Monad | ~S -> StateT ~S ~M Unit;;
-put px := State (\s -> unit (Pair px Unit));;
 
 lift2 : ~M is AppFunctor | (~A -> ~B -> ~C) -> ~M ~A -> ~M ~B -> ~M ~C;;
 lift2 f a b := ap (map f a) b;;
