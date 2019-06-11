@@ -287,4 +287,4 @@ I expect to get maximum number of points if I finish all the features declared h
 
 * Special thanks
 
-Special thanks to Wojciech Jabłoński, Krzysztof Pszeniczny and Marcin Benke that showed me necessary papers and algorithms without which writing this would be a total hell. 
+Special thanks to Wojciech Jabłoński, Krzysztof Pszeniczny and Marcin Benke who showed me necessary papers and algorithms without which writing this would be a total hell. 
