@@ -7,7 +7,7 @@ Radlang is a pure functional programming language that targets to inherit most o
 
 In the future it will probably support memory management via automated garbage collection and have read-eval-print loop.
 
-* Build, Installation, Exectuion
+* Build, Installation, Execution
 
 ** Build
 
