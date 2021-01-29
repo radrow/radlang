@@ -3,7 +3,7 @@
 
 * About
 
-Radlang is a pure functional programming language that targets to inherit most of Haskell98's features. It supports higher order polymorphic algebraic datatypes, full type inference, parametric and ad-hoc higher order polymorphism using typeclasses (known as intefaces) and rich syntax. The evaluation order is lazy by default, however the user is allowed to manage it to some extent.
+Radlang is a pure functional programming language that targets to inherit most of Haskell98's features. It supports higher order polymorphic algebraic datatypes, full type inference, parametric and ad-hoc higher order polymorphism using typeclasses (known as intefaces) and rich syntax. The evaluation order is lazy by default, however the user is allowed to tweak it to some extent.
 
 In the future it will probably support memory management via automated garbage collection and have read-eval-print loop.
 
@@ -11,7 +11,7 @@ In the future it will probably support memory management via automated garbage c
 
 ** Build
 
-As I use stack you may want to install it as well. You may do it using your favourite package manager or by running
+This project uses stack, so you may want to install it as well. You can do it using your favourite package manager or by running
 
 #+BEGIN_SRC bash                                                                                                                                                                               
 curl -sSL https://get.haskellstack.org/ | sh                                                                                                                                                   
@@ -26,11 +26,11 @@ If you want to install it locally you can run ~stack install~. The binaries will
 
 ** Run
 
-In case you didn't install Radlang in your ~PATH~, you can still execute the interpreter with ~stack exec rdl~. If you don't pass arguments to ~rdl~ the interpreter will read program from standard input. General usage is ~rdl filename.rdl~. Radlang will find the ~main~ value, evaluate it deeply (enforcing all lazy thunks) and print it to stdout. ~main~ can have any type, but must be defined.
+In case you didn't install Radlang in your ~PATH~, you can still execute the interpreter with ~stack exec rdl~. If you don't pass arguments to ~rdl~ the interpreter will read program from standard input. General usage is ~rdl filename.rdl~. Radlang will find the ~main~ value, evaluate it deeply (enforcing all lazy thunks) and print it to the stdout. ~main~ can have any type, but must be defined.
 
 I provide two examples of programs in Radlang that can be found in ~examples~ directory:
 
-- ~statet.rdl~ – this one shows off the support for typeclasses. The program computes n-th fibonacci number in safe manner using monadic stack of ~StateT~ over ~OptionT~ over ~Id~. Implementation takes big advantage of interface inheritance and for-comprehensions (known in Haskell as do-notation) to be more readable and flexible. ~OptionT~ layer takes care of bad (negative) argument handling – technically this is overkill, but nicely presents how works monadic action lifting.
+- ~statet.rdl~ – this one shows off the support for typeclasses. The program computes the n-th fibonacci number in safe manner using monadic stack of ~StateT~ over ~OptionT~ over ~Id~. Implementation takes big advantage of interface inheritance and for-comprehensions (known in Haskell as do-notation) to be more readable and flexible. ~OptionT~ layer takes care of bad (negative) argument handling – technically this is an overkill, but it nicely presents how works the monadic action lifting.
 
 - ~radlang-junior.rdl~ – Radlang Junior is a tiny imperative programming language interpreter written in Radlang. It is shipped with complete parser and CPS (continuation-passing-style) evaluator. Features static binding of variables, loops and if-statements. In the file there are multiple ~main~ definitions that test several programs. 
 
@@ -108,7 +108,7 @@ program ::= {(newtype | typedecl | datadef | interface | impl) ";;"}*
 
 ** Basic definitions and examples
 
-The program is a set of data definitions, type declarations, newtype definitions, interface declarations and implementations of the interfaces. The infix operators probably won't be supported. Program must contain `main` definition of any type – it will be the point where the evaluation starts. `main` will be deeply forced and will never contain any unevaluated thunk.
+The program is a set of data definitions, type declarations, newtype definitions, interface declarations and implementations of the interfaces. Program must contain `main` value definition of any type – it will be the point where the evaluation starts. `main` will be deeply forced and will not contain any unevaluated thunk.
 
 *** Hello world
 
@@ -142,7 +142,7 @@ f x := 1;;
 f := const 2;;
 #+END_SRC
 
-*** For comprehension
+*** For comprehension (monads <3)
 This construction uses implicitly ~bind~ function like in Haskell's ~do~ notation:
 
 #+BEGIN_SRC
@@ -164,7 +164,7 @@ notEq : ~A is Eq -> ~A -> ~A -> Bool;;
 mplus : ~A is Semigroup, ~M is Monad | ~M ~A -> ~M ~A -> ~M ~A;;
 #+END_SRC
 
-In opposite to Haskell one may define variable without any value. To do so, the programmer must declare its type only:
+In contrary to Haskell one may define variable without any value. To do so, the programmer must declare its type only:
 
 #+BEGIN_SRC
 bot : ~A;;
@@ -174,7 +174,7 @@ bot_int : Int;;
 
 ** New type definition
 
-Types can be defined in casual ADT terms, however the programmer must explicitly provide kind annotation for every type-argument:
+Types can be defined in a similar way to ADTs known from Haskell. However, the programmer must explicitly provide kind annotation for every type-argument:
 
 #+BEGIN_SRC
 newtype Bool := True | False;;
@@ -196,7 +196,7 @@ f l := match l with
 
 ** Laziness management
 
-Every value is treatet lazily, that means following code
+Every expression is evaluated lazily, that means following code
 
 #+BEGIN_SRC
 bot : ~A;;
@@ -206,8 +206,8 @@ main := (\a b -> a) 3 bot;;
 
 will successfully return 3. However there are two built in functions that are able to interfere this behavior:
 
- - ~force : ~A -> ~B -> ~B~ – that forces its first argument to WHNF and returns the second (just like Haskell's ~seq~)
- - ~deepForce : ~A -> ~B -> ~B~ – that deeply forces all possible parts of the first argument
+ - ~force : ~A -> ~B -> ~B~ – forces its first argument to WHNF and returns the second (just like Haskell's ~seq~)
+ - ~deepForce : ~A -> ~B -> ~B~ – deeply forces all possible parts of the first argument
 
 ~main~ function will always implicitly call ~deepForce~ on its value. Examples:
 
@@ -233,7 +233,7 @@ main6 := deepForce (Cons bot bot) True;; -- out of domain error
 
 ** Interfaces
 
-Interfaces are technically same thing as typeclasses or traits in other languages. They may inherit each other as long as they do not form cycles (that would be a true deviation).
+Interfaces are technically typeclasses. They may inherit each from other as long as they do not form cycles (that would be a true deviation).
 
 One of the most fancy features of this system is that implementation may provide definitions for any upper interface in an inheriting interface:
 
@@ -254,9 +254,7 @@ impl Int for Monoid {
 
 ** Stacktrace
 
-Running program will keep two different stacktraces to ease debugging. The stacktraces will appear on every runtime error.
-
-One may wonder what is the reason to have two of them. The answer is simple – laziness. Consider following code:
+Running program will keep two different stacktraces to ease debugging. The stacktraces will appear on every runtime error. For motivation of having two stacktraces, consider the following code:
 
 #+BEGIN_SRC
 main :=
@@ -268,9 +266,9 @@ f x := divInt x 0;; -- division by zero!
 g x := deepForce x x;;
 #+END_SRC
 
-The program will surely return an error, but what should its stacktrace be? In strict languages it would be obvious – ~[main, f, divInt]~, because this is the place where runtime failed. However, because Radlang is lazy the error will be thrown at ~[deepForce, divInt]~. So which stacktrace is correct? Being prepared for situation where the user can't decide, I provide both of them – first one is called "definition stacktrace", and the second one is "evaluation stacktrace".
+This program will surely return an error, but what would its stacktrace be is a bit questional. In strict languages it would be something like – ~[main, f, divInt]~, because this is the place where runtime failed. However, because Radlang is lazy the error will be thrown at ~[deepForce, divInt]~. In order to solve this ambiguity Radlang provides both of them – first one is called "definition stacktrace", and the second one is "evaluation stacktrace".
 
-What happened to the ~g~ function in the evaluation stacktrace? The answer is simple – it is just not present there. ~g~ was fully evaluated and returned thunk that contains ~deepForce x x~ with ~x~ assigned to ~f 1~. The error was actually thrown out of the main function so it is not mentioned either!
+One may wonder what happened to the ~g~ function in the evaluation stacktrace. The answer is, ~g~ was fully evaluated and returned thunk that contains ~deepForce x x~ with ~x~ assigned to ~f 1~. The error was actually thrown out of the main function so it is not mentioned either.
 
 * What may be included, but doesn't have to
 
