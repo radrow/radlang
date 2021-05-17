@@ -112,13 +112,13 @@ The program is a set of data definitions, type declarations, newtype definitions
 
 *** Hello world
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 main := "hello world";;
 #+END_SRC
 
 *** Use of toplevel function and ~if~ statement
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 identity x := x;;
 
 main := if identity True then identity False else False;;
@@ -126,7 +126,7 @@ main := if identity True then identity False else False;;
 
 *** Type declaration and pattern matching
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 fun : Int -> Bool;;
 fun 0 := True;;
 fun x = match x with
@@ -137,7 +137,7 @@ fun x = match x with
 
 Note that no variable may appear twice in a single set of patterns. Differing numbers of function arguments are not supported, so following code **won't** pass the syntax check:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 f x := 1;;
 f := const 2;;
 #+END_SRC
@@ -145,7 +145,7 @@ f := const 2;;
 *** For comprehension (monads <3)
 This construction uses implicitly ~bind~ function like in Haskell's ~do~ notation:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 main := for 
   { x <- x_m
   | y <- y_m
@@ -156,7 +156,7 @@ main := for
 
 *** Type declarations and data definitions
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 x : Int;;
 
 notEq : ~A is Eq -> ~A -> ~A -> Bool;;
@@ -166,7 +166,7 @@ mplus : ~A is Semigroup, ~M is Monad | ~M ~A -> ~M ~A -> ~M ~A;;
 
 In contrary to Haskell one may define variable without any value. To do so, the programmer must declare its type only:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 bot : ~A;;
 
 bot_int : Int;;
@@ -176,7 +176,7 @@ bot_int : Int;;
 
 Types can be defined in a similar way to ADTs known from Haskell. However, the programmer must explicitly provide kind annotation for every type-argument:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 newtype Bool := True | False;;
 
 newtype List (~A : Type) := Nil | Cons ~A (List ~A);;
@@ -187,7 +187,7 @@ newtype StateT (~S : Type) (~M : Type -> Type) (~A : Type) :=
 
 Such data may be deeply pattern matched:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 f l := match l with
   | Nil -> 0
   | Cons 3 (Cons x _) -> 1
@@ -198,7 +198,7 @@ f l := match l with
 
 Every expression is evaluated lazily, that means following code
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 bot : ~A;;
 
 main := (\a b -> a) 3 bot;;
@@ -211,7 +211,7 @@ will successfully return 3. However there are two built in functions that are ab
 
 ~main~ function will always implicitly call ~deepForce~ on its value. Examples:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 test (Cons _ _) := True;;
 test _ := False;;
 bot : ~Any;;
@@ -237,7 +237,7 @@ Interfaces are technically typeclasses. They may inherit each from other as long
 
 One of the most fancy features of this system is that implementation may provide definitions for any upper interface in an inheriting interface:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 interface Semigroup (~S : Type) {
   plus : ~S -> ~S -> ~S;;
 };;
@@ -256,7 +256,7 @@ impl Int for Monoid {
 
 Running program will keep two different stacktraces to ease debugging. The stacktraces will appear on every runtime error. For motivation of having two stacktraces, consider the following code:
 
-#+BEGIN_SRC
+#+BEGIN_SRC ocaml
 main :=
   let x := f 1
   in g x;;
