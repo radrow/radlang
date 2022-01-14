@@ -3,7 +3,7 @@
 
 * About
 
-Radlang is a pure functional programming language that targets to inherit most of Haskell98's features. It supports higher order polymorphic algebraic datatypes, full type inference, parametric and ad-hoc higher order polymorphism using typeclasses (known as intefaces) and rich syntax. The evaluation order is lazy by default, however the user is allowed to tweak it to some extent.
+Radlang is a pure functional programming language that targets to inherit most of Haskell98's features. It supports higher kinded polymorphic algebraic datatypes, full type inference, parametric and ad-hoc higher order polymorphism using typeclasses (known as intefaces) and rich syntax. The evaluation order is lazy by default, however the user is allowed to tweak it to some extent.
 
 In the future it will probably support memory management via automated garbage collection and have read-eval-print loop.
 
