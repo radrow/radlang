@@ -5,7 +5,7 @@ import           Control.Applicative        (liftA2)
 import           Control.Monad
 import           Control.Monad.Identity
 import           Data.Void
-import           Data.Text as T
+import           Data.Text as T hiding (elem)
 import           Data.List as DL
 import           Text.Megaparsec
 import           Text.Megaparsec.Char

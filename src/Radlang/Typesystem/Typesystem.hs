@@ -10,7 +10,7 @@ import           Data.List                  as DL
 import qualified Data.Map.Strict            as M
 import           Data.Set                   (Set)
 import qualified Data.Set                   as S
-import           Data.Text as T
+import           Data.Text as T hiding (elem)
 
 import           Radlang.Error
 import           Radlang.Types

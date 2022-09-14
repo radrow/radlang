@@ -60,7 +60,7 @@ rawrdl = QuasiQuoter { quoteExp = quoteRawrdlExp, quotePat = undefined, quoteDec
 
 
 -- |Parser for QuasiQuoting
-parseRawrdl :: Monad m => (String, Int, Int) -> String -> m RawProgram
+parseRawrdl :: MonadFail m => (String, Int, Int) -> String -> m RawProgram
 parseRawrdl (file, _line, _col) s =
   let parser = skipMany controlChar *> rawProgram <* eof
   in case parse parser file s of
